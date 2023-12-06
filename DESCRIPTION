@@ -11,7 +11,10 @@ Description: Extends vectors to include graph relationships between their unique
     values, and offers tools to compute useful summaries of the graph structure
     for use in summarising, filtering, and otherwise manipulating the graph.
 License: MIT + file LICENSE
+Imports: 
+    vctrs
 Suggests: 
+    pillar,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
 Encoding: UTF-8
