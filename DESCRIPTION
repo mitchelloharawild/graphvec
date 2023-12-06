@@ -12,6 +12,7 @@ Description: Extends vectors to include graph relationships between their unique
     for use in summarising, filtering, and otherwise manipulating the graph.
 License: MIT + file LICENSE
 Imports: 
+    igraph,
     vctrs
 Suggests: 
     pillar,
