@@ -30,3 +30,49 @@ You can install the development version of graphvec from [GitHub](https://github
 # install.packages("remotes")
 remotes::install_github("mitchelloharawild/graphvec")
 ```
+
+## Examples
+
+An `agg_vec()` (aggregation vector) defines a simple hierarchical graph structure where there is a single parent node.
+
+```{r}
+library(graphvec)
+agg_vec(
+  x = c(NA, "A", "B"),
+  aggregated = c(TRUE, FALSE, FALSE)
+)
+```
+
+A `graph_vec()` (graph vector) defines a general graph structure where the relationships among the levels of a factor are specified in an edge-linked graph.
+
+```{r}
+g <- graph_vec(
+  x = factor(c("A", "B", "C", "D", "D", "E")),
+  edges = matrix(
+    c(
+      1L, 2L,
+      3L, 2L,
+      2L, 5L,
+      4L, 5L
+    ), 
+    ncol = 2, byrow = TRUE,
+    dimnames = list(c(), c("from", "to"))
+  )
+)
+
+g
+node_is_child(g, "B")
+```
+
+These vectors are particularly useful when used in rectangular tidy data structures.
+
+```{r}
+library(dplyr)
+x <- tibble(g, y = rnorm(6))
+x
+x |> 
+  filter(node_is_child(g, "B"))
+x |> 
+  mutate(node_degree(g))
+```
+
