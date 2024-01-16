@@ -42,6 +42,9 @@ vec_cast.graph_vec.graph_vec <- function(x, to, ...) {
 #' @rdname aggregation-vctrs
 #' @export
 vec_cast.graph_vec.default <- function(x, to, ...) graph_vec(x)
+#' @rdname aggregation-vctrs
+#' @export
+vec_cast.character.graph_vec <- function(x, to, ...) attr(x, "level")[x]
 
 #' @rdname aggregation-vctrs
 #' @export
