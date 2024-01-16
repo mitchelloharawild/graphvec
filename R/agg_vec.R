@@ -68,9 +68,9 @@ vec_ptype2.agg_vec <- function(x, y, ...) UseMethod("vec_ptype2.agg_vec", y)
 vec_ptype2.agg_vec.agg_vec <- function(x, y, ...) {
   x <- vec_data(x)[["x"]]
   y <- vec_data(y)[["x"]]
-  ptype <- if(!is_logical(x) && !is_logical(y)) {
+  ptype <- if(!rlang::is_logical(x) && !rlang::is_logical(y)) {
     vec_ptype2(x, y)
-  } else if (is_logical(x)) {
+  } else if (rlang::is_logical(x)) {
     y
   } else {
     x
