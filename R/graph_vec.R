@@ -1,10 +1,14 @@
 #' @export
-graph_vec <- function(x = factor(), edges) {
-  stopifnot(is.matrix(edges))
-  stopifnot(is.integer(edges))
+graph_vec <- function(x = factor(), g = data.frame()) {
+  # Check inputs
   stopifnot(inherits(x,"factor"))
-  stopifnot(c("from", "to") %in% colnames(edges))
-  structure(x, levels = levels(x), e = edges, class = c("graph_vec", "vctrs_vctr", "factor"))
+  stopifnot(is.list(g))
+
+  # Validate edges
+  g[["from"]] <- vec_cast(g[["from"]], list_of(.ptype = integer()))
+  vctrs::vec_assert(g[["to"]], integer())
+
+  vctrs::new_vctr(x, levels = levels(x), g = g, class = c("graph_vec", "factor"))
 }
 
 #' @export

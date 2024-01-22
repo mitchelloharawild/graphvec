@@ -7,7 +7,10 @@
 #' @export
 node_is_child <- function(x, node, ...){
   stopifnot(inherits(x, "graph_vec"))
-  g <- graph_from_edgelist(attr(x, "e")[,c("from", "to")])
+  g <- attr(x, "g")
+  g <- graph_from_edgelist(
+    cbind(from = unlist(g[["from"]]), to = rep(g[["to"]], lengths(g[["from"]])))
+  )
   unclass(x) %in% subcomponent(g, match(node, levels(x)), mode = "in")
 }
 
@@ -18,6 +21,9 @@ node_is_child <- function(x, node, ...){
 #' @export
 node_degree <- function(x, ...){
   stopifnot(inherits(x, "graph_vec"))
-  g <- graph_from_edgelist(attr(x, "e")[,c("from", "to")])
+  g <- attr(x, "g")
+  g <- graph_from_edgelist(
+    cbind(from = unlist(g[["from"]]), to = rep(g[["to"]], lengths(g[["from"]])))
+  )
   igraph::degree(g)[vec_data(x)]
 }

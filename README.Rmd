@@ -43,20 +43,15 @@ agg_vec(
 )
 ```
 
-A `graph_vec()` (graph vector) defines a general graph structure where the relationships among the levels of a factor are specified in an edge-linked graph.
+A `graph_vec()` (graph vector) defines a general graph structure where the relationships among the levels of a factor are specified in an adjacency list.
 
 ```{r}
+library(dplyr)
 g <- graph_vec(
   x = factor(c("A", "B", "C", "D", "D", "E")),
-  edges = matrix(
-    c(
-      1L, 2L,
-      3L, 2L,
-      2L, 5L,
-      4L, 5L
-    ), 
-    ncol = 2, byrow = TRUE,
-    dimnames = list(c(), c("from", "to"))
+  g = tibble(
+    from = list(c(1L, 3L), c(2L, 4L)),
+    to = c(2L, 5L)
   )
 )
 
@@ -67,7 +62,6 @@ node_is_child(g, "B")
 These vectors are particularly useful when used in rectangular tidy data structures.
 
 ```{r}
-library(dplyr)
 x <- tibble(g, y = rnorm(6))
 x
 x |> 

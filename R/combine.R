@@ -6,24 +6,14 @@ combine_graph <- function(x) {
       is_agg <- is_aggregated(loc$key)
       list(unlist(loc$loc[which(is_agg)], recursive = FALSE), loc$loc[!is_agg])
     } else if (inherits(loc$key, "graph_vec")) {
-      e <- attr(loc$key, "e")
+      g <- attr(loc$key, "g")
+      # Match graph relationships to index positions
+      g_i <- match(levels(x), loc$key)
+      g[["to"]] <- lapply(g[["to"]], function(i) loc$loc[[g_i[i]]])
+      g[["from"]] <- lapply(g[["from"]], function(x) lapply(x, function(i) loc$loc[[g_i[[i]]]]))
 
-      e_loc <- vec_group_loc(e[,c("to", "id")])
-      g <- .mapply(
-        function(parent, child) {
-          list(
-            loc$loc[[parent]],
-            lapply(e[child,"from"], function(i) loc$loc[[i]])
-          )
-        },
-        dots = list(
-          e_loc$key[,"to"],
-          e_loc$loc
-        ),
-        MoreArgs = list()
-      )
-      g
-      # lobstr::tree(g)
+      # Invert from,to into a list of edges
+      purrr::transpose(unname(g[c("to", "from")]))
     } else {
       list(loc$loc)
     }
@@ -37,7 +27,6 @@ combine_graph <- function(x) {
   # Convert list(parent, child) to edges matrix from,to,id
   list_to_edges <- function(x) {
     edges <- matrix(nrow = 0, ncol = 3, dimnames = list(NULL, c("from", "to", "id")))
-    # lobstr::tree(x)
     e_env <- as.environment(list(id = 0))
     traverse_list(x, .f = function(x, y) {
       i <- vapply(x, is.integer, logical(1L))
@@ -53,14 +42,33 @@ combine_graph <- function(x) {
     as_tibble(edges)
   }
 
+  list_to_graph <- function(x) {
+    e_env <- as.environment(list(e = list()))
+    traverse_list(x, .f = function(x, y) {
+      i <- vapply(x, is.integer, logical(1L))
+      if(any(i) && any(!i)) {
+        e_env$e[[length(e_env$e) + 1L]] <- list(x[[which(i)]], unlist(x[!i]))
+        x <- x[which(i)]
+      }
+      x
+    })
+    x <- setNames(transpose(e_env$e), c("to", "from"))
+    x[["to"]] <- unlist(x[["to"]])
+    as_tibble(x)
+  }
+
+  flatten <- function(x) {
+    if(length(x) == 1L && is.list(x[[1]])) flatten(x[[1L]]) else x
+  }
+
   g <- Reduce(
     function(g, k) {
-      int_g <- traverse_list(g, .f = function(x, y) x, .h = function(x) graph_intersect(x, k))
-      int_k <- traverse_list(k, .f = function(x, y) x, .h = function(x) graph_intersect(x, g))
+      int_g <- traverse_list(g, .f = function(x, y) flatten(x), .h = function(x) graph_intersect(x, k))
+      int_k <- traverse_list(k, .f = function(x, y) flatten(x), .h = function(x) graph_intersect(x, g))
 
       c(int_g, int_k)
     }, lapply(x, list_graph)
   )
 
-  list_to_edges(g)
+  list_to_graph(g)
 }
