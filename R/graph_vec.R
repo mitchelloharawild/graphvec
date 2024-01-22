@@ -9,8 +9,7 @@ graph_vec <- function(x = factor(), edges) {
 
 #' @export
 format.graph_vec <- function(x, ...){
-  class(x) <- "factor"
-  format(x, ...)
+  format(as.character(x), ...)
 }
 
 #' @export
@@ -29,6 +28,10 @@ vec_ptype2.graph_vec <- function(x, y, ...) UseMethod("vec_ptype2.graph_vec", y)
 vec_ptype2.graph_vec.default <- function(x, y, ...) graph_vec()
 
 #' @rdname aggregation-vctrs
+#' @export
+vec_ptype2.graph_vec.character <- function(x, y, ...) graph_vec()
+
+#' @rdname aggregation-vctrs
 #' @method vec_cast graph_vec
 #' @export
 vec_cast.graph_vec <- function(x, to, ...) UseMethod("vec_cast.graph_vec")
@@ -44,7 +47,12 @@ vec_cast.graph_vec.graph_vec <- function(x, to, ...) {
 vec_cast.graph_vec.default <- function(x, to, ...) graph_vec(x)
 #' @rdname aggregation-vctrs
 #' @export
-vec_cast.character.graph_vec <- function(x, to, ...) attr(x, "level")[x]
+vec_cast.character.graph_vec <- function(x, to, ...) levels(x)[x]
+#' @rdname aggregation-vctrs
+#' @export
+vec_cast.graph_vec.character <- function(x, to, ...) {
+  graph_vec(factor(x, levels = levels(to)), g = attr(to, "g"))
+}
 
 #' @rdname aggregation-vctrs
 #' @export
