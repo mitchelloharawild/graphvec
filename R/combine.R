@@ -15,7 +15,8 @@ combine_graph <- function(x) {
       # Invert from,to into a list of edges
       purrr::transpose(unname(g[c("to", "from")]))
     } else {
-      list(loc$loc)
+      # Vector without graph structure has no children
+      c(loc$loc, list(list()))
     }
   }
 
