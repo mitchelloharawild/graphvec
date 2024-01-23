@@ -70,5 +70,5 @@ combine_graph <- function(x) {
     }, lapply(x, list_graph)
   )
 
-  list_to_graph(g)
+  vctrs::vec_unique(list_to_graph(g))
 }
