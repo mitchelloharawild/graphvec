@@ -40,7 +40,7 @@ combine_graph <- function(x) {
       # if(all(i)) x <- unlist(x, recursive = FALSE)
       x
     })
-    as_tibble(edges)
+    vctrs::new_data_frame(edges)
   }
 
   list_to_graph <- function(x) {
@@ -55,7 +55,7 @@ combine_graph <- function(x) {
     })
     x <- setNames(transpose(e_env$e), c("to", "from"))
     x[["to"]] <- unlist(x[["to"]])
-    as_tibble(x)
+    vctrs::new_data_frame(x)
   }
 
   flatten <- function(x) {
