@@ -42,8 +42,8 @@ vec_cast.graph_vec <- function(x, to, ...) UseMethod("vec_cast.graph_vec")
 #' @rdname aggregation-vctrs
 #' @export
 vec_cast.graph_vec.graph_vec <- function(x, to, ...) {
-  x <- vec_proxy(x)
-  if(all(x$agg)) x$x <- vec_rep(vec_cast(NA, vec_proxy(to)$x), length(x$x))
+  # x <- vec_proxy(x)
+  # if(all(x$agg)) x$x <- vec_rep(vec_cast(NA, vec_proxy(to)$x), length(x$x))
   vec_restore(x, to)
 }
 #' @rdname aggregation-vctrs
