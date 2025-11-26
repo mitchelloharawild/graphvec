@@ -6,9 +6,9 @@
 #' @importFrom igraph graph_from_edgelist subcomponent
 #' @export
 node_is_child <- function(x, node, ...){
-  stopifnot(inherits(x, "graph_vec"))
-  g <- attr(x, "g")
-  g <- graph_from_edgelist(
+  stopifnot(inherits(x, "node_vec"))
+  edges <- attr(x, "edges")
+  edges <- graph_from_edgelist(
     cbind(from = unlist(g[["from"]]), to = rep(g[["to"]], lengths(g[["from"]])))
   )
   unclass(x) %in% subcomponent(g, match(node, levels(x)), mode = "in")
@@ -20,9 +20,9 @@ node_is_child <- function(x, node, ...){
 #'
 #' @export
 node_degree <- function(x, ...){
-  stopifnot(inherits(x, "graph_vec"))
-  g <- attr(x, "g")
-  g <- graph_from_edgelist(
+  stopifnot(inherits(x, "node_vec"))
+  edges <- attr(x, "edges")
+  edges <- graph_from_edgelist(
     cbind(from = unlist(g[["from"]]), to = rep(g[["to"]], lengths(g[["from"]])))
   )
   igraph::degree(g)[vec_data(x)]
@@ -35,10 +35,10 @@ node_degree <- function(x, ...){
 #'
 #' @export
 node_distance <- function(x, from, ...){
-  stopifnot(inherits(x, "graph_vec"))
+  stopifnot(inherits(x, "node_vec"))
   from <- match(from, levels(x))
-  g <- attr(x, "g")
-  g <- graph_from_edgelist(
+  edges <- attr(x, "edges")
+  edges <- graph_from_edgelist(
     cbind(from = unlist(g[["from"]]), to = rep(g[["to"]], lengths(g[["from"]])))
   )
   igraph::distances(g, from, ...)[vec_data(x)]

@@ -5,8 +5,8 @@ combine_graph <- function(x) {
     if (inherits(loc$key, "agg_vec")) {
       is_agg <- is_aggregated(loc$key)
       list(unlist(loc$loc[which(is_agg)], recursive = FALSE), loc$loc[!is_agg])
-    } else if (inherits(loc$key, "graph_vec")) {
-      g <- attr(loc$key, "g")
+    } else if (inherits(loc$key, "node_vec")) {
+      g <- attr(loc$key, "edges")
       # Match graph relationships to index positions
       g_i <- match(levels(x), loc$key)
       g[["to"]] <- lapply(g[["to"]], function(i) loc$loc[[g_i[i]]])
