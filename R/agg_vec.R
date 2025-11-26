@@ -2,10 +2,11 @@
 #'
 #' \lifecycle{maturing}
 #'
-#' An aggregation vector extends usual vectors by adding `<aggregated>` values.
-#' These vectors are typically produced via the [`aggregate_key()`] function,
-#' however it can be useful to create them manually to produce more complicated
-#' hierarchies (such as unbalanced hierarchies).
+#' An aggregation vector is a special type of [`node_vec()`] consisting of a 
+#' single parent (the 'aggregated' value) and its children. Aggregated values
+#' are identified by a logical vector passed to the `aggregated` argument, and
+#' disaggregated values are provided in `x`. Aggregated values are displayed
+#' as `<aggregated>` by default.
 #'
 #' @param x The vector of values.
 #' @param aggregated A logical vector to identify which values are `<aggregated>`.
@@ -163,7 +164,7 @@ is.na.agg_vec <- function(x) {
 #'
 #' @param x An object.
 #'
-#' @seealso [`aggregate_key`]
+#' @seealso [`agg_vec()`]
 #'
 #' @export
 is_aggregated <- function(x){

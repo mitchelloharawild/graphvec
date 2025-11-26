@@ -2,10 +2,35 @@
 % Please edit documentation in R/edge_vec.R
 \name{edge_vec}
 \alias{edge_vec}
-\title{Graph vectors with edge-first design (EXPERIMENTAL)}
+\title{Graph vector along edges}
 \usage{
-edge_vec(from, to, nodes, key = 1L)
+edge_vec(from = integer(), to = integer(), nodes = data.frame())
+}
+\arguments{
+\item{from}{Integer vector of 'from' node indices.}
+
+\item{to}{Integer vector of 'to' node indices.}
+
+\item{nodes}{Vector of node data. The vector size should be at least the
+maximum value in \code{from} and \code{to}.}
 }
 \description{
-Graph vectors with edge-first design (EXPERIMENTAL)
+An \code{edge_vec} is a vector of graph edges with associated node data stored as
+attributes.
+}
+\examples{
+g <- edge_vec(
+  from = c(1L, 2L, 1L, 3L),
+  to = c(2L, 3L, 3L, 1L),
+  nodes = data.frame(
+    id = 1:3,
+    label = c("A", "B", "C")
+  )
+)
+
+# Access node data via `$`
+g$from$label
+g$to$label
+
+
 }

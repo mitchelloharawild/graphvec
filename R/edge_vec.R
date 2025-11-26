@@ -1,26 +1,67 @@
-#' Graph vectors with edge-first design (EXPERIMENTAL)
+#' Graph vector along edges
+#'
+#' An `edge_vec` is a vector of graph edges with associated node data stored as
+#' attributes.
+#' 
+#' @param from Integer vector of 'from' node indices.
+#' @param to Integer vector of 'to' node indices.
+#' @param nodes Vector of node data. The vector size should be at least the
+#' maximum value in `from` and `to`.
+#'   
+#' @examples
+#' g <- edge_vec(
+#'   from = c(1L, 2L, 1L, 3L),
+#'   to = c(2L, 3L, 3L, 1L),
+#'   nodes = data.frame(
+#'     id = 1:3,
+#'     label = c("A", "B", "C")
+#'   )
+#' )
+#' 
+#' # Access node data via `$`
+#' g$from$label
+#' g$to$label
+#' 
+#' 
 #' @export
-edge_vec <- function(from, to, nodes, key = 1L) {
+edge_vec <- function(from = integer(), to = integer(), nodes = data.frame()) {
   inputs <- vec_recycle_common(from = from, to = to)
 
-  key_vars <- tidyselect::eval_select({{key}}, nodes)
+  # key_vars <- tidyselect::eval_select({{key}}, nodes)
 
   # Check inputs
   vec_assert(inputs$from, integer())
   vec_assert(inputs$to, integer())
   stopifnot(is.data.frame(nodes))
 
+  new_edge_vec(
+    from = inputs$from,
+    to = inputs$to,
+    nodes = nodes#,
+    # key_vars = key_vars
+  )
+}
+
+#' Constructor function for edge_vec
+#' 
+#' @param from Integer vector of 'from' node indices.
+#' @param to Integer vector of 'to' node indices.
+#' @param nodes Data frame of node data.
+# #' @param key_vars Integer vector of column indices in `nodes` that represent
+#' 
+#' @export
+new_edge_vec <- function(from = integer(), to = integer(), nodes = data.frame()) {#, key_vars = integer()) {
   vctrs::new_rcrd(
-    inputs[c("from", "to")],
+    list(from = from, to = to),
     nodes = nodes,
-    key_vars = key_vars,
+    # key_vars = key_vars,
     class = "edge_vec"
   )
 }
 
 #' @export
 format.edge_vec <- function(x, ...){
-  key_data <- attr(x, "nodes")[attr(x, "key_vars")]
+  key_data <- attr(x, "nodes")#[attr(x, "key_vars")]
   sprintf(
     "[%s]->[%s]",
     do.call(paste, c(key_data[field(x, "from"),,drop=FALSE], sep = ":")),
@@ -68,7 +109,7 @@ vec_cast.character.edge_vec <- function(x, to, ...) format(x)
 #' @rdname aggregation-vctrs
 #' @export
 vec_ptype_abbr.edge_vec <- function(x, ...) {
-  "graph"
+  "edges"
   # class(x) <- class(x)[-1]
   # paste0(vec_ptype_abbr(x, ...), "'")
 }
@@ -83,3 +124,4 @@ vec_ptype_abbr.edge_vec <- function(x, ...) {
 `$.edge_vec` <- function(x, name){
   attr(x, "nodes")[field(x, name),,drop=FALSE]
 }
+
