@@ -37,12 +37,19 @@ node_vec <- function(x = list(), edges = data.frame(from = list(), to = integer(
 #' 
 #' @export
 new_node_vec <- function(x = list(), edges = data.frame(from = list(), to = integer())) {
-  vctrs::new_vctr(x, edges = edges, class = c("node_vec", class(x)))
+  out <- vctrs::new_vctr(x, edges = edges, class = "node_vec")
+
+  # Restore attributes from x
+  x_attr <- attributes(x)
+  x_attr$class <- base::union(class(out), class(x))
+  attributes(out)[names(x_attr)] <- x_attr
+  out
 }
 
 #' @export
 format.node_vec <- function(x, ...){
-  format(as.character(x), ...)
+  class(x) <- class(x)[c(-1L, -2L)]
+  format(x, ...)
 }
 
 #' @rdname aggregation-vctrs
