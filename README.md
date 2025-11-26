@@ -42,9 +42,8 @@ agg_vec(
 #> [1] <aggregated> A            B
 ```
 
-A `graph_vec()` (graph vector) defines a general graph structure where
-the relationships among the levels of a factor are specified in an
-adjacency list.
+A `node_vec()` defines a more general graph structure where nodes can
+have multiple parents and children.
 
 ``` r
 library(dplyr)
@@ -56,25 +55,17 @@ library(dplyr)
 #> The following objects are masked from 'package:base':
 #> 
 #>     intersect, setdiff, setequal, union
-g <- graph_vec(
+g <- node_vec(
   x = factor(c("A", "B", "C", "D", "D", "E")),
-  g = tibble(
+  edges = tibble(
     from = list(c(1L, 3L), c(2L, 4L)),
     to = c(2L, 5L)
   )
 )
 
 g
+#> <node_vec[6]>
 #> [1] A B C D D E
-#> attr(,"g")
-#> # A tibble: 2 × 2
-#>          from    to
-#>   <list<int>> <int>
-#> 1         [2]     2
-#> 2         [2]     5
-#> Levels: A B C D E
-node_is_child(g, "B")
-#> [1]  TRUE  TRUE  TRUE FALSE FALSE FALSE
 ```
 
 These vectors are particularly useful when used in rectangular tidy data
@@ -82,33 +73,48 @@ structures.
 
 ``` r
 x <- tibble(g, y = rnorm(6))
+
 x
 #> # A tibble: 6 × 2
-#>   g          y
-#>   <fct>  <dbl>
-#> 1 A     -0.533
-#> 2 B     -0.623
-#> 3 C      0.659
-#> 4 D      2.45 
-#> 5 D      0.551
-#> 6 E     -0.699
-x |> 
-  filter(node_is_child(g, "B"))
-#> # A tibble: 3 × 2
-#>   g          y
-#>   <fct>  <dbl>
-#> 1 A     -0.533
-#> 2 B     -0.623
-#> 3 C      0.659
-x |> 
-  mutate(node_degree(g))
-#> # A tibble: 6 × 3
-#>   g          y `node_degree(g)`
-#>   <fct>  <dbl>            <dbl>
-#> 1 A     -0.533                1
-#> 2 B     -0.623                3
-#> 3 C      0.659                1
-#> 4 D      2.45                 1
-#> 5 D      0.551                1
-#> 6 E     -0.699                2
+#>         g       y
+#>   <nodes>   <dbl>
+#> 1       A -1.82  
+#> 2       B -0.0199
+#> 3       C  0.933 
+#> 4       D  0.247 
+#> 5       D -2.20  
+#> 6       E  0.824
+```
+
+The transpose of a node vector is an `edge_vec()`, which is instead
+vectorised along the edges of the graph.
+
+``` r
+e <- edge_vec(
+  from = c(1L, 2L, 1L, 3L),
+  to = c(2L, 3L, 3L, 1L),
+  nodes = data.frame(
+    id = 1:3,
+    label = c("A", "B", "C")
+  )
+)
+
+e
+#> <edge_vec[4]>
+#> [1] [1:A]->[2:B] [2:B]->[3:C] [1:A]->[3:C] [3:C]->[1:A]
+```
+
+Both `node_vec()` and `edge_vec()` can be converted to igraph objects
+for further analysis. Direct vectorised statistics and operations on
+these vectors are planned for this package in future releases.
+
+``` r
+igraph::as.igraph(g)
+#> IGRAPH f826c4e D--- 5 4 -- 
+#> + edges from f826c4e:
+#> [1] 1->2 3->2 2->5 4->5
+igraph::as.igraph(e)
+#> IGRAPH 0638902 D--- 3 4 -- 
+#> + edges from 0638902:
+#> [1] 1->2 2->3 1->3 3->1
 ```

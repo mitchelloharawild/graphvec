@@ -13,5 +13,5 @@ is_aggregated(x)
 Is the element an aggregation of smaller data
 }
 \seealso{
-\code{\link{aggregate_key}}
+\code{\link[=agg_vec]{agg_vec()}}
 }

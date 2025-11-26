@@ -56,17 +56,34 @@ g <- node_vec(
 )
 
 g
-node_is_child(g, "B")
 ```
 
 These vectors are particularly useful when used in rectangular tidy data structures.
 
 ```{r}
 x <- tibble(g, y = rnorm(6))
+
 x
-x |> 
-  filter(node_is_child(g, "B"))
-x |> 
-  mutate(node_degree(g))
 ```
 
+The transpose of a node vector is an `edge_vec()`, which is instead vectorised along the edges of the graph.
+
+```{r}
+e <- edge_vec(
+  from = c(1L, 2L, 1L, 3L),
+  to = c(2L, 3L, 3L, 1L),
+  nodes = data.frame(
+    id = 1:3,
+    label = c("A", "B", "C")
+  )
+)
+
+e
+```
+
+Both `node_vec()` and `edge_vec()` can be converted to igraph objects for further analysis. Direct vectorised statistics and operations on these vectors are planned for this package in future releases.
+
+```{r}
+igraph::as.igraph(g)
+igraph::as.igraph(e)
+```

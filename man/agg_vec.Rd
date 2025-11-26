@@ -15,10 +15,11 @@ agg_vec(x = character(), aggregated = logical(vec_size(x)))
 \lifecycle{maturing}
 }
 \details{
-An aggregation vector extends usual vectors by adding \verb{<aggregated>} values.
-These vectors are typically produced via the \code{\link[=aggregate_key]{aggregate_key()}} function,
-however it can be useful to create them manually to produce more complicated
-hierarchies (such as unbalanced hierarchies).
+An aggregation vector is a special type of \code{\link[=node_vec]{node_vec()}} consisting of a
+single parent (the 'aggregated' value) and its children. Aggregated values
+are identified by a logical vector passed to the \code{aggregated} argument, and
+disaggregated values are provided in \code{x}. Aggregated values are displayed
+as \verb{<aggregated>} by default.
 }
 \examples{
 agg_vec(
