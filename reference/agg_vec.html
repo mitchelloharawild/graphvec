@@ -53,10 +53,11 @@
 </dl></div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
-    <p>An aggregation vector extends usual vectors by adding <code>&lt;aggregated&gt;</code> values.
-These vectors are typically produced via the <code>aggregate_key()</code> function,
-however it can be useful to create them manually to produce more complicated
-hierarchies (such as unbalanced hierarchies).</p>
+    <p>An aggregation vector is a special type of <code><a href="node_vec.html">node_vec()</a></code> consisting of a
+single parent (the 'aggregated' value) and its children. Aggregated values
+are identified by a logical vector passed to the <code>aggregated</code> argument, and
+disaggregated values are provided in <code>x</code>. Aggregated values are displayed
+as <code>&lt;aggregated&gt;</code> by default.</p>
     </div>
 
     <div class="section level2">
@@ -79,7 +80,7 @@ hierarchies (such as unbalanced hierarchies).</p>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
 </div>
 
     </footer></div>

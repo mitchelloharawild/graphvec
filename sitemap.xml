@@ -10,10 +10,13 @@
 <url><loc>https://pkg.mitchelloharawild.com/graphvec/reference/graphvec-package.html</loc></url>
 <url><loc>https://pkg.mitchelloharawild.com/graphvec/reference/index.html</loc></url>
 <url><loc>https://pkg.mitchelloharawild.com/graphvec/reference/is_aggregated.html</loc></url>
+<url><loc>https://pkg.mitchelloharawild.com/graphvec/reference/new_edge_vec.html</loc></url>
+<url><loc>https://pkg.mitchelloharawild.com/graphvec/reference/new_node_vec.html</loc></url>
 <url><loc>https://pkg.mitchelloharawild.com/graphvec/reference/node_degree.html</loc></url>
 <url><loc>https://pkg.mitchelloharawild.com/graphvec/reference/node_disjoint_id.html</loc></url>
 <url><loc>https://pkg.mitchelloharawild.com/graphvec/reference/node_distance.html</loc></url>
 <url><loc>https://pkg.mitchelloharawild.com/graphvec/reference/node_is_child.html</loc></url>
+<url><loc>https://pkg.mitchelloharawild.com/graphvec/reference/node_vec.html</loc></url>
 <url><loc>https://pkg.mitchelloharawild.com/graphvec/reference/traverse.html</loc></url>
 </urlset>
 
