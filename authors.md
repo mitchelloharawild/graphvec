@@ -7,12 +7,12 @@
 
 ## Citation
 
-O'Hara-Wild M (2025). *graphvec: Vectorised graph data structures*. R
+O'Hara-Wild M (2026). *graphvec: Vectorised graph data structures*. R
 package version 0.0.0.9000.
 
     @Manual{,
       title = {graphvec: Vectorised graph data structures},
       author = {Mitchell O'Hara-Wild},
-      year = {2025},
+      year = {2026},
       note = {R package version 0.0.0.9000},
     }
