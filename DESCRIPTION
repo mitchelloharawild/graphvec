@@ -13,7 +13,6 @@ Description: Extends vectors to include graph relationships between their unique
 License: MIT + file LICENSE
 Imports: 
     igraph,
-    tidyselect,
     vctrs
 Suggests: 
     dplyr,

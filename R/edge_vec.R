@@ -27,8 +27,6 @@
 edge_vec <- function(from = integer(), to = integer(), nodes = data.frame()) {
   inputs <- vec_recycle_common(from = from, to = to)
 
-  # key_vars <- tidyselect::eval_select({{key}}, nodes)
-
   # Check inputs
   vec_assert(inputs$from, integer())
   vec_assert(inputs$to, integer())
@@ -37,8 +35,7 @@ edge_vec <- function(from = integer(), to = integer(), nodes = data.frame()) {
   new_edge_vec(
     from = inputs$from,
     to = inputs$to,
-    nodes = nodes#,
-    # key_vars = key_vars
+    nodes = nodes
   )
 }
 
