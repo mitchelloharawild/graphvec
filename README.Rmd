@@ -97,6 +97,6 @@ e$to$label
 Both `node_vec()` and `edge_vec()` can be converted to igraph objects for further analysis. Direct vectorised statistics and operations on these vectors are planned for this package in future releases.
 
 ```{r}
-igraph::as.igraph(g)
+igraph::as.igraph(nodes)
 igraph::as.igraph(e)
 ```
