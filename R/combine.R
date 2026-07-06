@@ -13,7 +13,7 @@ combine_graph <- function(x) {
       g[["from"]] <- lapply(g[["from"]], function(x) lapply(x, function(i) loc$loc[[g_i[[i]]]]))
 
       # Invert from,to into a list of edges
-      purrr::transpose(unname(g[c("to", "from")]))
+      transpose(unname(g[c("to", "from")]))
     } else {
       # Vector without graph structure has no children
       c(loc$loc, list(list()))
@@ -53,7 +53,7 @@ combine_graph <- function(x) {
       }
       x
     })
-    x <- setNames(transpose(e_env$e), c("to", "from"))
+    x <- `names<-`(transpose(e_env$e), c("to", "from"))
     x[["to"]] <- unlist(x[["to"]])
     vctrs::new_data_frame(x)
   }

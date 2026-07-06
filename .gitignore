@@ -7,3 +7,5 @@ inst/doc
 tests/testthat/Rplots.pdf
 revdep
 docs
+/.quarto/
+**/*.quarto_ipynb

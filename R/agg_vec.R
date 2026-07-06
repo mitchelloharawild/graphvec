@@ -1,7 +1,5 @@
 #' Create an aggregation vector
 #'
-#' \lifecycle{maturing}
-#'
 #' An aggregation vector is a special type of [`node_vec()`] consisting of a 
 #' single parent (the 'aggregated' value) and its children. Aggregated values
 #' are identified by a logical vector passed to the `aggregated` argument, and
@@ -69,14 +67,7 @@ vec_ptype2.agg_vec <- function(x, y, ...) UseMethod("vec_ptype2.agg_vec", y)
 vec_ptype2.agg_vec.agg_vec <- function(x, y, ...) {
   x <- vec_data(x)[["x"]]
   y <- vec_data(y)[["x"]]
-  ptype <- if(!rlang::is_logical(x) && !rlang::is_logical(y)) {
-    vec_ptype2(x, y)
-  } else if (rlang::is_logical(x)) {
-    y
-  } else {
-    x
-  }
-  agg_vec(ptype)
+  agg_vec(vec_ptype2(x, y))
 }
 #' @rdname aggregation-vctrs
 #' @export
@@ -129,7 +120,7 @@ vec_proxy_compare.agg_vec <- function(x, ...) {
     x <- list(e1,e2)[[which(!c(e1_agg, e2_agg))]]
     is_agg <- x == "<aggregated>"
     if(any(is_agg)){
-      warn("<aggregated> character values have been converted to aggregated values.
+      warning("<aggregated> character values have been converted to aggregated values.
 Hint: If you're trying to compare aggregated values, use `is_aggregated()`.")
     }
     x <- agg_vec(ifelse(is_agg, NA, x), aggregated = is_agg)

@@ -24,6 +24,8 @@ g <- node_vec(
   to = c(2L, 3L, 1L)
  )
 )
+g
 
+igraph::as.igraph(g)
 
 }

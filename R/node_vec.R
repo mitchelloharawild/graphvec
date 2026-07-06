@@ -15,7 +15,9 @@
 #'   to = c(2L, 3L, 1L)
 #'  )
 #' )
+#' g
 #' 
+#' igraph::as.igraph(g)
 #' 
 #' @export
 node_vec <- function(x = list(), edges = data.frame(from = list(), to = integer())) {
@@ -82,11 +84,11 @@ vec_cast.node_vec.node_vec <- function(x, to, ...) {
 vec_cast.node_vec.default <- function(x, to, ...) node_vec(x)
 #' @rdname aggregation-vctrs
 #' @export
-vec_cast.character.node_vec <- function(x, to, ...) levels(x)[x]
+vec_cast.character.node_vec <- function(x, to, ...) NextMethod()
 #' @rdname aggregation-vctrs
 #' @export
 vec_cast.node_vec.character <- function(x, to, ...) {
-  node_vec(factor(x, levels = levels(to)), g = attr(to, "g"))
+  node_vec(x)
 }
 
 #' @rdname aggregation-vctrs
