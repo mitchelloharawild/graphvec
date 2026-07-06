@@ -47,6 +47,18 @@ test_that("$.edge_vec retrieves node data for from and to", {
   expect_equal(e$to$label, c("B", "C"))
 })
 
+test_that("$.edge_vec rejects invalid field names", {
+  e <- edge_vec(
+    from = c(1L, 2L),
+    to = c(2L, 3L),
+    nodes = data.frame(label = c("A", "B", "C"))
+  )
+  expect_error(
+    e$foo,
+    "only supports `from` and `to`, not `foo`"
+  )
+})
+
 test_that("format.edge_vec() produces [from]->[to] strings", {
   e <- edge_vec(
     from = 1L,

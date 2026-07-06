@@ -124,6 +124,15 @@ vec_ptype_abbr.edge_vec <- function(x, ...) {
 
 #' @export
 `$.edge_vec` <- function(x, name){
+  name <- as.character(name)
+
+  if (!name %in% c("from", "to")) {
+    stop(
+      sprintf("`$.edge_vec` only supports `from` and `to`, not `%s`.", name),
+      call. = FALSE
+    )
+  }
+
   attr(x, "nodes")[field(x, name),,drop=FALSE]
 }
 
