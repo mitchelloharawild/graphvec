@@ -9,6 +9,9 @@ is_aggregated(x)
 \arguments{
 \item{x}{An object.}
 }
+\value{
+A logical vector indicating which elements are aggregated.
+}
 \description{
 Is the element an aggregation of smaller data
 }

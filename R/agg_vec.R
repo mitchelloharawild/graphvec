@@ -9,6 +9,8 @@
 #' @param x The vector of values.
 #' @param aggregated A logical vector to identify which values are `<aggregated>`.
 #'
+#' @return An `agg_vec` object.
+#'
 #' @examples
 #' agg_vec(
 #'   x = c(NA, "A", "B"),
@@ -153,6 +155,7 @@ is.na.agg_vec <- function(x) {
 #' Is the element an aggregation of smaller data
 #'
 #' @param x An object.
+#' @return A logical vector indicating which elements are aggregated.
 #'
 #' @seealso [`agg_vec()`]
 #'

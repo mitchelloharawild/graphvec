@@ -11,6 +11,9 @@ node_vec(x = list(), edges = data.frame(from = list(), to = integer()))
 
 \item{edges}{A data frame with columns \code{from} and \code{to} representing the edges}
 }
+\value{
+A \code{node_vec} object.
+}
 \description{
 A \code{node_vec} is a vector of graph nodes with associated edges stored as
 attributes.

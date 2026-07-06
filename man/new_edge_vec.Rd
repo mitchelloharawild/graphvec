@@ -13,6 +13,9 @@ new_edge_vec(from = integer(), to = integer(), nodes = data.frame())
 
 \item{nodes}{Data frame of node data.}
 }
+\value{
+An \code{edge_vec} object.
+}
 \description{
 Constructor function for edge_vec
 }

@@ -5,7 +5,9 @@
 #' 
 #' @param x A vector representing the nodes in the graph.
 #' @param edges A data frame with columns `from` and `to` representing the edges
-#' 
+#'
+#' @return A `node_vec` object.
+#'
 #' @examples
 #' 
 #' g <- node_vec(
@@ -36,6 +38,7 @@ node_vec <- function(x = list(), edges = data.frame(from = list(), to = integer(
 #' 
 #' @param x A vector representing the nodes in the graph.
 #' @param edges A data frame with columns `from` and `to` representing the edges
+#' @return A `node_vec` object.
 #' 
 #' @export
 new_node_vec <- function(x = list(), edges = data.frame(from = list(), to = integer())) {

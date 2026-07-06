@@ -14,6 +14,9 @@ edge_vec(from = integer(), to = integer(), nodes = data.frame())
 \item{nodes}{Vector of node data. The vector size should be at least the
 maximum value in \code{from} and \code{to}.}
 }
+\value{
+An \code{edge_vec} object.
+}
 \description{
 An \code{edge_vec} is a vector of graph edges with associated node data stored as
 attributes.

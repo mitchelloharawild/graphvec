@@ -11,6 +11,9 @@ agg_vec(x = character(), aggregated = logical(vec_size(x)))
 
 \item{aggregated}{A logical vector to identify which values are \verb{<aggregated>}.}
 }
+\value{
+An \code{agg_vec} object.
+}
 \description{
 An aggregation vector is a special type of \code{\link[=node_vec]{node_vec()}} consisting of a
 single parent (the 'aggregated' value) and its children. Aggregated values

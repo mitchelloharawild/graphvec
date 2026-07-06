@@ -8,6 +8,8 @@
 #' @param nodes Vector of node data. The vector size should be at least the
 #' maximum value in `from` and `to`.
 #'   
+#' @return An `edge_vec` object.
+#'
 #' @examples
 #' g <- edge_vec(
 #'   from = c(1L, 2L, 1L, 3L),
@@ -45,6 +47,7 @@ edge_vec <- function(from = integer(), to = integer(), nodes = data.frame()) {
 #' @param to Integer vector of 'to' node indices.
 #' @param nodes Data frame of node data.
 # #' @param key_vars Integer vector of column indices in `nodes` that represent
+#' @return An `edge_vec` object.
 #' 
 #' @export
 new_edge_vec <- function(from = integer(), to = integer(), nodes = data.frame()) {#, key_vars = integer()) {

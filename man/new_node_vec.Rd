@@ -11,6 +11,9 @@ new_node_vec(x = list(), edges = data.frame(from = list(), to = integer()))
 
 \item{edges}{A data frame with columns \code{from} and \code{to} representing the edges}
 }
+\value{
+A \code{node_vec} object.
+}
 \description{
 Constructor function for node_vec
 }
