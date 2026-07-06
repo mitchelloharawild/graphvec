@@ -31,13 +31,11 @@ combine_graph <- function(x) {
     e_env <- as.environment(list(id = 0))
     traverse_list(x, .f = function(x, y) {
       i <- vapply(x, is.integer, logical(1L))
-      # if(sum(i) > 1) return(unlist(x, recursive = FALSE))
       if(any(i) && any(!i)) {
         assign("id", e_env$id + 1, e_env)
         edges <<- rbind(edges, cbind(unlist(x[!i]), x[[which(i)]], e_env$id))
         x <- x[which(i)]
       }
-      # if(all(i)) x <- unlist(x, recursive = FALSE)
       x
     })
     vctrs::new_data_frame(edges)

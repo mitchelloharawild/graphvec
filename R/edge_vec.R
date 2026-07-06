@@ -46,22 +46,20 @@ edge_vec <- function(from = integer(), to = integer(), nodes = data.frame()) {
 #' @param from Integer vector of 'from' node indices.
 #' @param to Integer vector of 'to' node indices.
 #' @param nodes Data frame of node data.
-# #' @param key_vars Integer vector of column indices in `nodes` that represent
 #' @return An `edge_vec` object.
 #' 
 #' @export
-new_edge_vec <- function(from = integer(), to = integer(), nodes = data.frame()) {#, key_vars = integer()) {
+new_edge_vec <- function(from = integer(), to = integer(), nodes = data.frame()) {
   vctrs::new_rcrd(
     list(from = from, to = to),
     nodes = nodes,
-    # key_vars = key_vars,
     class = "edge_vec"
   )
 }
 
 #' @export
 format.edge_vec <- function(x, ...){
-  key_data <- attr(x, "nodes")#[attr(x, "key_vars")]
+  key_data <- attr(x, "nodes")
   sprintf(
     "[%s]->[%s]",
     do.call(paste, c(key_data[field(x, "from"),,drop=FALSE], sep = ":")),
@@ -95,8 +93,6 @@ vec_cast.edge_vec <- function(x, to, ...) UseMethod("vec_cast.edge_vec")
 #' @rdname aggregation-vctrs
 #' @export
 vec_cast.edge_vec.edge_vec <- function(x, to, ...) {
-  # x <- vec_proxy(x)
-  # if(all(x$agg)) x$x <- vec_rep(vec_cast(NA, vec_proxy(to)$x), length(x$x))
   vec_restore(x, to)
 }
 #' @rdname aggregation-vctrs
@@ -112,8 +108,6 @@ vec_cast.character.edge_vec <- function(x, to, ...) format(x)
 #' @export
 vec_ptype_abbr.edge_vec <- function(x, ...) {
   "edges"
-  # class(x) <- class(x)[-1]
-  # paste0(vec_ptype_abbr(x, ...), "'")
 }
 
 #' @importFrom utils .DollarNames

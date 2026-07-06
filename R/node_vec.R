@@ -78,8 +78,6 @@ vec_cast.node_vec <- function(x, to, ...) UseMethod("vec_cast.node_vec")
 #' @rdname aggregation-vctrs
 #' @export
 vec_cast.node_vec.node_vec <- function(x, to, ...) {
-  # x <- vec_proxy(x)
-  # if(all(x$agg)) x$x <- vec_rep(vec_cast(NA, vec_proxy(to)$x), length(x$x))
   vec_restore(x, to)
 }
 #' @rdname aggregation-vctrs
@@ -98,6 +96,4 @@ vec_cast.node_vec.character <- function(x, to, ...) {
 #' @export
 vec_ptype_abbr.node_vec <- function(x, ...) {
   "nodes"
-  # class(x) <- class(x)[-1]
-  # paste0(vec_ptype_abbr(x, ...), "'")
 }
