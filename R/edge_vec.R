@@ -101,7 +101,9 @@ vec_cast.edge_vec.edge_vec <- function(x, to, ...) {
 }
 #' @rdname aggregation-vctrs
 #' @export
-vec_cast.edge_vec.default <- function(x, to, ...) edge_vec(x)
+vec_cast.edge_vec.default <- function(x, to, ...) {
+  vctrs::stop_incompatible_cast(x, to, x_arg = "x", to_arg = "to")
+}
 #' @rdname aggregation-vctrs
 #' @export
 vec_cast.character.edge_vec <- function(x, to, ...) format(x)

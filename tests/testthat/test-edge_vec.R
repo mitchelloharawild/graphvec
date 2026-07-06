@@ -55,3 +55,7 @@ test_that("format.edge_vec() produces [from]->[to] strings", {
   )
   expect_equal(format(e), "[A]->[B]")
 })
+
+test_that("vec_cast() to edge_vec rejects incompatible inputs", {
+  expect_error(vec_cast("A", edge_vec()), class = "vctrs_error_cast")
+})
