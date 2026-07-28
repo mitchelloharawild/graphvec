@@ -53,7 +53,7 @@ new_node_vec <- function(x = list(), edges = data.frame(from = list(), to = inte
 
 #' @export
 format.node_vec <- function(x, ...){
-  class(x) <- class(x)[c(-1L, -2L)]
+  class(x) <- class(x)[!class(x) %in% c("node_vec", "vctrs_vctr")]
   format(x, ...)
 }
 

@@ -27,6 +27,24 @@ test_that("node_vec() accepts an empty vector", {
   expect_length(g, 0L)
 })
 
+test_that("format.node_vec() formats the underlying vector", {
+  g <- node_vec(
+    x = factor(c("A", "B")),
+    edges = data.frame(from = I(list(1L)), to = 2L)
+  )
+
+  expect_equal(format(g), c("A", "B"))
+})
+
+test_that("format.node_vec() preserves wrapped vctrs vector formatting", {
+  g <- node_vec(
+    x = agg_vec(c(NA, "A", "B"), aggregated = c(TRUE, FALSE, FALSE)),
+    edges = data.frame(from = I(list(1L)), to = 2L)
+  )
+
+  expect_equal(format(g), c("<aggregated>", "A", "B"))
+})
+
 test_that("new_node_vec() is a low-level constructor for node_vec", {
   g <- new_node_vec(
     x = c("A", "B"),
