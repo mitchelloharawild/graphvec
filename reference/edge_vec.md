@@ -24,6 +24,10 @@ edge_vec(from = integer(), to = integer(), nodes = data.frame())
   Vector of node data. The vector size should be at least the maximum
   value in `from` and `to`.
 
+## Value
+
+An `edge_vec` object.
+
 ## Examples
 
 ``` r

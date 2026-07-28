@@ -11,26 +11,19 @@ You can install the development version of graphvec from
 [GitHub](https://github.com/) with:
 
 ``` r
+
 # install.packages("remotes")
 remotes::install_github("mitchelloharawild/graphvec")
 ```
 
 ## Examples
 
-An
-[`agg_vec()`](https://pkg.mitchelloharawild.com/graphvec/reference/agg_vec.md)
-(aggregation vector) defines a simple hierarchical graph structure where
-there is a single parent node.
-
 ``` r
+
 library(graphvec)
-agg_vec(
-  x = c(NA, "A", "B"),
-  aggregated = c(TRUE, FALSE, FALSE)
-)
-#> <agg_vec[3]>
-#> [1] <aggregated> A            B
 ```
+
+### Nodes
 
 A
 [`node_vec()`](https://pkg.mitchelloharawild.com/graphvec/reference/node_vec.md)
@@ -38,6 +31,7 @@ defines a more general graph structure where nodes can have multiple
 parents and children.
 
 ``` r
+
 library(dplyr)
 #> 
 #> Attaching package: 'dplyr'
@@ -64,25 +58,52 @@ These vectors are particularly useful when used in rectangular tidy data
 structures.
 
 ``` r
+
 x <- tibble(g, y = rnorm(6))
 
 x
 #> # A tibble: 6 × 2
 #>         g       y
 #>   <nodes>   <dbl>
-#> 1       A -1.82  
-#> 2       B -0.0199
-#> 3       C  0.933 
-#> 4       D  0.247 
-#> 5       D -2.20  
-#> 6       E  0.824
+#> 1       A -0.793 
+#> 2       B -1.32  
+#> 3       C -0.573 
+#> 4       D  0.746 
+#> 5       D -0.0755
+#> 6       E -0.232
 ```
+
+A special case of
+[`node_vec()`](https://pkg.mitchelloharawild.com/graphvec/reference/node_vec.md)
+is
+[`agg_vec()`](https://pkg.mitchelloharawild.com/graphvec/reference/agg_vec.md),
+which simply identifies a singular parent node in a given vector with
+`<aggregated>`. This is a common scenario in data analysis, where a
+given dimension is aggregated over.
+
+An
+[`agg_vec()`](https://pkg.mitchelloharawild.com/graphvec/reference/agg_vec.md)
+(aggregation vector) defines a simple hierarchical graph structure where
+there is a single parent node.
+
+``` r
+
+agg_vec(
+  x = c(NA, "A", "B"),
+  aggregated = c(TRUE, FALSE, FALSE)
+)
+#> <agg_vec[3]>
+#> [1] <aggregated> A            B
+```
+
+### Edges
 
 The transpose of a node vector is an
 [`edge_vec()`](https://pkg.mitchelloharawild.com/graphvec/reference/edge_vec.md),
 which is instead vectorised along the edges of the graph.
 
 ``` r
+
 e <- edge_vec(
   from = c(1L, 2L, 1L, 3L),
   to = c(2L, 3L, 3L, 1L),
@@ -97,6 +118,8 @@ e
 #> [1] [1:A]->[2:B] [2:B]->[3:C] [1:A]->[3:C] [3:C]->[1:A]
 ```
 
+### igraph
+
 Both
 [`node_vec()`](https://pkg.mitchelloharawild.com/graphvec/reference/node_vec.md)
 and
@@ -106,12 +129,13 @@ vectorised statistics and operations on these vectors are planned for
 this package in future releases.
 
 ``` r
+
 igraph::as.igraph(g)
-#> IGRAPH f826c4e D--- 5 4 -- 
-#> + edges from f826c4e:
+#> IGRAPH 7dfaa6c D--- 5 4 -- 
+#> + edges from 7dfaa6c:
 #> [1] 1->2 3->2 2->5 4->5
 igraph::as.igraph(e)
-#> IGRAPH 0638902 D--- 3 4 -- 
-#> + edges from 0638902:
+#> IGRAPH 6bd7448 D--- 3 4 -- 
+#> + edges from 6bd7448:
 #> [1] 1->2 2->3 1->3 3->1
 ```

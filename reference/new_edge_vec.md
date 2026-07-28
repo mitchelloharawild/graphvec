@@ -21,3 +21,7 @@ new_edge_vec(from = integer(), to = integer(), nodes = data.frame())
 - nodes:
 
   Data frame of node data.
+
+## Value
+
+An `edge_vec` object.

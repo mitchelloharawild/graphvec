@@ -4,6 +4,10 @@
 
 - [`agg_vec()`](https://pkg.mitchelloharawild.com/graphvec/reference/agg_vec.md)
   : Create an aggregation vector
+- [`as.igraph.agg_vec()`](https://pkg.mitchelloharawild.com/graphvec/reference/as.igraph.md)
+  [`as.igraph.node_vec()`](https://pkg.mitchelloharawild.com/graphvec/reference/as.igraph.md)
+  [`as.igraph.edge_vec()`](https://pkg.mitchelloharawild.com/graphvec/reference/as.igraph.md)
+  : Convert a graph vector to an igraph object
 - [`edge_vec()`](https://pkg.mitchelloharawild.com/graphvec/reference/edge_vec.md)
   : Graph vector along edges
 - [`graphvec`](https://pkg.mitchelloharawild.com/graphvec/reference/graphvec-package.md)
@@ -15,13 +19,5 @@
   : Constructor function for edge_vec
 - [`new_node_vec()`](https://pkg.mitchelloharawild.com/graphvec/reference/new_node_vec.md)
   : Constructor function for node_vec
-- [`node_degree()`](https://pkg.mitchelloharawild.com/graphvec/reference/node_degree.md)
-  : Identify the degree of a node in a graph
-- [`node_disjoint_id()`](https://pkg.mitchelloharawild.com/graphvec/reference/node_disjoint_id.md)
-  : Identify disjoint graphs by node
-- [`node_distance()`](https://pkg.mitchelloharawild.com/graphvec/reference/node_distance.md)
-  : Identify the distance from a node in a graph
-- [`node_is_child()`](https://pkg.mitchelloharawild.com/graphvec/reference/node_is_child.md)
-  : Identify the children of a node in a graph
 - [`node_vec()`](https://pkg.mitchelloharawild.com/graphvec/reference/node_vec.md)
   : Graph vector along nodes

@@ -19,9 +19,14 @@ node_vec(x = list(), edges = data.frame(from = list(), to = integer()))
 
   A data frame with columns `from` and `to` representing the edges
 
+## Value
+
+A `node_vec` object.
+
 ## Examples
 
 ``` r
+
 g <- node_vec(
  x = factor(c("A", "B", "C")),
  edges = data.frame(
@@ -30,5 +35,9 @@ g <- node_vec(
  )
 )
 #> Error in data.frame(from = list(c(1L), c(2L), c(1L, 2L)), to = c(2L, 3L,     1L)): arguments imply differing number of rows: 2, 3
+g
+#> Error: object 'g' not found
 
+igraph::as.igraph(g)
+#> Error: object 'g' not found
 ```

@@ -7,8 +7,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 <title>Vectorised graph data structures • graphvec</title>
 <script src="deps/jquery-3.6.0/jquery-3.6.0.min.js"></script><meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-<link href="deps/bootstrap-5.3.1/bootstrap.min.css" rel="stylesheet">
-<script src="deps/bootstrap-5.3.1/bootstrap.bundle.min.js"></script><link href="deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
+<link href="deps/bootstrap-5.3.8/bootstrap.min.css" rel="stylesheet">
+<script src="deps/bootstrap-5.3.8/bootstrap.bundle.min.js"></script><link href="deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
 <link href="deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
 <script src="deps/headroom-0.11.0/headroom.min.js"></script><script src="deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="deps/search-1.0.0/fuse.min.js"></script><script src="deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="pkgdown.js"></script><meta property="og:title" content="Vectorised graph data structures">
 <meta name="description" content="Extends vectors to include graph relationships between their unique values, and offers tools to compute useful summaries of the graph structure for use in summarising, filtering, and otherwise manipulating the graph.">
@@ -69,15 +69,11 @@
 <div class="section level2">
 <h2 id="examples">Examples<a class="anchor" aria-label="anchor" href="#examples"></a>
 </h2>
-<p>An <code><a href="reference/agg_vec.html">agg_vec()</a></code> (aggregation vector) defines a simple hierarchical graph structure where there is a single parent node.</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va">graphvec</span><span class="op">)</span></span>
-<span><span class="fu"><a href="reference/agg_vec.html">agg_vec</a></span><span class="op">(</span></span>
-<span>  x <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="cn">NA</span>, <span class="st">"A"</span>, <span class="st">"B"</span><span class="op">)</span>,</span>
-<span>  aggregated <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="cn">TRUE</span>, <span class="cn">FALSE</span>, <span class="cn">FALSE</span><span class="op">)</span></span>
-<span><span class="op">)</span></span>
-<span><span class="co">#&gt; &lt;agg_vec[3]&gt;</span></span>
-<span><span class="co">#&gt; [1] &lt;aggregated&gt; A            B</span></span></code></pre></div>
+<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va">graphvec</span><span class="op">)</span></span></code></pre></div>
+<div class="section level3">
+<h3 id="nodes">Nodes<a class="anchor" aria-label="anchor" href="#nodes"></a>
+</h3>
 <p>A <code><a href="reference/node_vec.html">node_vec()</a></code> defines a more general graph structure where nodes can have multiple parents and children.</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://dplyr.tidyverse.org" class="external-link">dplyr</a></span><span class="op">)</span></span>
@@ -108,14 +104,27 @@
 <span><span class="co">#&gt; # A tibble: 6 × 2</span></span>
 <span><span class="co">#&gt;         g       y</span></span>
 <span><span class="co">#&gt;   &lt;nodes&gt;   &lt;dbl&gt;</span></span>
-<span><span class="co">#&gt; 1       A -1.82  </span></span>
-<span><span class="co">#&gt; 2       B -0.0199</span></span>
-<span><span class="co">#&gt; 3       C  0.933 </span></span>
-<span><span class="co">#&gt; 4       D  0.247 </span></span>
-<span><span class="co">#&gt; 5       D -2.20  </span></span>
-<span><span class="co">#&gt; 6       E  0.824</span></span></code></pre></div>
-<p>The transpose of a node vector is an <code><a href="reference/edge_vec.html">edge_vec()</a></code>, which is instead vectorised along the edges of the graph.</p>
+<span><span class="co">#&gt; 1       A -0.793 </span></span>
+<span><span class="co">#&gt; 2       B -1.32  </span></span>
+<span><span class="co">#&gt; 3       C -0.573 </span></span>
+<span><span class="co">#&gt; 4       D  0.746 </span></span>
+<span><span class="co">#&gt; 5       D -0.0755</span></span>
+<span><span class="co">#&gt; 6       E -0.232</span></span></code></pre></div>
+<p>A special case of <code><a href="reference/node_vec.html">node_vec()</a></code> is <code><a href="reference/agg_vec.html">agg_vec()</a></code>, which simply identifies a singular parent node in a given vector with <code>&lt;aggregated&gt;</code>. This is a common scenario in data analysis, where a given dimension is aggregated over.</p>
+<p>An <code><a href="reference/agg_vec.html">agg_vec()</a></code> (aggregation vector) defines a simple hierarchical graph structure where there is a single parent node.</p>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="reference/agg_vec.html">agg_vec</a></span><span class="op">(</span></span>
+<span>  x <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="cn">NA</span>, <span class="st">"A"</span>, <span class="st">"B"</span><span class="op">)</span>,</span>
+<span>  aggregated <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="cn">TRUE</span>, <span class="cn">FALSE</span>, <span class="cn">FALSE</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span><span class="co">#&gt; &lt;agg_vec[3]&gt;</span></span>
+<span><span class="co">#&gt; [1] &lt;aggregated&gt; A            B</span></span></code></pre></div>
+</div>
+<div class="section level3">
+<h3 id="edges">Edges<a class="anchor" aria-label="anchor" href="#edges"></a>
+</h3>
+<p>The transpose of a node vector is an <code><a href="reference/edge_vec.html">edge_vec()</a></code>, which is instead vectorised along the edges of the graph.</p>
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">e</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/edge_vec.html">edge_vec</a></span><span class="op">(</span></span>
 <span>  from <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1L</span>, <span class="fl">2L</span>, <span class="fl">1L</span>, <span class="fl">3L</span><span class="op">)</span>,</span>
 <span>  to <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">2L</span>, <span class="fl">3L</span>, <span class="fl">3L</span>, <span class="fl">1L</span><span class="op">)</span>,</span>
@@ -128,16 +137,21 @@
 <span><span class="va">e</span></span>
 <span><span class="co">#&gt; &lt;edge_vec[4]&gt;</span></span>
 <span><span class="co">#&gt; [1] [1:A]-&gt;[2:B] [2:B]-&gt;[3:C] [1:A]-&gt;[3:C] [3:C]-&gt;[1:A]</span></span></code></pre></div>
+</div>
+<div class="section level3">
+<h3 id="igraph">igraph<a class="anchor" aria-label="anchor" href="#igraph"></a>
+</h3>
 <p>Both <code><a href="reference/node_vec.html">node_vec()</a></code> and <code><a href="reference/edge_vec.html">edge_vec()</a></code> can be converted to igraph objects for further analysis. Direct vectorised statistics and operations on these vectors are planned for this package in future releases.</p>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">igraph</span><span class="fu">::</span><span class="fu"><a href="https://r.igraph.org/reference/as.igraph.html" class="external-link">as.igraph</a></span><span class="op">(</span><span class="va">g</span><span class="op">)</span></span>
-<span><span class="co">#&gt; IGRAPH f826c4e D--- 5 4 -- </span></span>
-<span><span class="co">#&gt; + edges from f826c4e:</span></span>
+<span><span class="co">#&gt; IGRAPH 7dfaa6c D--- 5 4 -- </span></span>
+<span><span class="co">#&gt; + edges from 7dfaa6c:</span></span>
 <span><span class="co">#&gt; [1] 1-&gt;2 3-&gt;2 2-&gt;5 4-&gt;5</span></span>
 <span><span class="fu">igraph</span><span class="fu">::</span><span class="fu"><a href="https://r.igraph.org/reference/as.igraph.html" class="external-link">as.igraph</a></span><span class="op">(</span><span class="va">e</span><span class="op">)</span></span>
-<span><span class="co">#&gt; IGRAPH 0638902 D--- 3 4 -- </span></span>
-<span><span class="co">#&gt; + edges from 0638902:</span></span>
+<span><span class="co">#&gt; IGRAPH 6bd7448 D--- 3 4 -- </span></span>
+<span><span class="co">#&gt; + edges from 6bd7448:</span></span>
 <span><span class="co">#&gt; [1] 1-&gt;2 2-&gt;3 1-&gt;3 3-&gt;1</span></span></code></pre></div>
+</div>
 </div>
 </div>
   </main><aside class="col-md-3"><div class="license">
@@ -168,7 +182,7 @@
 <h2 data-toc-skip>Dev status</h2>
 <ul class="list-unstyled">
 <li><a href="https://lifecycle.r-lib.org/articles/stages.html#experimental" class="external-link"><img src="https://img.shields.io/badge/lifecycle-experimental-orange.svg" alt="Lifecycle: experimental"></a></li>
-<li><a href="https://CRAN.R-project.org/package=graphvec" class="external-link"><img src="https://www.r-pkg.org/badges/version/graphvec.png" alt="CRAN status"></a></li>
+<li><a href="https://CRAN.R-project.org/package=graphvec" class="external-link"><img src="https://www.r-pkg.org/badges/version/graphvec" alt="CRAN status"></a></li>
 </ul>
 </div>
 
@@ -181,7 +195,7 @@
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
     </footer>

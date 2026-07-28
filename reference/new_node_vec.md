@@ -17,3 +17,7 @@ new_node_vec(x = list(), edges = data.frame(from = list(), to = integer()))
 - edges:
 
   A data frame with columns `from` and `to` representing the edges
+
+## Value
+
+A `node_vec` object.

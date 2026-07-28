@@ -1,6 +1,11 @@
 # Create an aggregation vector
 
-maturing
+An aggregation vector is a special type of
+[`node_vec()`](https://pkg.mitchelloharawild.com/graphvec/reference/node_vec.md)
+consisting of a single parent (the 'aggregated' value) and its children.
+Aggregated values are identified by a logical vector passed to the
+`aggregated` argument, and disaggregated values are provided in `x`.
+Aggregated values are displayed as `<aggregated>` by default.
 
 ## Usage
 
@@ -18,14 +23,9 @@ agg_vec(x = character(), aggregated = logical(vec_size(x)))
 
   A logical vector to identify which values are `<aggregated>`.
 
-## Details
+## Value
 
-An aggregation vector is a special type of
-[`node_vec()`](https://pkg.mitchelloharawild.com/graphvec/reference/node_vec.md)
-consisting of a single parent (the 'aggregated' value) and its children.
-Aggregated values are identified by a logical vector passed to the
-`aggregated` argument, and disaggregated values are provided in `x`.
-Aggregated values are displayed as `<aggregated>` by default.
+An `agg_vec` object.
 
 ## Examples
 
