@@ -3,6 +3,6 @@
 "_PACKAGE"
 
 ## usethis namespace: start
-#' @import vctrs
+#' @importFrom tibble tibble as_tibble
 ## usethis namespace: end
 NULL

@@ -4,12 +4,24 @@
 \alias{node_vec}
 \title{Graph vector along nodes}
 \usage{
-node_vec(x = list(), edges = data.frame(from = list(), to = integer()))
+node_vec(x = list(), from = integer(), to = integer(), ..., directed = TRUE)
 }
 \arguments{
 \item{x}{A vector representing the nodes in the graph.}
 
-\item{edges}{A data frame with columns \code{from} and \code{to} representing the edges}
+\item{from}{Integer vector of 'from' node positions into \code{x}. Hyperedges
+(multiple 'from' nodes per edge) are not yet supported.}
+
+\item{to}{Integer vector of 'to' node positions into \code{x}.}
+
+\item{...}{Named edge attribute vectors (e.g. \code{weight = c(1, 2, 5)}),
+recycled to the number of edges. \code{from} and \code{to} are reserved and cannot
+be used as attribute names. Attribute columns are stored on the edge
+table itself, so they slice, replicate, and reorient with the edges they
+belong to (see \code{\link[=nodes]{nodes()}}/\code{\link[=edges]{edges()}}).}
+
+\item{directed}{A single logical value: is incidence ordered (\code{from} -> \code{to})
+or symmetric?}
 }
 \value{
 A \code{node_vec} object.
@@ -22,10 +34,9 @@ attributes.
 
 g <- node_vec(
  x = factor(c("A", "B", "C")),
- edges = data.frame(
-  from = list(c(1L), c(2L), c(1L, 2L)),
-  to = c(2L, 3L, 1L)
- )
+ from = c(1L, 2L, 1L),
+ to = c(2L, 3L, 1L),
+ weight = c(1, 2, 5)
 )
 g
 

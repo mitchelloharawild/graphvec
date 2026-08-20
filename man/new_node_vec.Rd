@@ -4,12 +4,19 @@
 \alias{new_node_vec}
 \title{Constructor function for node_vec}
 \usage{
-new_node_vec(x = list(), edges = data.frame(from = list(), to = integer()))
+new_node_vec(
+  x = list(),
+  edges = data.frame(from = integer(), to = integer()),
+  directed = TRUE
+)
 }
 \arguments{
 \item{x}{A vector representing the nodes in the graph.}
 
 \item{edges}{A data frame with columns \code{from} and \code{to} representing the edges}
+
+\item{directed}{A single logical value: is incidence ordered (\code{from} -> \code{to})
+or symmetric?}
 }
 \value{
 A \code{node_vec} object.

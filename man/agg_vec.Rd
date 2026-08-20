@@ -4,7 +4,7 @@
 \alias{agg_vec}
 \title{Create an aggregation vector}
 \usage{
-agg_vec(x = character(), aggregated = logical(vec_size(x)))
+agg_vec(x = character(), aggregated = logical(NROW(x)))
 }
 \arguments{
 \item{x}{The vector of values.}

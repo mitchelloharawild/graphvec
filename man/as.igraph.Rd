@@ -7,11 +7,11 @@
 \alias{as.igraph.edge_vec}
 \title{Convert a graph vector to an igraph object}
 \usage{
-as.igraph.agg_vec(x, ...)
+\method{as.igraph}{agg_vec}(x, ...)
 
-as.igraph.node_vec(x, ...)
+\method{as.igraph}{node_vec}(x, ...)
 
-as.igraph.edge_vec(x, ...)
+\method{as.igraph}{edge_vec}(x, ...)
 }
 \arguments{
 \item{x}{A \code{node_vec}, \code{agg_vec}, or \code{edge_vec} object.}

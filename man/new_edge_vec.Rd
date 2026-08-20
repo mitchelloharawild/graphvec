@@ -4,14 +4,27 @@
 \alias{new_edge_vec}
 \title{Constructor function for edge_vec}
 \usage{
-new_edge_vec(from = integer(), to = integer(), nodes = data.frame())
+new_edge_vec(
+  from = integer(),
+  to = integer(),
+  ...,
+  nodes = data.frame(),
+  directed = TRUE
+)
 }
 \arguments{
 \item{from}{Integer vector of 'from' node indices.}
 
 \item{to}{Integer vector of 'to' node indices.}
 
-\item{nodes}{Data frame of node data.}
+\item{...}{Named edge attribute fields, already recycled to the number of
+edges.}
+
+\item{nodes}{Vector of node data (any vector, including a data
+frame of node attributes).}
+
+\item{directed}{A single logical value: is incidence ordered (\code{from} -> \code{to})
+or symmetric?}
 }
 \value{
 An \code{edge_vec} object.

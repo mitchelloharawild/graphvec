@@ -4,15 +4,32 @@
 \alias{edge_vec}
 \title{Graph vector along edges}
 \usage{
-edge_vec(from = integer(), to = integer(), nodes = data.frame())
+edge_vec(
+  from = integer(),
+  to = integer(),
+  ...,
+  nodes = data.frame(),
+  directed = TRUE
+)
 }
 \arguments{
-\item{from}{Integer vector of 'from' node indices.}
+\item{from}{Integer vector of 'from' node indices. Hyperedges (multiple
+'from' nodes per edge) are not yet supported.}
 
 \item{to}{Integer vector of 'to' node indices.}
 
-\item{nodes}{Vector of node data. The vector size should be at least the
-maximum value in \code{from} and \code{to}.}
+\item{...}{Named edge attribute vectors (e.g. \code{weight = c(1, 2, 5)}),
+recycled to the number of edges. \code{from} and \code{to} are reserved and cannot
+be used as attribute names. Attribute columns are stored on the edge table
+itself, so they slice, replicate, and reorient with the edges they belong
+to (see \code{\link[=nodes]{nodes()}}/\code{\link[=edges]{edges()}}).}
+
+\item{nodes}{Vector of node data (any vector, including a data
+frame of node attributes). Its size should be at least the maximum value
+in \code{from} and \code{to}.}
+
+\item{directed}{A single logical value: is incidence ordered (\code{from} -> \code{to})
+or symmetric?}
 }
 \value{
 An \code{edge_vec} object.
@@ -25,6 +42,7 @@ attributes.
 g <- edge_vec(
   from = c(1L, 2L, 1L, 3L),
   to = c(2L, 3L, 3L, 1L),
+  weight = c(1, 2, 5, 3),
   nodes = data.frame(
     id = 1:3,
     label = c("A", "B", "C")
@@ -35,5 +53,7 @@ g <- edge_vec(
 g$from$label
 g$to$label
 
+# Access an edge attribute via `$`
+g$weight
 
 }

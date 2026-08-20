@@ -1,6 +1,6 @@
 #' Create an aggregation vector
 #'
-#' An aggregation vector is a special type of [`node_vec()`] consisting of a 
+#' An aggregation vector is a special type of [`node_vec()`] consisting of a
 #' single parent (the 'aggregated' value) and its children. Aggregated values
 #' are identified by a logical vector passed to the `aggregated` argument, and
 #' disaggregated values are provided in `x`. Aggregated values are displayed
@@ -18,25 +18,38 @@
 #' )
 #'
 #' @export
-agg_vec <- function(x = character(), aggregated = logical(vec_size(x))){
+agg_vec <- function(x = character(), aggregated = logical(NROW(x))){
   is_agg <- is_aggregated(x)
-  if (inherits(x, "agg_vec")) x <- field(x, "x")
+  if (inherits(x, "agg_vec")) x <- x[["x"]]
   x[is_agg] <- NA
-  vec_assert(aggregated, ptype = logical())
-  vctrs::new_rcrd(list(x = x, agg = is_agg | aggregated), class = "agg_vec")
+  stopifnot(is.logical(aggregated))
+  new_agg_vec(x, is_agg | aggregated)
+}
+
+# Low-level constructor: `x` and `agg` are already the same length, no
+# validation or aggregated-value clearing (agg_vec() above does that).
+new_agg_vec <- function(x, agg) {
+  structure(list(x = x, agg = agg), class = "agg_vec")
 }
 
 #' @export
 format.agg_vec <- function(x, ..., agg_chr = "<aggregated>"){
-  n <- vec_size(x)
-  x <- vec_data(x)
   is_agg <- x[["agg"]]
-  out <- character(length = n)
+  out <- character(length(is_agg))
   out[is_agg] <- agg_chr
   out[!is_agg] <- format(x[["x"]][!is_agg], ...)
   out
 }
 
+#' @export
+print.agg_vec <- function(x, ...) {
+  cat(sprintf("<agg_vec[%d]>\n", length(x)))
+  print(format(x, ...), quote = FALSE)
+  invisible(x)
+}
+
+# Not exported directly -- registered dynamically for pillar via
+# register_s3_method() in zzz.R (pillar is a Suggests, not an Imports).
 pillar_shaft.agg_vec <- function(x, ...) {
   if(requireNamespace("crayon", quietly = TRUE)){
     agg_chr <- crayon::style("<aggregated>", crayon::make_style("#999999", grey = TRUE))
@@ -50,67 +63,31 @@ pillar_shaft.agg_vec <- function(x, ...) {
   pillar::new_pillar_shaft_simple(out, align = "left", min_width = 10)
 }
 
-#' Internal vctrs methods
-#'
-#' These methods are the extensions that allow aggregation vectors to work with
-#' vctrs.
-#'
-#' @keywords internal
-#' @name aggregation-vctrs
-NULL
-
-#' @rdname aggregation-vctrs
-#' @importFrom vctrs vec_ptype2
-#' @method vec_ptype2 agg_vec
-#' @export
-vec_ptype2.agg_vec <- function(x, y, ...) UseMethod("vec_ptype2.agg_vec", y)
-#' @rdname aggregation-vctrs
-#' @export
-vec_ptype2.agg_vec.agg_vec <- function(x, y, ...) {
-  x <- vec_data(x)[["x"]]
-  y <- vec_data(y)[["x"]]
-  agg_vec(vec_ptype2(x, y))
-}
-#' @rdname aggregation-vctrs
-#' @export
-vec_ptype2.agg_vec.default <- function(x, y, ...) agg_vec()
-#' @rdname aggregation-vctrs
-#' @export
-vec_ptype2.agg_vec.character <- function(x, y, ...) agg_vec()
-#' @rdname aggregation-vctrs
-#' @export
-vec_ptype2.character.agg_vec <- function(x, y, ...) agg_vec()
-
-#' @rdname aggregation-vctrs
-#' @export
-vec_ptype_abbr.agg_vec <- function(x, ...) {
-  paste0(vctrs::vec_ptype_abbr(vec_data(x)[["x"]], ...), "*")
+# Not exported directly -- registered dynamically for pillar via
+# register_s3_method() in zzz.R, mirroring pillar_shaft.agg_vec() above.
+# Gives a tibble column of agg_vec an abbreviated type header, e.g.
+# "chr*", the same shape as vctrs' vec_ptype_abbr() used to produce.
+type_sum.agg_vec <- function(x, ...) {
+  paste0(pillar::type_sum(x[["x"]]), "*")
 }
 
-#' @rdname aggregation-vctrs
-#' @method vec_cast agg_vec
 #' @export
-vec_cast.agg_vec <- function(x, to, ...) UseMethod("vec_cast.agg_vec")
-#' @rdname aggregation-vctrs
-#' @export
-vec_cast.agg_vec.agg_vec <- function(x, to, ...) {
-  x <- vec_proxy(x)
-  if(all(x$agg)) x$x <- vec_rep(vec_cast(NA, vec_proxy(to)$x), length(x$x))
-  vec_restore(x, to)
+length.agg_vec <- function(x) {
+  length(x[["x"]])
 }
-#' @rdname aggregation-vctrs
-#' @export
-vec_cast.agg_vec.default <- function(x, to, ...) agg_vec(x)
-#' @export
-vec_cast.agg_vec.character <- function(x, to, ...) agg_vec(x)
-#' @rdname aggregation-vctrs
-#' @export
-vec_cast.character.agg_vec <- function(x, to, ...) trimws(format(x))
 
-#' @rdname aggregation-vctrs
 #' @export
-vec_proxy_compare.agg_vec <- function(x, ...) {
-  vec_proxy(x)[c(2,1)]
+`[.agg_vec` <- function(x, i, ...) {
+  new_agg_vec(x[["x"]][i], x[["agg"]][i])
+}
+
+#' @export
+c.agg_vec <- function(...) {
+  xs <- list(...)
+  new_agg_vec(
+    x = do.call(c, lapply(xs, function(x) x[["x"]])),
+    agg = do.call(c, lapply(xs, function(x) x[["agg"]]))
+  )
 }
 
 #' @export
@@ -129,10 +106,11 @@ Hint: If you're trying to compare aggregated values, use `is_aggregated()`.")
     if(!e1_agg) e1 <- x else e2 <- x
   }
 
-  x <- vec_recycle_common(e1, e2)
-  e1 <- vec_proxy(x[[1]])
-  e2 <- vec_proxy(x[[2]])
-  (e1$agg & e2$agg) | vec_equal(e1$x, e2$x, na_equal = TRUE)
+  x1 <- e1[["x"]]
+  x2 <- e2[["x"]]
+  val_eq <- (x1 == x2) | (is.na(x1) & is.na(x2))
+  val_eq[is.na(val_eq)] <- FALSE
+  (e1[["agg"]] & e2[["agg"]]) | val_eq
 }
 
 #' @export
@@ -142,7 +120,7 @@ Hint: If you're trying to compare aggregated values, use `is_aggregated()`.")
 
 #' @export
 is.na.agg_vec <- function(x) {
-  is.na(field(x, "x")) & !field(x, "agg")
+  is.na(x[["x"]]) & !x[["agg"]]
 }
 
 # #' @importFrom dplyr recode
@@ -162,8 +140,8 @@ is.na.agg_vec <- function(x) {
 #' @export
 is_aggregated <- function(x){
   if(!inherits(x, "agg_vec")){
-    logical(vec_size(x))
+    logical(NROW(x))
   } else {
-    vec_proxy(x)[["agg"]]
+    x[["agg"]]
   }
 }

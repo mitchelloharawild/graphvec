@@ -20,7 +20,9 @@ knitr::opts_chunk$set(
 [![CRAN status](https://www.r-pkg.org/badges/version/graphvec)](https://CRAN.R-project.org/package=graphvec)
 <!-- badges: end -->
 
-The graphvec package extends vectors to include graph relationships between their unique values, and offers tools to compute useful summaries of the graph structure for use in summarising, filtering, and otherwise manipulating the graph.
+The graphvec package extends vectors to include graph relationships between their elements, and offers tools to compute useful summaries of the graph structure for use in summarising, filtering, and otherwise manipulating the graph.
+
+Nodes are identified by **position**, not by value: each element of the vector is its own node, and repeated values are distinct nodes that happen to share a label. Edges are stored as indices into the vector, so `graphvec` can represent multigraphs, self-loops and isolated nodes without any special handling.
 
 ## Installation
 
@@ -44,19 +46,41 @@ A `node_vec()` defines a more general graph structure where nodes can have multi
 ```{r}
 nodes <- node_vec(
   x = factor(c("A", "B", "C", "D", "D", "E")),
-  edges = dplyr::tibble(
-    from = list(c(1L, 3L), c(2L, 4L)),
-    to = c(2L, 5L)
-  )
+  from = c(1L, 3L),
+  to = c(2L, 5L)
 )
 
 nodes
 ```
 
-These vectors are particularly useful when used in rectangular tidy data structures.
+This vector describes a graph of six nodes. The two `D` elements at positions 4 and 5 are *different* nodes, since node identity comes from position rather than value, and only position 5 is connected to anything. The `E` element at position 6 appears in no edge at all, and remains in the graph as an isolated node.
+
+A `node_vec` wraps its values directly, so it keeps behaving like whatever it wraps. This one is backed by a factor, and still has levels:
 
 ```{r}
-dplyr::tibble(nodes, y = rnorm(6))
+levels(nodes)
+```
+
+Subsetting a `node_vec` selects an induced subgraph: edges that lose an endpoint are dropped, and the surviving edges are remapped to the new positions.
+
+```{r}
+nodes[c(2, 3, 5)]
+```
+
+These vectors are particularly useful when used in rectangular tidy data structures, and slice the same way under dplyr verbs.
+
+```{r}
+tbl <- dplyr::tibble(nodes, id = 1:6)
+dplyr::filter(tbl, id %in% c(2, 3, 5))
+```
+
+Since node identity is positional, combining two graphs is just a disjoint union: node vectors concatenate, and the second graph's edges shift so they keep pointing at the right nodes.
+
+```{r}
+g1 <- node_vec(x = c("A", "B"), from = 1L, to = 2L)
+g2 <- node_vec(x = c("X", "Y"), from = 1L, to = 2L)
+
+c(g1, g2)
 ```
 
 A special case of `node_vec()` is `agg_vec()`, which simply identifies a singular parent node in a given vector with `<aggregated>`. This is a common scenario in data analysis, where a given dimension is aggregated over.
@@ -94,7 +118,7 @@ e$to$label
 
 ### igraph
 
-Both `node_vec()` and `edge_vec()` can be converted to igraph objects for further analysis. Direct vectorised statistics and operations on these vectors are planned for this package in future releases.
+Both `node_vec()` and `edge_vec()` can be converted to igraph objects for further analysis. The vertex count is taken from the nodes rather than inferred from the edges, so isolated nodes are preserved. Direct vectorised statistics and operations on these vectors are planned for this package in future releases.
 
 ```{r}
 igraph::as.igraph(nodes)
