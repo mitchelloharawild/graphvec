@@ -83,15 +83,6 @@ g2 <- node_vec(x = c("X", "Y"), from = 1L, to = 2L)
 c(g1, g2)
 ```
 
-A special case of `node_vec()` is `agg_vec()`, which simply identifies a singular parent node in a given vector with `<aggregated>`. This is a common scenario in data analysis, where a given dimension is aggregated over.
-
-```{r}
-agg_vec(
-  x = c(NA, "A", "B"),
-  aggregated = c(TRUE, FALSE, FALSE)
-)
-```
-
 ### Edges
 
 The transpose of a node vector is an `edge_vec()`, which is instead vectorised along the edges of the graph.
@@ -116,11 +107,50 @@ e$from$label
 e$to$label
 ```
 
+### Aggregated
+
+An `agg_vec()` is a third graph type built around a common shape in data analysis: a single parent that aggregates over all the other elements, e.g. a "Total" row over a set of categories. It marks the aggregate elements with `<aggregated>` instead of spelling out an edge table.
+
+```{r}
+av <- agg_vec(
+  x = c(NA, "A", "B"),
+  aggregated = c(TRUE, FALSE, FALSE)
+)
+
+av
+```
+
+An `agg_df()` extends this to a table of `agg_vec()` columns, one row per level of a (possibly crossed) aggregation structure -- e.g. `Purpose` and `State` columns where some rows total one dimension, some the other, some both.
+
+```{r}
+kd <- agg_df(
+  Purpose = agg_vec(
+    c(NA, NA, NA, "Business", "Holiday", "Business", "Business", "Holiday", "Holiday"),
+    c(TRUE, TRUE, TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE)
+  ),
+  State = agg_vec(
+    c(NA, "NSW", "VIC", NA, NA, "NSW", "VIC", "NSW", "VIC"),
+    c(TRUE, FALSE, FALSE, TRUE, TRUE, FALSE, FALSE, FALSE, FALSE)
+  )
+)
+
+kd
+```
+
+`nodes()`/`edges()` reorient an `agg_vec()` or `agg_df()` into the same `node_vec()`/`edge_vec()` graphs seen above: a row is a child of another row whenever the parent aggregates exactly one more column and matches on every other column's disaggregated value.
+
+```{r}
+nodes(kd)
+edges(kd)
+```
+
 ### igraph
 
-Both `node_vec()` and `edge_vec()` can be converted to igraph objects for further analysis. The vertex count is taken from the nodes rather than inferred from the edges, so isolated nodes are preserved. Direct vectorised statistics and operations on these vectors are planned for this package in future releases.
+`node_vec()`, `edge_vec()`, `agg_vec()` and `agg_df()` can all be converted directly to igraph objects for further analysis. The vertex count is taken from the nodes rather than inferred from the edges, so isolated nodes are preserved. Direct vectorised statistics and operations on these vectors are planned for this package in future releases.
 
 ```{r}
 igraph::as.igraph(nodes)
 igraph::as.igraph(e)
+igraph::as.igraph(av)
+igraph::as.igraph(kd)
 ```
