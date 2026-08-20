@@ -41,3 +41,15 @@ new_edge_vec(
 ## Value
 
 An `edge_vec` object.
+
+## Examples
+
+``` r
+new_edge_vec(
+  from = c(1L, 2L),
+  to = c(2L, 3L),
+  nodes = data.frame(label = c("A", "B", "C"))
+)
+#> <edge_vec[2]>
+#> [1] [A]->[B] [B]->[C]
+```

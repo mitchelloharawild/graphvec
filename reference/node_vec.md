@@ -56,8 +56,10 @@ g
 #> <node_vec[3]>
 #> [1] A B C
 
-igraph::as.igraph(g)
-#> IGRAPH d957efa D--- 3 3 -- 
-#> + edges from d957efa:
+if (requireNamespace("igraph", quietly = TRUE)) {
+  igraph::as.igraph(g)
+}
+#> IGRAPH 789f4f3 D--- 3 3 -- 
+#> + edges from 789f4f3:
 #> [1] 1->2 2->3 1->1
 ```

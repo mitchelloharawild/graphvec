@@ -30,3 +30,16 @@ x[i, ...]
 ## Value
 
 An `edge_vec` containing only the selected edges.
+
+## Examples
+
+``` r
+g <- edge_vec(
+  from = c(1L, 2L, 1L, 3L),
+  to = c(2L, 3L, 3L, 1L),
+  nodes = data.frame(label = c("A", "B", "C"))
+)
+g[1:2]
+#> <edge_vec[2]>
+#> [1] [A]->[B] [B]->[C]
+```

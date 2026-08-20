@@ -30,3 +30,16 @@ x[i, ...]
 
 A `node_vec` containing only the selected nodes, with `edges` restricted
 to the induced subgraph.
+
+## Examples
+
+``` r
+g <- node_vec(
+  x = c("A", "B", "C"),
+  from = c(1L, 2L),
+  to = c(2L, 3L)
+)
+g[1:2]
+#> <node_vec[2]>
+#> [1] A B
+```

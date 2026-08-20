@@ -10,12 +10,12 @@
 Source:
 [`DESCRIPTION`](https://github.com/mitchelloharawild/graphvec/blob/main/DESCRIPTION)
 
-O'Hara-Wild M (2026). *graphvec: Vectorised graph data structures*. R
+O'Hara-Wild M (2026). *graphvec: Vectorised Graph Data Structures*. R
 package version 0.0.0.9000,
 <https://pkg.mitchelloharawild.com/graphvec/>.
 
     @Manual{,
-      title = {graphvec: Vectorised graph data structures},
+      title = {graphvec: Vectorised Graph Data Structures},
       author = {Mitchell O'Hara-Wild},
       year = {2026},
       note = {R package version 0.0.0.9000},

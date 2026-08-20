@@ -30,3 +30,14 @@ new_node_vec(
 ## Value
 
 A `node_vec` object.
+
+## Examples
+
+``` r
+new_node_vec(
+  x = c("A", "B", "C"),
+  edges = data.frame(from = c(1L, 2L), to = c(2L, 3L))
+)
+#> <node_vec[3]>
+#> [1] A B C
+```

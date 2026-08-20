@@ -52,3 +52,19 @@ edges(x, ...)
 ## Value
 
 `nodes()` returns a `node_vec`. `edges()` returns an `edge_vec`.
+
+## Examples
+
+``` r
+g <- node_vec(
+  x = c("A", "B", "C"),
+  from = c(1L, 2L),
+  to = c(2L, 3L)
+)
+edges(g)
+#> <edge_vec[2]>
+#> [1] [A]->[B] [B]->[C]
+nodes(edges(g))
+#> <node_vec[3]>
+#> [1] A B C
+```

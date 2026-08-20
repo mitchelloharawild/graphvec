@@ -44,3 +44,19 @@ object.
 [`agg_vec()`](https://pkg.mitchelloharawild.com/graphvec/reference/agg_vec.md),
 [`agg_df()`](https://pkg.mitchelloharawild.com/graphvec/reference/agg_df.md),
 [`edge_vec()`](https://pkg.mitchelloharawild.com/graphvec/reference/edge_vec.md)
+
+## Examples
+
+``` r
+if (requireNamespace("igraph", quietly = TRUE)) {
+  g <- node_vec(
+    x = c("A", "B", "C"),
+    from = c(1L, 2L),
+    to = c(2L, 3L)
+  )
+  igraph::as.igraph(g)
+}
+#> IGRAPH 78a56fd D--- 3 2 -- 
+#> + edges from 78a56fd:
+#> [1] 1->2 2->3
+```
