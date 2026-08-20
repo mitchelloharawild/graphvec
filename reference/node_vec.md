@@ -57,7 +57,7 @@ g
 #> [1] A B C
 
 igraph::as.igraph(g)
-#> IGRAPH 4bf4c72 D--- 3 3 -- 
-#> + edges from 4bf4c72:
+#> IGRAPH d957efa D--- 3 3 -- 
+#> + edges from d957efa:
 #> [1] 1->2 2->3 1->1
 ```

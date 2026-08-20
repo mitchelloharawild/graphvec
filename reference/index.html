@@ -19,8 +19,10 @@
 
     <div id="navbar" class="collapse navbar-collapse ms-3">
       <ul class="navbar-nav me-auto"><li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
+<li class="nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json"></form></li>
+<li class="nav-item"><a class="external-link nav-link" href="https://github.com/mitchelloharawild/graphvec/" aria-label="GitHub"><span class="fa fab fa-github fa-lg"></span></a></li>
       </ul></div>
 
 
@@ -32,9 +34,9 @@
     </div>
 
     <div class="section level2">
-      <h2 id="all-functions">All functions<a class="anchor" aria-label="anchor" href="#all-functions"></a></h2>
+      <h2 id="graph-vectors">Graph vectors<a class="anchor" aria-label="anchor" href="#graph-vectors"></a></h2>
 
-
+      <div class="section-desc"><p>Vectorised graph data structures.</p></div>
 
       <dl></dl></div><div class="section level2">
 
@@ -43,24 +45,10 @@
 
       <dl><dt>
 
-          <code><a href="agg_df.html">agg_df()</a></code>
+          <code><a href="node_vec.html">node_vec()</a></code>
 
         </dt>
-        <dd>Create an aggregation table</dd>
-
-        <dt>
-
-          <code><a href="agg_vec.html">agg_vec()</a></code>
-
-        </dt>
-        <dd>Create an aggregation vector</dd>
-
-        <dt>
-
-          <code><a href="as.igraph.html">as.igraph(<i>&lt;agg_vec&gt;</i>)</a></code> <code><a href="as.igraph.html">as.igraph(<i>&lt;agg_df&gt;</i>)</a></code> <code><a href="as.igraph.html">as.igraph(<i>&lt;node_vec&gt;</i>)</a></code> <code><a href="as.igraph.html">as.igraph(<i>&lt;edge_vec&gt;</i>)</a></code>
-
-        </dt>
-        <dd>Convert a graph vector to an igraph object</dd>
+        <dd>Graph vector along nodes</dd>
 
         <dt>
 
@@ -71,40 +59,28 @@
 
         <dt>
 
-          <code><a href="graphvec-package.html">graphvec</a></code> <code><a href="graphvec-package.html">graphvec-package</a></code>
+          <code><a href="agg_vec.html">agg_vec()</a></code>
 
         </dt>
-        <dd>graphvec: Vectorised graph data structures</dd>
+        <dd>Create an aggregation vector</dd>
 
         <dt>
 
-          <code><a href="is_aggregated.html">is_aggregated()</a></code>
+          <code><a href="agg_df.html">agg_df()</a></code>
 
         </dt>
-        <dd>Is the element an aggregation of smaller data</dd>
+        <dd>Create an aggregation table</dd>
+      </dl></div><div class="section level2">
+      <h2 id="graph-structure">Graph structure<a class="anchor" aria-label="anchor" href="#graph-structure"></a></h2>
 
-        <dt>
+      <div class="section-desc"><p>Access the nodes and edges of a graph vector, and identify aggregated elements.</p></div>
 
-          <code><a href="new_edge_vec.html">new_edge_vec()</a></code>
+      <dl></dl></div><div class="section level2">
 
-        </dt>
-        <dd>Constructor function for edge_vec</dd>
 
-        <dt>
 
-          <code><a href="new_node_vec.html">new_node_vec()</a></code>
 
-        </dt>
-        <dd>Constructor function for node_vec</dd>
-
-        <dt>
-
-          <code><a href="node_vec.html">node_vec()</a></code>
-
-        </dt>
-        <dd>Graph vector along nodes</dd>
-
-        <dt>
+      <dl><dt>
 
           <code><a href="reorient.html">nodes()</a></code> <code><a href="reorient.html">edges()</a></code>
 
@@ -113,19 +89,52 @@
 
         <dt>
 
-          <code><a href="sub-.edge_vec.html">`[`(<i>&lt;edge_vec&gt;</i>)</a></code>
+          <code><a href="is_aggregated.html">is_aggregated()</a></code>
 
         </dt>
-        <dd>Subset an edge_vec</dd>
+        <dd>Is the element an aggregation of smaller data</dd>
+      </dl></div><div class="section level2">
+      <h2 id="interoperability">Interoperability<a class="anchor" aria-label="anchor" href="#interoperability"></a></h2>
+
+      <div class="section-desc"><p>Convert graph vectors to other graph representations.</p></div>
+
+      <dl></dl></div><div class="section level2">
+
+
+
+
+      <dl><dt>
+
+          <code><a href="as.igraph.html">as.igraph(<i>&lt;agg_vec&gt;</i>)</a></code> <code><a href="as.igraph.html">as.igraph(<i>&lt;agg_df&gt;</i>)</a></code> <code><a href="as.igraph.html">as.igraph(<i>&lt;node_vec&gt;</i>)</a></code> <code><a href="as.igraph.html">as.igraph(<i>&lt;edge_vec&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Convert a graph vector to an igraph object</dd>
+      </dl></div><div class="section level2">
+      <h2 id="developer-tools">Developer tools<a class="anchor" aria-label="anchor" href="#developer-tools"></a></h2>
+
+      <div class="section-desc"><p>Low-level constructors for extending graphvec’s classes.</p></div>
+
+      <dl></dl></div><div class="section level2">
+
+
+
+
+      <dl><dt>
+
+          <code><a href="new_node_vec.html">new_node_vec()</a></code>
+
+        </dt>
+        <dd>Constructor function for node_vec</dd>
 
         <dt>
 
-          <code><a href="sub-.node_vec.html">`[`(<i>&lt;node_vec&gt;</i>)</a></code>
+          <code><a href="new_edge_vec.html">new_edge_vec()</a></code>
 
         </dt>
-        <dd>Subset a node_vec</dd>
+        <dd>Constructor function for edge_vec</dd>
       </dl></div>
-  </main></div>
+  </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
+    </nav></aside></div>
 
 
     <footer><div class="pkgdown-footer-left">
