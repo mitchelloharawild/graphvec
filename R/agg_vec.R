@@ -118,12 +118,7 @@ c.agg_vec <- function(...) {
 
   if(!e1_agg || !e2_agg){
     x <- list(e1,e2)[[which(!c(e1_agg, e2_agg))]]
-    is_agg <- x == "<aggregated>"
-    if(any(is_agg)){
-      warning("<aggregated> character values have been converted to aggregated values.
-Hint: If you're trying to compare aggregated values, use `is_aggregated()`.")
-    }
-    x <- agg_vec(ifelse(is_agg, NA, x), aggregated = is_agg)
+    x <- agg_vec(x, aggregated = logical(NROW(x)))
     if(!e1_agg) e1 <- x else e2 <- x
   }
 

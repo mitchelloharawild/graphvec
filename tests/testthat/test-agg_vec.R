@@ -65,3 +65,48 @@ test_that("agg_vec() re-wraps an existing agg_vec, merging aggregated flags", {
   expect_equal(is_aggregated(v2), c(TRUE, FALSE, TRUE))
   expect_equal(format(v2), c("<aggregated>", "A", "<aggregated>"))
 })
+
+test_that("`==.agg_vec` treats two aggregated positions as equal", {
+  va <- agg_vec(c(NA, "A", "B"), aggregated = c(TRUE, FALSE, FALSE))
+  vb <- agg_vec(c(NA, "A", "C"), aggregated = c(TRUE, FALSE, FALSE))
+  expect_equal(va == vb, c(TRUE, TRUE, FALSE))
+})
+
+test_that("`==.agg_vec` treats an aggregated position and a disaggregated position as unequal", {
+  va <- agg_vec(c(NA, "A", "B"), aggregated = c(TRUE, FALSE, FALSE))
+  vc <- agg_vec(c("X", "A", "B"), aggregated = c(FALSE, FALSE, FALSE))
+  expect_equal(va == vc, c(FALSE, TRUE, TRUE))
+})
+
+test_that("`==.agg_vec` compares disaggregated values normally, including matching NAs", {
+  vd <- agg_vec(c(NA_character_, "A", "B"), aggregated = c(FALSE, FALSE, FALSE))
+  ve <- agg_vec(c(NA_character_, "A", "C"), aggregated = c(FALSE, FALSE, FALSE))
+  expect_equal(vd == ve, c(TRUE, TRUE, FALSE))
+})
+
+test_that("`==.agg_vec` treats a mismatched NA (one side missing, other not) as unequal", {
+  vd <- agg_vec(c(NA_character_, "A"), aggregated = c(FALSE, FALSE))
+  vf <- agg_vec(c("X", "A"), aggregated = c(FALSE, FALSE))
+  expect_equal(vd == vf, c(FALSE, TRUE))
+})
+
+test_that("`==.agg_vec` compares against a plain vector as fully disaggregated, without string-matching \"<aggregated>\"", {
+  va <- agg_vec(c(NA, "A", "B"), aggregated = c(TRUE, FALSE, FALSE))
+  plain <- c("<aggregated>", "A", "B")
+
+  expect_no_warning(result <- va == plain)
+  # The aggregated position in `va` does not match the literal text "<aggregated>".
+  expect_equal(result, c(FALSE, TRUE, TRUE))
+
+  # Comparing a plain "<aggregated>" string against an actual disaggregated
+  # "<aggregated>" value is an ordinary (matching) string comparison.
+  vg <- agg_vec("<aggregated>", aggregated = FALSE)
+  expect_no_warning(expect_true(vg == "<aggregated>"))
+})
+
+test_that("`!=.agg_vec` is the negation of `==.agg_vec`", {
+  va <- agg_vec(c(NA, "A", "B"), aggregated = c(TRUE, FALSE, FALSE))
+  vb <- agg_vec(c(NA, "A", "C"), aggregated = c(TRUE, FALSE, FALSE))
+  expect_equal(va != vb, !(va == vb))
+  expect_equal(va != vb, c(FALSE, FALSE, TRUE))
+})
