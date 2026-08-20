@@ -15,6 +15,11 @@ A logical vector indicating which elements are aggregated.
 \description{
 Is the element an aggregation of smaller data
 }
+\examples{
+v <- agg_vec(c(NA, "A", "B"), c(TRUE, FALSE, FALSE))
+is_aggregated(v)
+
+}
 \seealso{
 \code{\link[=agg_vec]{agg_vec()}}
 }

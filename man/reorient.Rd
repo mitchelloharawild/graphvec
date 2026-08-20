@@ -50,3 +50,13 @@ isolated nodes, and \code{directed} all survive, because both orientations
 carry the same logical graph — reorientation only changes which table the
 result is indexed by.
 }
+\examples{
+g <- node_vec(
+  x = c("A", "B", "C"),
+  from = c(1L, 2L),
+  to = c(2L, 3L)
+)
+edges(g)
+nodes(edges(g))
+
+}

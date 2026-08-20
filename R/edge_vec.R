@@ -92,6 +92,13 @@ edge_vec_fields_df <- function(x) {
 #' or symmetric?
 #' @return An `edge_vec` object.
 #'
+#' @examples
+#' new_edge_vec(
+#'   from = c(1L, 2L),
+#'   to = c(2L, 3L),
+#'   nodes = data.frame(label = c("A", "B", "C"))
+#' )
+#'
 #' @export
 new_edge_vec <- function(from = integer(), to = integer(), ..., nodes = data.frame(), directed = TRUE) {
   fields <- do.call(data.frame, c(list(from = from, to = to), list(...), list(stringsAsFactors = FALSE)))
@@ -143,6 +150,13 @@ pillar_shaft.edge_vec <- function(x, ...) {
 #' @param i Indices to select, as for `` `[` ``.
 #' @param ... Passed on.
 #' @return An `edge_vec` containing only the selected edges.
+#' @examples
+#' g <- edge_vec(
+#'   from = c(1L, 2L, 1L, 3L),
+#'   to = c(2L, 3L, 3L, 1L),
+#'   nodes = data.frame(label = c("A", "B", "C"))
+#' )
+#' g[1:2]
 #' @keywords internal
 #' @export
 `[.edge_vec` <- function(x, i, ...) {

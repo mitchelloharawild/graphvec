@@ -27,7 +27,9 @@
 #' )
 #' g
 #'
-#' igraph::as.igraph(g)
+#' if (requireNamespace("igraph", quietly = TRUE)) {
+#'   igraph::as.igraph(g)
+#' }
 #'
 #' @export
 node_vec <- function(x = list(), from = integer(), to = integer(), ..., directed = TRUE) {
@@ -50,6 +52,12 @@ node_vec <- function(x = list(), from = integer(), to = integer(), ..., directed
 #' @param directed A single logical value: is incidence ordered (`from` -> `to`)
 #' or symmetric?
 #' @return A `node_vec` object.
+#'
+#' @examples
+#' new_node_vec(
+#'   x = c("A", "B", "C"),
+#'   edges = data.frame(from = c(1L, 2L), to = c(2L, 3L))
+#' )
 #'
 #' @export
 new_node_vec <- function(x = list(), edges = data.frame(from = integer(), to = integer()), directed = TRUE) {
@@ -165,6 +173,13 @@ node_vec_reindex_edges <- function(n, idx, edges) {
 #' @param ... Passed on.
 #' @return A `node_vec` containing only the selected nodes, with `edges`
 #'   restricted to the induced subgraph.
+#' @examples
+#' g <- node_vec(
+#'   x = c("A", "B", "C"),
+#'   from = c(1L, 2L),
+#'   to = c(2L, 3L)
+#' )
+#' g[1:2]
 #' @keywords internal
 #' @export
 `[.node_vec` <- function(x, i, ...) {

@@ -24,3 +24,10 @@ A \code{node_vec} object.
 \description{
 Constructor function for node_vec
 }
+\examples{
+new_node_vec(
+  x = c("A", "B", "C"),
+  edges = data.frame(from = c(1L, 2L), to = c(2L, 3L))
+)
+
+}

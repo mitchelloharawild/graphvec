@@ -28,6 +28,17 @@ An \code{\link[igraph:igraph]{igraph::igraph()}} object.
 Methods for converting \code{node_vec}, \code{agg_vec}, \code{agg_df}, and \code{edge_vec}
 objects to \code{\link[igraph:igraph]{igraph::igraph()}} objects using \code{\link[igraph:graph_from_edgelist]{igraph::graph_from_edgelist()}}.
 }
+\examples{
+if (requireNamespace("igraph", quietly = TRUE)) {
+  g <- node_vec(
+    x = c("A", "B", "C"),
+    from = c(1L, 2L),
+    to = c(2L, 3L)
+  )
+  igraph::as.igraph(g)
+}
+
+}
 \seealso{
 \code{\link[=node_vec]{node_vec()}}, \code{\link[=agg_vec]{agg_vec()}}, \code{\link[=agg_df]{agg_df()}}, \code{\link[=edge_vec]{edge_vec()}}
 }

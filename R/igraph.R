@@ -8,6 +8,16 @@
 #'
 #' @return An [igraph::igraph()] object.
 #'
+#' @examples
+#' if (requireNamespace("igraph", quietly = TRUE)) {
+#'   g <- node_vec(
+#'     x = c("A", "B", "C"),
+#'     from = c(1L, 2L),
+#'     to = c(2L, 3L)
+#'   )
+#'   igraph::as.igraph(g)
+#' }
+#'
 #' @name as.igraph
 #' @seealso [node_vec()], [agg_vec()], [agg_df()], [edge_vec()]
 NULL

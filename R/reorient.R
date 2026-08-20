@@ -12,6 +12,15 @@
 #'
 #' @return `nodes()` returns a `node_vec`. `edges()` returns an `edge_vec`.
 #'
+#' @examples
+#' g <- node_vec(
+#'   x = c("A", "B", "C"),
+#'   from = c(1L, 2L),
+#'   to = c(2L, 3L)
+#' )
+#' edges(g)
+#' nodes(edges(g))
+#'
 #' @rdname reorient
 #' @export
 nodes <- function(x, ...) {

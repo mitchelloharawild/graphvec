@@ -40,6 +40,8 @@ g <- node_vec(
 )
 g
 
-igraph::as.igraph(g)
+if (requireNamespace("igraph", quietly = TRUE)) {
+  igraph::as.igraph(g)
+}
 
 }

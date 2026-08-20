@@ -167,6 +167,10 @@ edges.agg_vec <- function(x, ...) {
 #'
 #' @seealso [`agg_vec()`]
 #'
+#' @examples
+#' v <- agg_vec(c(NA, "A", "B"), c(TRUE, FALSE, FALSE))
+#' is_aggregated(v)
+#'
 #' @export
 is_aggregated <- function(x){
   if(!inherits(x, "agg_vec")){

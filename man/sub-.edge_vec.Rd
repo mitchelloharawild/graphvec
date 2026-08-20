@@ -21,4 +21,12 @@ Slicing an \code{edge_vec} selects edges directly: dropping or reordering
 edges never invalidates a node reference, so \code{nodes}/\code{directed} are
 unaffected -- unlike slicing a \code{\link[=node_vec]{node_vec()}}, no remap is needed.
 }
+\examples{
+g <- edge_vec(
+  from = c(1L, 2L, 1L, 3L),
+  to = c(2L, 3L, 3L, 1L),
+  nodes = data.frame(label = c("A", "B", "C"))
+)
+g[1:2]
+}
 \keyword{internal}

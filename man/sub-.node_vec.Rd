@@ -23,4 +23,12 @@ are dropped, surviving edges are remapped to the new positions, and
 replicated nodes (e.g. \code{x[c(1, 1, 2)]}) clone the edges incident to the
 original.
 }
+\examples{
+g <- node_vec(
+  x = c("A", "B", "C"),
+  from = c(1L, 2L),
+  to = c(2L, 3L)
+)
+g[1:2]
+}
 \keyword{internal}

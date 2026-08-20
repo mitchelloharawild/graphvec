@@ -32,3 +32,11 @@ An \code{edge_vec} object.
 \description{
 Constructor function for edge_vec
 }
+\examples{
+new_edge_vec(
+  from = c(1L, 2L),
+  to = c(2L, 3L),
+  nodes = data.frame(label = c("A", "B", "C"))
+)
+
+}
