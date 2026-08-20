@@ -6,7 +6,7 @@ attributes.
 ## Usage
 
 ``` r
-node_vec(x = list(), edges = data.frame(from = list(), to = integer()))
+node_vec(x = list(), from = integer(), to = integer(), ..., directed = TRUE)
 ```
 
 ## Arguments
@@ -15,9 +15,28 @@ node_vec(x = list(), edges = data.frame(from = list(), to = integer()))
 
   A vector representing the nodes in the graph.
 
-- edges:
+- from:
 
-  A data frame with columns `from` and `to` representing the edges
+  Integer vector of 'from' node positions into `x`. Hyperedges (multiple
+  'from' nodes per edge) are not yet supported.
+
+- to:
+
+  Integer vector of 'to' node positions into `x`.
+
+- ...:
+
+  Named edge attribute vectors (e.g. `weight = c(1, 2, 5)`), recycled to
+  the number of edges. `from` and `to` are reserved and cannot be used
+  as attribute names. Attribute columns are stored on the edge table
+  itself, so they slice, replicate, and reorient with the edges they
+  belong to (see
+  [`nodes()`](https://pkg.mitchelloharawild.com/graphvec/reference/reorient.md)/[`edges()`](https://pkg.mitchelloharawild.com/graphvec/reference/reorient.md)).
+
+- directed:
+
+  A single logical value: is incidence ordered (`from` -\> `to`) or
+  symmetric?
 
 ## Value
 
@@ -29,15 +48,16 @@ A `node_vec` object.
 
 g <- node_vec(
  x = factor(c("A", "B", "C")),
- edges = data.frame(
-  from = list(c(1L), c(2L), c(1L, 2L)),
-  to = c(2L, 3L, 1L)
- )
+ from = c(1L, 2L, 1L),
+ to = c(2L, 3L, 1L),
+ weight = c(1, 2, 5)
 )
-#> Error in data.frame(from = list(c(1L), c(2L), c(1L, 2L)), to = c(2L, 3L,     1L)): arguments imply differing number of rows: 2, 3
 g
-#> Error: object 'g' not found
+#> <node_vec[3]>
+#> [1] A B C
 
 igraph::as.igraph(g)
-#> Error: object 'g' not found
+#> IGRAPH f5d8c45 D--- 3 3 -- 
+#> + edges from f5d8c45:
+#> [1] 1->2 2->3 1->1
 ```

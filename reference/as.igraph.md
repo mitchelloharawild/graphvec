@@ -8,11 +8,14 @@ objects using
 ## Usage
 
 ``` r
-as.igraph.agg_vec(x, ...)
+# S3 method for class 'agg_vec'
+as.igraph(x, ...)
 
-as.igraph.node_vec(x, ...)
+# S3 method for class 'node_vec'
+as.igraph(x, ...)
 
-as.igraph.edge_vec(x, ...)
+# S3 method for class 'edge_vec'
+as.igraph(x, ...)
 ```
 
 ## Arguments

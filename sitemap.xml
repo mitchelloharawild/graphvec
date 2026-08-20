@@ -4,8 +4,8 @@
 <url><loc>https://pkg.mitchelloharawild.com/graphvec/LICENSE.html</loc></url>
 <url><loc>https://pkg.mitchelloharawild.com/graphvec/authors.html</loc></url>
 <url><loc>https://pkg.mitchelloharawild.com/graphvec/index.html</loc></url>
+<url><loc>https://pkg.mitchelloharawild.com/graphvec/reference/agg_df.html</loc></url>
 <url><loc>https://pkg.mitchelloharawild.com/graphvec/reference/agg_vec.html</loc></url>
-<url><loc>https://pkg.mitchelloharawild.com/graphvec/reference/aggregation-vctrs.html</loc></url>
 <url><loc>https://pkg.mitchelloharawild.com/graphvec/reference/as.igraph.html</loc></url>
 <url><loc>https://pkg.mitchelloharawild.com/graphvec/reference/edge_vec.html</loc></url>
 <url><loc>https://pkg.mitchelloharawild.com/graphvec/reference/graphvec-package.html</loc></url>
@@ -14,6 +14,8 @@
 <url><loc>https://pkg.mitchelloharawild.com/graphvec/reference/new_edge_vec.html</loc></url>
 <url><loc>https://pkg.mitchelloharawild.com/graphvec/reference/new_node_vec.html</loc></url>
 <url><loc>https://pkg.mitchelloharawild.com/graphvec/reference/node_vec.html</loc></url>
-<url><loc>https://pkg.mitchelloharawild.com/graphvec/reference/traverse.html</loc></url>
+<url><loc>https://pkg.mitchelloharawild.com/graphvec/reference/reorient.html</loc></url>
+<url><loc>https://pkg.mitchelloharawild.com/graphvec/reference/sub-.edge_vec.html</loc></url>
+<url><loc>https://pkg.mitchelloharawild.com/graphvec/reference/sub-.node_vec.html</loc></url>
 </urlset>
 

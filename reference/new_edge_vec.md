@@ -5,7 +5,13 @@ Constructor function for edge_vec
 ## Usage
 
 ``` r
-new_edge_vec(from = integer(), to = integer(), nodes = data.frame())
+new_edge_vec(
+  from = integer(),
+  to = integer(),
+  ...,
+  nodes = data.frame(),
+  directed = TRUE
+)
 ```
 
 ## Arguments
@@ -18,9 +24,19 @@ new_edge_vec(from = integer(), to = integer(), nodes = data.frame())
 
   Integer vector of 'to' node indices.
 
+- ...:
+
+  Named edge attribute fields, already recycled to the number of edges.
+
 - nodes:
 
-  Data frame of node data.
+  Vector of node data (any vector, including a data frame of node
+  attributes).
+
+- directed:
+
+  A single logical value: is incidence ordered (`from` -\> `to`) or
+  symmetric?
 
 ## Value
 

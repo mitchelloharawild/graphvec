@@ -10,7 +10,7 @@ Aggregated values are displayed as `<aggregated>` by default.
 ## Usage
 
 ``` r
-agg_vec(x = character(), aggregated = logical(vec_size(x)))
+agg_vec(x = character(), aggregated = logical(NROW(x)))
 ```
 
 ## Arguments
