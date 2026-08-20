@@ -36,7 +36,7 @@ as.igraph(x, ...)
 
 An
 [`igraph::igraph()`](https://r.igraph.org/reference/aaa-igraph-package.html)
-directed graph.
+object.
 
 ## See also
 
