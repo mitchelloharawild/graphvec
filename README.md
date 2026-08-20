@@ -1,14 +1,16 @@
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
-# graphvec <a href="https://pkg.mitchelloharawild.com/graphvec"><img src="man/figures/logo.svg" align="right" height="139" alt="graphvec website" /></a>
+# graphvec <a href="https://pkg.mitchelloharawild.com/graphvec/"><img src="man/figures/logo.svg" align="right" height="139" alt="graphvec website" /></a>
 
 <!-- badges: start -->
 
 [![Lifecycle:
 experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
+[![R-CMD-check](https://github.com/mitchelloharawild/graphvec/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/mitchelloharawild/graphvec/actions/workflows/R-CMD-check.yaml)
 [![CRAN
 status](https://www.r-pkg.org/badges/version/graphvec)](https://CRAN.R-project.org/package=graphvec)
+![Download count](https://cranlogs.r-pkg.org/badges/last-month/graphvec)
 <!-- badges: end -->
 
 The graphvec package extends vectors to include graph relationships
@@ -24,8 +26,14 @@ without any special handling.
 
 ## Installation
 
-You can install the development version of graphvec from
-[GitHub](https://github.com/) with:
+You can install the released version of graphvec from
+[CRAN](https://CRAN.R-project.org) with:
+
+``` r
+install.packages("graphvec")
+```
+
+And the development version from [GitHub](https://github.com/) with:
 
 ``` r
 # install.packages("remotes")
@@ -219,19 +227,19 @@ releases.
 
 ``` r
 igraph::as.igraph(nodes)
-#> IGRAPH df80412 D--- 6 2 -- 
-#> + edges from df80412:
+#> IGRAPH 6d4f3aa D--- 6 2 -- 
+#> + edges from 6d4f3aa:
 #> [1] 1->2 3->5
 igraph::as.igraph(e)
-#> IGRAPH 3d09a15 D--- 3 4 -- 
-#> + edges from 3d09a15:
+#> IGRAPH d52a021 D--- 3 4 -- 
+#> + edges from d52a021:
 #> [1] 1->2 2->3 1->3 3->1
 igraph::as.igraph(av)
-#> IGRAPH 041d843 D--- 3 2 -- 
-#> + edges from 041d843:
+#> IGRAPH e30398f D--- 3 2 -- 
+#> + edges from e30398f:
 #> [1] 2->1 3->1
 igraph::as.igraph(kd)
-#> IGRAPH 63162e1 D--- 9 12 -- 
-#> + edges from 63162e1:
+#> IGRAPH 0ff9d5d D--- 9 12 -- 
+#> + edges from 0ff9d5d:
 #>  [1] 4->1 5->1 6->2 7->3 8->2 9->3 2->1 3->1 6->4 7->4 8->5 9->5
 ```

@@ -13,11 +13,13 @@ knitr::opts_chunk$set(
 )
 ```
 
-# graphvec <a href="https://pkg.mitchelloharawild.com/graphvec"><img src="man/figures/logo.svg" align="right" height="139" alt="graphvec website" /></a>
+# graphvec <a href="https://pkg.mitchelloharawild.com/graphvec/"><img src="man/figures/logo.svg" align="right" height="139" alt="graphvec website" /></a>
 
 <!-- badges: start -->
 [![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
+[![R-CMD-check](https://github.com/mitchelloharawild/graphvec/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/mitchelloharawild/graphvec/actions/workflows/R-CMD-check.yaml)
 [![CRAN status](https://www.r-pkg.org/badges/version/graphvec)](https://CRAN.R-project.org/package=graphvec)
+![Download count](https://cranlogs.r-pkg.org/badges/last-month/graphvec)
 <!-- badges: end -->
 
 The graphvec package extends vectors to include graph relationships between their elements, and offers tools to compute useful summaries of the graph structure for use in summarising, filtering, and otherwise manipulating the graph.
@@ -26,7 +28,13 @@ Nodes are identified by **position**, not by value: each element of the vector i
 
 ## Installation
 
-You can install the development version of graphvec from [GitHub](https://github.com/) with:
+You can install the released version of graphvec from [CRAN](https://CRAN.R-project.org) with:
+
+``` r
+install.packages("graphvec")
+```
+
+And the development version from [GitHub](https://github.com/) with:
 
 ``` r
 # install.packages("remotes")
