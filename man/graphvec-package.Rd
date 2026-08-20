@@ -10,6 +10,15 @@
 
 Extends vectors to include graph relationships between their elements, and offers tools to compute useful summaries of the graph structure for use in summarising, filtering, and otherwise manipulating the graph.
 }
+\seealso{
+Useful links:
+\itemize{
+  \item \url{https://pkg.mitchelloharawild.com/graphvec/}
+  \item \url{https://github.com/mitchelloharawild/graphvec}
+  \item Report bugs at \url{https://github.com/mitchelloharawild/graphvec/issues}
+}
+
+}
 \author{
 \strong{Maintainer}: Mitchell O'Hara-Wild \email{mail@mitchelloharawild.com} (\href{https://orcid.org/0000-0001-6729-7695}{ORCID})
 
@@ -19,4 +28,5 @@ Authors:
 }
 
 }
+\keyword{internal}
 \keyword{package}
