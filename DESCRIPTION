@@ -1,5 +1,5 @@
 Package: graphvec
-Version: 0.0.0.9000
+Version: 0.1.0
 Title: Vectorised Graph Data Structures
 Authors@R: 
     c(person(given = "Mitchell",
