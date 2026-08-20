@@ -7,6 +7,7 @@
 - [`agg_vec()`](https://pkg.mitchelloharawild.com/graphvec/reference/agg_vec.md)
   : Create an aggregation vector
 - [`as.igraph(`*`<agg_vec>`*`)`](https://pkg.mitchelloharawild.com/graphvec/reference/as.igraph.md)
+  [`as.igraph(`*`<agg_df>`*`)`](https://pkg.mitchelloharawild.com/graphvec/reference/as.igraph.md)
   [`as.igraph(`*`<node_vec>`*`)`](https://pkg.mitchelloharawild.com/graphvec/reference/as.igraph.md)
   [`as.igraph(`*`<edge_vec>`*`)`](https://pkg.mitchelloharawild.com/graphvec/reference/as.igraph.md)
   : Convert a graph vector to an igraph object

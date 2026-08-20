@@ -83,11 +83,11 @@ structures, and slice the same way under dplyr verbs.
 tbl <- dplyr::tibble(nodes, id = 1:6)
 dplyr::filter(tbl, id %in% c(2, 3, 5))
 #> # A tibble: 3 × 2
-#>   nodes    id
-#>   <fct> <int>
-#> 1 B         2
-#> 2 C         3
-#> 3 D         5
+#>   nodes       id
+#>   <N[fct]> <int>
+#> 1 B            2
+#> 2 C            3
+#> 3 D            5
 ```
 
 Since node identity is positional, combining two graphs is just a
@@ -102,24 +102,6 @@ g2 <- node_vec(x = c("X", "Y"), from = 1L, to = 2L)
 c(g1, g2)
 #> <node_vec[4]>
 #> [1] A B X Y
-```
-
-A special case of
-[`node_vec()`](https://pkg.mitchelloharawild.com/graphvec/reference/node_vec.md)
-is
-[`agg_vec()`](https://pkg.mitchelloharawild.com/graphvec/reference/agg_vec.md),
-which simply identifies a singular parent node in a given vector with
-`<aggregated>`. This is a common scenario in data analysis, where a
-given dimension is aggregated over.
-
-``` r
-
-agg_vec(
-  x = c(NA, "A", "B"),
-  aggregated = c(TRUE, FALSE, FALSE)
-)
-#> <agg_vec[3]>
-#> [1] <aggregated> A            B
 ```
 
 ### Edges
@@ -154,28 +136,124 @@ e$to$label
 #> [1] "B" "C" "C" "A"
 ```
 
+### Aggregated
+
+An
+[`agg_vec()`](https://pkg.mitchelloharawild.com/graphvec/reference/agg_vec.md)
+is a third graph type built around a common shape in data analysis: a
+single parent that aggregates over all the other elements, e.g. a
+“Total” row over a set of categories. It marks the aggregate elements
+with `<aggregated>` instead of spelling out an edge table.
+
+``` r
+
+av <- agg_vec(
+  x = c(NA, "A", "B"),
+  aggregated = c(TRUE, FALSE, FALSE)
+)
+
+av
+#> <agg_vec[3]>
+#> [1] <aggregated> A            B
+```
+
+An
+[`agg_df()`](https://pkg.mitchelloharawild.com/graphvec/reference/agg_df.md)
+extends this to a table of
+[`agg_vec()`](https://pkg.mitchelloharawild.com/graphvec/reference/agg_vec.md)
+columns, one row per level of a (possibly crossed) aggregation structure
+– e.g. `Purpose` and `State` columns where some rows total one
+dimension, some the other, some both.
+
+``` r
+
+kd <- agg_df(
+  Purpose = agg_vec(
+    c(NA, NA, NA, "Business", "Holiday", "Business", "Business", "Holiday", "Holiday"),
+    c(TRUE, TRUE, TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE)
+  ),
+  State = agg_vec(
+    c(NA, "NSW", "VIC", NA, NA, "NSW", "VIC", "NSW", "VIC"),
+    c(TRUE, FALSE, FALSE, TRUE, TRUE, FALSE, FALSE, FALSE, FALSE)
+  )
+)
+
+kd
+#> <agg_df[9]>
+#> [1] <aggregated>:<aggregated> <aggregated>:NSW         
+#> [3] <aggregated>:VIC          Business:<aggregated>    
+#> [5] Holiday :<aggregated>     Business:NSW             
+#> [7] Business:VIC              Holiday :NSW             
+#> [9] Holiday :VIC
+```
+
+[`nodes()`](https://pkg.mitchelloharawild.com/graphvec/reference/reorient.md)/[`edges()`](https://pkg.mitchelloharawild.com/graphvec/reference/reorient.md)
+reorient an
+[`agg_vec()`](https://pkg.mitchelloharawild.com/graphvec/reference/agg_vec.md)
+or
+[`agg_df()`](https://pkg.mitchelloharawild.com/graphvec/reference/agg_df.md)
+into the same
+[`node_vec()`](https://pkg.mitchelloharawild.com/graphvec/reference/node_vec.md)/[`edge_vec()`](https://pkg.mitchelloharawild.com/graphvec/reference/edge_vec.md)
+graphs seen above: a row is a child of another row whenever the parent
+aggregates exactly one more column and matches on every other column’s
+disaggregated value.
+
+``` r
+
+nodes(kd)
+#> <node_vec[9]>
+#> [1] <aggregated>:<aggregated> <aggregated>:NSW         
+#> [3] <aggregated>:VIC          Business:<aggregated>    
+#> [5] Holiday :<aggregated>     Business:NSW             
+#> [7] Business:VIC              Holiday :NSW             
+#> [9] Holiday :VIC
+edges(kd)
+#> <edge_vec[12]>
+#>  [1] [Business:<aggregated>]->[<aggregated>:<aggregated>]
+#>  [2] [Holiday :<aggregated>]->[<aggregated>:<aggregated>]
+#>  [3] [Business:NSW]->[<aggregated>:NSW]                  
+#>  [4] [Business:VIC]->[<aggregated>:VIC]                  
+#>  [5] [Holiday :NSW]->[<aggregated>:NSW]                  
+#>  [6] [Holiday :VIC]->[<aggregated>:VIC]                  
+#>  [7] [<aggregated>:NSW]->[<aggregated>:<aggregated>]     
+#>  [8] [<aggregated>:VIC]->[<aggregated>:<aggregated>]     
+#>  [9] [Business:NSW]->[Business:<aggregated>]             
+#> [10] [Business:VIC]->[Business:<aggregated>]             
+#> [11] [Holiday :NSW]->[Holiday :<aggregated>]             
+#> [12] [Holiday :VIC]->[Holiday :<aggregated>]
+```
+
 ### igraph
 
-Both
-[`node_vec()`](https://pkg.mitchelloharawild.com/graphvec/reference/node_vec.md)
+[`node_vec()`](https://pkg.mitchelloharawild.com/graphvec/reference/node_vec.md),
+[`edge_vec()`](https://pkg.mitchelloharawild.com/graphvec/reference/edge_vec.md),
+[`agg_vec()`](https://pkg.mitchelloharawild.com/graphvec/reference/agg_vec.md)
 and
-[`edge_vec()`](https://pkg.mitchelloharawild.com/graphvec/reference/edge_vec.md)
-can be converted to igraph objects for further analysis. The vertex
-count is taken from the nodes rather than inferred from the edges, so
-isolated nodes are preserved. Direct vectorised statistics and
+[`agg_df()`](https://pkg.mitchelloharawild.com/graphvec/reference/agg_df.md)
+can all be converted directly to igraph objects for further analysis.
+The vertex count is taken from the nodes rather than inferred from the
+edges, so isolated nodes are preserved. Direct vectorised statistics and
 operations on these vectors are planned for this package in future
 releases.
 
 ``` r
 
 igraph::as.igraph(nodes)
-#> IGRAPH 77387e4 D--- 6 2 -- 
-#> + edges from 77387e4:
+#> IGRAPH df80412 D--- 6 2 -- 
+#> + edges from df80412:
 #> [1] 1->2 3->5
 igraph::as.igraph(e)
-#> IGRAPH 812a769 D--- 3 4 -- 
-#> + edges from 812a769:
+#> IGRAPH 3d09a15 D--- 3 4 -- 
+#> + edges from 3d09a15:
 #> [1] 1->2 2->3 1->3 3->1
+igraph::as.igraph(av)
+#> IGRAPH 041d843 D--- 3 2 -- 
+#> + edges from 041d843:
+#> [1] 2->1 3->1
+igraph::as.igraph(kd)
+#> IGRAPH 63162e1 D--- 9 12 -- 
+#> + edges from 63162e1:
+#>  [1] 4->1 5->1 6->2 7->3 8->2 9->3 2->1 3->1 6->4 7->4 8->5 9->5
 ```
 
 # Package index
@@ -187,6 +265,7 @@ igraph::as.igraph(e)
 - [`agg_vec()`](https://pkg.mitchelloharawild.com/graphvec/reference/agg_vec.md)
   : Create an aggregation vector
 - [`as.igraph(`*`<agg_vec>`*`)`](https://pkg.mitchelloharawild.com/graphvec/reference/as.igraph.md)
+  [`as.igraph(`*`<agg_df>`*`)`](https://pkg.mitchelloharawild.com/graphvec/reference/as.igraph.md)
   [`as.igraph(`*`<node_vec>`*`)`](https://pkg.mitchelloharawild.com/graphvec/reference/as.igraph.md)
   [`as.igraph(`*`<edge_vec>`*`)`](https://pkg.mitchelloharawild.com/graphvec/reference/as.igraph.md)
   : Convert a graph vector to an igraph object

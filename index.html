@@ -101,11 +101,11 @@
 <code class="sourceCode R"><span><span class="va">tbl</span> <span class="op">&lt;-</span> <span class="fu">dplyr</span><span class="fu">::</span><span class="fu"><a href="https://tibble.tidyverse.org/reference/tibble.html" class="external-link">tibble</a></span><span class="op">(</span><span class="va">nodes</span>, id <span class="op">=</span> <span class="fl">1</span><span class="op">:</span><span class="fl">6</span><span class="op">)</span></span>
 <span><span class="fu">dplyr</span><span class="fu">::</span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/filter.html" class="external-link">filter</a></span><span class="op">(</span><span class="va">tbl</span>, <span class="va">id</span> <span class="op"><a href="https://rdrr.io/r/base/match.html" class="external-link">%in%</a></span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">2</span>, <span class="fl">3</span>, <span class="fl">5</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt; # A tibble: 3 × 2</span></span>
-<span><span class="co">#&gt;   nodes    id</span></span>
-<span><span class="co">#&gt;   &lt;fct&gt; &lt;int&gt;</span></span>
-<span><span class="co">#&gt; 1 B         2</span></span>
-<span><span class="co">#&gt; 2 C         3</span></span>
-<span><span class="co">#&gt; 3 D         5</span></span></code></pre></div>
+<span><span class="co">#&gt;   nodes       id</span></span>
+<span><span class="co">#&gt;   &lt;N[fct]&gt; &lt;int&gt;</span></span>
+<span><span class="co">#&gt; 1 B            2</span></span>
+<span><span class="co">#&gt; 2 C            3</span></span>
+<span><span class="co">#&gt; 3 D            5</span></span></code></pre></div>
 <p>Since node identity is positional, combining two graphs is just a disjoint union: node vectors concatenate, and the second graph’s edges shift so they keep pointing at the right nodes.</p>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">g1</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/node_vec.html">node_vec</a></span><span class="op">(</span>x <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"A"</span>, <span class="st">"B"</span><span class="op">)</span>, from <span class="op">=</span> <span class="fl">1L</span>, to <span class="op">=</span> <span class="fl">2L</span><span class="op">)</span></span>
@@ -114,20 +114,12 @@
 <span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="va">g1</span>, <span class="va">g2</span><span class="op">)</span></span>
 <span><span class="co">#&gt; &lt;node_vec[4]&gt;</span></span>
 <span><span class="co">#&gt; [1] A B X Y</span></span></code></pre></div>
-<p>A special case of <code><a href="reference/node_vec.html">node_vec()</a></code> is <code><a href="reference/agg_vec.html">agg_vec()</a></code>, which simply identifies a singular parent node in a given vector with <code>&lt;aggregated&gt;</code>. This is a common scenario in data analysis, where a given dimension is aggregated over.</p>
-<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="reference/agg_vec.html">agg_vec</a></span><span class="op">(</span></span>
-<span>  x <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="cn">NA</span>, <span class="st">"A"</span>, <span class="st">"B"</span><span class="op">)</span>,</span>
-<span>  aggregated <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="cn">TRUE</span>, <span class="cn">FALSE</span>, <span class="cn">FALSE</span><span class="op">)</span></span>
-<span><span class="op">)</span></span>
-<span><span class="co">#&gt; &lt;agg_vec[3]&gt;</span></span>
-<span><span class="co">#&gt; [1] &lt;aggregated&gt; A            B</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="edges">Edges<a class="anchor" aria-label="anchor" href="#edges"></a>
 </h3>
 <p>The transpose of a node vector is an <code><a href="reference/edge_vec.html">edge_vec()</a></code>, which is instead vectorised along the edges of the graph.</p>
-<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">e</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/edge_vec.html">edge_vec</a></span><span class="op">(</span></span>
 <span>  from <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1L</span>, <span class="fl">2L</span>, <span class="fl">1L</span>, <span class="fl">3L</span><span class="op">)</span>,</span>
 <span>  to <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">2L</span>, <span class="fl">3L</span>, <span class="fl">3L</span>, <span class="fl">1L</span><span class="op">)</span>,</span>
@@ -141,25 +133,90 @@
 <span><span class="co">#&gt; &lt;edge_vec[4]&gt;</span></span>
 <span><span class="co">#&gt; [1] [1:A]-&gt;[2:B] [2:B]-&gt;[3:C] [1:A]-&gt;[3:C] [3:C]-&gt;[1:A]</span></span></code></pre></div>
 <p>Values from nodes can be obtained from an edge vector using <code>$</code>.</p>
-<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">e</span><span class="op">$</span><span class="va">from</span><span class="op">$</span><span class="va">label</span></span>
 <span><span class="co">#&gt; [1] "A" "B" "A" "C"</span></span>
 <span><span class="va">e</span><span class="op">$</span><span class="va">to</span><span class="op">$</span><span class="va">label</span></span>
 <span><span class="co">#&gt; [1] "B" "C" "C" "A"</span></span></code></pre></div>
 </div>
 <div class="section level3">
+<h3 id="aggregated">Aggregated<a class="anchor" aria-label="anchor" href="#aggregated"></a>
+</h3>
+<p>An <code><a href="reference/agg_vec.html">agg_vec()</a></code> is a third graph type built around a common shape in data analysis: a single parent that aggregates over all the other elements, e.g. a “Total” row over a set of categories. It marks the aggregate elements with <code>&lt;aggregated&gt;</code> instead of spelling out an edge table.</p>
+<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">av</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/agg_vec.html">agg_vec</a></span><span class="op">(</span></span>
+<span>  x <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="cn">NA</span>, <span class="st">"A"</span>, <span class="st">"B"</span><span class="op">)</span>,</span>
+<span>  aggregated <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="cn">TRUE</span>, <span class="cn">FALSE</span>, <span class="cn">FALSE</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">av</span></span>
+<span><span class="co">#&gt; &lt;agg_vec[3]&gt;</span></span>
+<span><span class="co">#&gt; [1] &lt;aggregated&gt; A            B</span></span></code></pre></div>
+<p>An <code><a href="reference/agg_df.html">agg_df()</a></code> extends this to a table of <code><a href="reference/agg_vec.html">agg_vec()</a></code> columns, one row per level of a (possibly crossed) aggregation structure – e.g. <code>Purpose</code> and <code>State</code> columns where some rows total one dimension, some the other, some both.</p>
+<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">kd</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/agg_df.html">agg_df</a></span><span class="op">(</span></span>
+<span>  Purpose <span class="op">=</span> <span class="fu"><a href="reference/agg_vec.html">agg_vec</a></span><span class="op">(</span></span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="cn">NA</span>, <span class="cn">NA</span>, <span class="cn">NA</span>, <span class="st">"Business"</span>, <span class="st">"Holiday"</span>, <span class="st">"Business"</span>, <span class="st">"Business"</span>, <span class="st">"Holiday"</span>, <span class="st">"Holiday"</span><span class="op">)</span>,</span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="cn">TRUE</span>, <span class="cn">TRUE</span>, <span class="cn">TRUE</span>, <span class="cn">FALSE</span>, <span class="cn">FALSE</span>, <span class="cn">FALSE</span>, <span class="cn">FALSE</span>, <span class="cn">FALSE</span>, <span class="cn">FALSE</span><span class="op">)</span></span>
+<span>  <span class="op">)</span>,</span>
+<span>  State <span class="op">=</span> <span class="fu"><a href="reference/agg_vec.html">agg_vec</a></span><span class="op">(</span></span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="cn">NA</span>, <span class="st">"NSW"</span>, <span class="st">"VIC"</span>, <span class="cn">NA</span>, <span class="cn">NA</span>, <span class="st">"NSW"</span>, <span class="st">"VIC"</span>, <span class="st">"NSW"</span>, <span class="st">"VIC"</span><span class="op">)</span>,</span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="cn">TRUE</span>, <span class="cn">FALSE</span>, <span class="cn">FALSE</span>, <span class="cn">TRUE</span>, <span class="cn">TRUE</span>, <span class="cn">FALSE</span>, <span class="cn">FALSE</span>, <span class="cn">FALSE</span>, <span class="cn">FALSE</span><span class="op">)</span></span>
+<span>  <span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">kd</span></span>
+<span><span class="co">#&gt; &lt;agg_df[9]&gt;</span></span>
+<span><span class="co">#&gt; [1] &lt;aggregated&gt;:&lt;aggregated&gt; &lt;aggregated&gt;:NSW         </span></span>
+<span><span class="co">#&gt; [3] &lt;aggregated&gt;:VIC          Business:&lt;aggregated&gt;    </span></span>
+<span><span class="co">#&gt; [5] Holiday :&lt;aggregated&gt;     Business:NSW             </span></span>
+<span><span class="co">#&gt; [7] Business:VIC              Holiday :NSW             </span></span>
+<span><span class="co">#&gt; [9] Holiday :VIC</span></span></code></pre></div>
+<p><code><a href="reference/reorient.html">nodes()</a></code>/<code><a href="reference/reorient.html">edges()</a></code> reorient an <code><a href="reference/agg_vec.html">agg_vec()</a></code> or <code><a href="reference/agg_df.html">agg_df()</a></code> into the same <code><a href="reference/node_vec.html">node_vec()</a></code>/<code><a href="reference/edge_vec.html">edge_vec()</a></code> graphs seen above: a row is a child of another row whenever the parent aggregates exactly one more column and matches on every other column’s disaggregated value.</p>
+<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="reference/reorient.html">nodes</a></span><span class="op">(</span><span class="va">kd</span><span class="op">)</span></span>
+<span><span class="co">#&gt; &lt;node_vec[9]&gt;</span></span>
+<span><span class="co">#&gt; [1] &lt;aggregated&gt;:&lt;aggregated&gt; &lt;aggregated&gt;:NSW         </span></span>
+<span><span class="co">#&gt; [3] &lt;aggregated&gt;:VIC          Business:&lt;aggregated&gt;    </span></span>
+<span><span class="co">#&gt; [5] Holiday :&lt;aggregated&gt;     Business:NSW             </span></span>
+<span><span class="co">#&gt; [7] Business:VIC              Holiday :NSW             </span></span>
+<span><span class="co">#&gt; [9] Holiday :VIC</span></span>
+<span><span class="fu"><a href="reference/reorient.html">edges</a></span><span class="op">(</span><span class="va">kd</span><span class="op">)</span></span>
+<span><span class="co">#&gt; &lt;edge_vec[12]&gt;</span></span>
+<span><span class="co">#&gt;  [1] [Business:&lt;aggregated&gt;]-&gt;[&lt;aggregated&gt;:&lt;aggregated&gt;]</span></span>
+<span><span class="co">#&gt;  [2] [Holiday :&lt;aggregated&gt;]-&gt;[&lt;aggregated&gt;:&lt;aggregated&gt;]</span></span>
+<span><span class="co">#&gt;  [3] [Business:NSW]-&gt;[&lt;aggregated&gt;:NSW]                  </span></span>
+<span><span class="co">#&gt;  [4] [Business:VIC]-&gt;[&lt;aggregated&gt;:VIC]                  </span></span>
+<span><span class="co">#&gt;  [5] [Holiday :NSW]-&gt;[&lt;aggregated&gt;:NSW]                  </span></span>
+<span><span class="co">#&gt;  [6] [Holiday :VIC]-&gt;[&lt;aggregated&gt;:VIC]                  </span></span>
+<span><span class="co">#&gt;  [7] [&lt;aggregated&gt;:NSW]-&gt;[&lt;aggregated&gt;:&lt;aggregated&gt;]     </span></span>
+<span><span class="co">#&gt;  [8] [&lt;aggregated&gt;:VIC]-&gt;[&lt;aggregated&gt;:&lt;aggregated&gt;]     </span></span>
+<span><span class="co">#&gt;  [9] [Business:NSW]-&gt;[Business:&lt;aggregated&gt;]             </span></span>
+<span><span class="co">#&gt; [10] [Business:VIC]-&gt;[Business:&lt;aggregated&gt;]             </span></span>
+<span><span class="co">#&gt; [11] [Holiday :NSW]-&gt;[Holiday :&lt;aggregated&gt;]             </span></span>
+<span><span class="co">#&gt; [12] [Holiday :VIC]-&gt;[Holiday :&lt;aggregated&gt;]</span></span></code></pre></div>
+</div>
+<div class="section level3">
 <h3 id="igraph">igraph<a class="anchor" aria-label="anchor" href="#igraph"></a>
 </h3>
-<p>Both <code><a href="reference/node_vec.html">node_vec()</a></code> and <code><a href="reference/edge_vec.html">edge_vec()</a></code> can be converted to igraph objects for further analysis. The vertex count is taken from the nodes rather than inferred from the edges, so isolated nodes are preserved. Direct vectorised statistics and operations on these vectors are planned for this package in future releases.</p>
-<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
+<p><code><a href="reference/node_vec.html">node_vec()</a></code>, <code><a href="reference/edge_vec.html">edge_vec()</a></code>, <code><a href="reference/agg_vec.html">agg_vec()</a></code> and <code><a href="reference/agg_df.html">agg_df()</a></code> can all be converted directly to igraph objects for further analysis. The vertex count is taken from the nodes rather than inferred from the edges, so isolated nodes are preserved. Direct vectorised statistics and operations on these vectors are planned for this package in future releases.</p>
+<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">igraph</span><span class="fu">::</span><span class="fu"><a href="https://r.igraph.org/reference/as.igraph.html" class="external-link">as.igraph</a></span><span class="op">(</span><span class="va">nodes</span><span class="op">)</span></span>
-<span><span class="co">#&gt; IGRAPH 77387e4 D--- 6 2 -- </span></span>
-<span><span class="co">#&gt; + edges from 77387e4:</span></span>
+<span><span class="co">#&gt; IGRAPH df80412 D--- 6 2 -- </span></span>
+<span><span class="co">#&gt; + edges from df80412:</span></span>
 <span><span class="co">#&gt; [1] 1-&gt;2 3-&gt;5</span></span>
 <span><span class="fu">igraph</span><span class="fu">::</span><span class="fu"><a href="https://r.igraph.org/reference/as.igraph.html" class="external-link">as.igraph</a></span><span class="op">(</span><span class="va">e</span><span class="op">)</span></span>
-<span><span class="co">#&gt; IGRAPH 812a769 D--- 3 4 -- </span></span>
-<span><span class="co">#&gt; + edges from 812a769:</span></span>
-<span><span class="co">#&gt; [1] 1-&gt;2 2-&gt;3 1-&gt;3 3-&gt;1</span></span></code></pre></div>
+<span><span class="co">#&gt; IGRAPH 3d09a15 D--- 3 4 -- </span></span>
+<span><span class="co">#&gt; + edges from 3d09a15:</span></span>
+<span><span class="co">#&gt; [1] 1-&gt;2 2-&gt;3 1-&gt;3 3-&gt;1</span></span>
+<span><span class="fu">igraph</span><span class="fu">::</span><span class="fu"><a href="https://r.igraph.org/reference/as.igraph.html" class="external-link">as.igraph</a></span><span class="op">(</span><span class="va">av</span><span class="op">)</span></span>
+<span><span class="co">#&gt; IGRAPH 041d843 D--- 3 2 -- </span></span>
+<span><span class="co">#&gt; + edges from 041d843:</span></span>
+<span><span class="co">#&gt; [1] 2-&gt;1 3-&gt;1</span></span>
+<span><span class="fu">igraph</span><span class="fu">::</span><span class="fu"><a href="https://r.igraph.org/reference/as.igraph.html" class="external-link">as.igraph</a></span><span class="op">(</span><span class="va">kd</span><span class="op">)</span></span>
+<span><span class="co">#&gt; IGRAPH 63162e1 D--- 9 12 -- </span></span>
+<span><span class="co">#&gt; + edges from 63162e1:</span></span>
+<span><span class="co">#&gt;  [1] 4-&gt;1 5-&gt;1 6-&gt;2 7-&gt;3 8-&gt;2 9-&gt;3 2-&gt;1 3-&gt;1 6-&gt;4 7-&gt;4 8-&gt;5 9-&gt;5</span></span></code></pre></div>
 </div>
 </div>
 </div>
