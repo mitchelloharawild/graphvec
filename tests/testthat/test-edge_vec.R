@@ -47,6 +47,12 @@ test_that("$.edge_vec retrieves node data for from and to", {
   expect_equal(e$to$label, c("B", "C"))
 })
 
+test_that("$.edge_vec retrieves node data for from and to when nodes is a plain vector", {
+  e <- edge_vec(from = c(1L, 2L), to = c(2L, 3L), nodes = c("A", "B", "C"))
+  expect_equal(e$from, c("A", "B"))
+  expect_equal(e$to, c("B", "C"))
+})
+
 test_that("$.edge_vec rejects invalid field names", {
   e <- edge_vec(
     from = c(1L, 2L),

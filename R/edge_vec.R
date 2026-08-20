@@ -284,7 +284,7 @@ type_sum.edge_vec <- function(x, ...) {
   fields <- edge_vec_data(x)
 
   if (name %in% c("from", "to")) {
-    return(attr(x, "nodes")[fields[[name]], , drop = FALSE])
+    return(slice_rows(attr(x, "nodes"), fields[[name]]))
   }
 
   if (name %in% names(fields)) {
