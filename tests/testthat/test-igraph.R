@@ -43,6 +43,23 @@ test_that("as.igraph() drops agg_vec rows with no preceding aggregate root", {
   expect_equal(igraph::ecount(ig), 0L)
 })
 
+test_that("as.igraph() converts agg_df to an igraph object", {
+  skip_if_not_installed("igraph")
+  # A single crossed cell (row 1) with its two one-column aggregates (rows
+  # 2-3) and the fully aggregated total (row 4): a diamond lattice.
+  df <- agg_df(
+    Purpose = agg_vec(c("Business", NA, "Business", NA), c(FALSE, TRUE, FALSE, TRUE)),
+    State = agg_vec(c("NSW", "NSW", NA, NA), c(FALSE, FALSE, TRUE, TRUE))
+  )
+  ig <- igraph::as.igraph(df)
+  expect_s3_class(ig, "igraph")
+  expect_equal(igraph::vcount(ig), 4L)
+  expect_equal(
+    igraph::as_edgelist(ig, names = FALSE),
+    cbind(c(1L, 3L, 1L, 2L), c(2L, 4L, 3L, 4L))
+  )
+})
+
 test_that("as.igraph() converts edge_vec to an igraph object", {
   skip_if_not_installed("igraph")
   e <- edge_vec(

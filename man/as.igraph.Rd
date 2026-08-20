@@ -3,18 +3,21 @@
 \name{as.igraph}
 \alias{as.igraph}
 \alias{as.igraph.agg_vec}
+\alias{as.igraph.agg_df}
 \alias{as.igraph.node_vec}
 \alias{as.igraph.edge_vec}
 \title{Convert a graph vector to an igraph object}
 \usage{
 \method{as.igraph}{agg_vec}(x, ...)
 
+\method{as.igraph}{agg_df}(x, ...)
+
 \method{as.igraph}{node_vec}(x, ...)
 
 \method{as.igraph}{edge_vec}(x, ...)
 }
 \arguments{
-\item{x}{A \code{node_vec}, \code{agg_vec}, or \code{edge_vec} object.}
+\item{x}{A \code{node_vec}, \code{agg_vec}, \code{agg_df}, or \code{edge_vec} object.}
 
 \item{...}{Additional arguments (currently unused).}
 }
@@ -22,9 +25,9 @@
 An \code{\link[igraph:igraph]{igraph::igraph()}} directed graph.
 }
 \description{
-Methods for converting \code{node_vec}, \code{agg_vec}, and \code{edge_vec} objects to
-\code{\link[igraph:igraph]{igraph::igraph()}} objects using \code{\link[igraph:graph_from_edgelist]{igraph::graph_from_edgelist()}}.
+Methods for converting \code{node_vec}, \code{agg_vec}, \code{agg_df}, and \code{edge_vec}
+objects to \code{\link[igraph:igraph]{igraph::igraph()}} objects using \code{\link[igraph:graph_from_edgelist]{igraph::graph_from_edgelist()}}.
 }
 \seealso{
-\code{\link[=node_vec]{node_vec()}}, \code{\link[=agg_vec]{agg_vec()}}, \code{\link[=edge_vec]{edge_vec()}}
+\code{\link[=node_vec]{node_vec()}}, \code{\link[=agg_vec]{agg_vec()}}, \code{\link[=agg_df]{agg_df()}}, \code{\link[=edge_vec]{edge_vec()}}
 }

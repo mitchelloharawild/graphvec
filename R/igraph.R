@@ -1,15 +1,15 @@
 #' Convert a graph vector to an igraph object
 #'
-#' Methods for converting `node_vec`, `agg_vec`, and `edge_vec` objects to
-#' [igraph::igraph()] objects using [igraph::graph_from_edgelist()].
+#' Methods for converting `node_vec`, `agg_vec`, `agg_df`, and `edge_vec`
+#' objects to [igraph::igraph()] objects using [igraph::graph_from_edgelist()].
 #'
-#' @param x A `node_vec`, `agg_vec`, or `edge_vec` object.
+#' @param x A `node_vec`, `agg_vec`, `agg_df`, or `edge_vec` object.
 #' @param ... Additional arguments (currently unused).
 #'
 #' @return An [igraph::igraph()] directed graph.
 #'
 #' @name as.igraph
-#' @seealso [node_vec()], [agg_vec()], [edge_vec()]
+#' @seealso [node_vec()], [agg_vec()], [agg_df()], [edge_vec()]
 NULL
 
 #' @rdname as.igraph
@@ -26,6 +26,12 @@ as.igraph.agg_vec <- function(x, ...) {
   parent <- cummax(seq_along(is_agg) * is_agg)
   from <- which(!is_agg & parent > 0L)
   igraph_from_edges(from = from, to = parent[from], n = length(x))
+}
+
+#' @rdname as.igraph
+#' @exportS3Method igraph::as.igraph
+as.igraph.agg_df <- function(x, ...) {
+  igraph::as.igraph(nodes(x))
 }
 
 #' @rdname as.igraph
