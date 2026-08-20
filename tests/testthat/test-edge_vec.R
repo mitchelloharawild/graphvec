@@ -74,6 +74,24 @@ test_that("format.edge_vec() produces [from]->[to] strings", {
   expect_equal(format(e), "[A]->[B]")
 })
 
+test_that("format.edge_vec() renders `--` for undirected edges and `->` for directed edges", {
+  e <- edge_vec(
+    from = 1L,
+    to = 2L,
+    nodes = data.frame(label = c("A", "B")),
+    directed = TRUE
+  )
+  expect_equal(format(e), "[A]->[B]")
+
+  eu <- edge_vec(
+    from = 1L,
+    to = 2L,
+    nodes = data.frame(label = c("A", "B")),
+    directed = FALSE
+  )
+  expect_equal(format(eu), "[A]--[B]")
+})
+
 test_that("type_sum.edge_vec() abbreviates the node data type", {
   skip_if_not_installed("pillar")
   e <- edge_vec(from = 1L, to = 2L, nodes = c("A", "B"))

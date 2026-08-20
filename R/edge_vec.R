@@ -110,9 +110,13 @@ new_edge_vec_fields <- function(fields, nodes = data.frame(), directed = TRUE) {
 format.edge_vec <- function(x, ...){
   key_data <- attr(x, "nodes")
   fields <- edge_vec_data(x)
+  # -- undirected
+  # -> directed
+  arrow <- if (isTRUE(attr(x, "directed"))) "->" else "--"
   sprintf(
-    "[%s]->[%s]",
+    "[%s]%s[%s]",
     node_label(slice_rows(key_data, fields[["from"]])),
+    arrow,
     node_label(slice_rows(key_data, fields[["to"]]))
   )
 }

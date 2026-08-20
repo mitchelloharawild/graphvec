@@ -17,7 +17,7 @@ test_that("edges(node_vec) converts to an edge_vec, preserving directed", {
   expect_s3_class(e, "edge_vec")
   expect_length(e, 3L)
   expect_false(attr(e, "directed"))
-  expect_equal(format(e), c("[A]->[B]", "[B]->[C]", "[C]->[D]"))
+  expect_equal(format(e), c("[A]--[B]", "[B]--[C]", "[C]--[D]"))
 })
 
 test_that("nodes(edge_vec) converts to a node_vec, keeping isolated nodes", {

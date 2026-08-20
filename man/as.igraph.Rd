@@ -22,7 +22,7 @@
 \item{...}{Additional arguments (currently unused).}
 }
 \value{
-An \code{\link[igraph:igraph]{igraph::igraph()}} directed graph.
+An \code{\link[igraph:igraph]{igraph::igraph()}} object.
 }
 \description{
 Methods for converting \code{node_vec}, \code{agg_vec}, \code{agg_df}, and \code{edge_vec}

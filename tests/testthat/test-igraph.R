@@ -71,3 +71,39 @@ test_that("as.igraph() converts edge_vec to an igraph object", {
   expect_s3_class(ig, "igraph")
   expect_equal(igraph::ecount(ig), 4L)
 })
+
+test_that("as.igraph() respects node_vec's `directed` attribute", {
+  skip_if_not_installed("igraph")
+  g <- node_vec(
+    x = c("A", "B", "C"),
+    from = c(1L, 2L),
+    to = c(2L, 3L)
+  )
+  expect_true(igraph::is_directed(igraph::as.igraph(g)))
+
+  gu <- node_vec(
+    x = c("A", "B", "C"),
+    from = c(1L, 2L),
+    to = c(2L, 3L),
+    directed = FALSE
+  )
+  expect_false(igraph::is_directed(igraph::as.igraph(gu)))
+})
+
+test_that("as.igraph() respects edge_vec's `directed` attribute", {
+  skip_if_not_installed("igraph")
+  e <- edge_vec(
+    from = c(1L, 2L, 1L, 3L),
+    to = c(2L, 3L, 3L, 1L),
+    nodes = data.frame(label = c("A", "B", "C"))
+  )
+  expect_true(igraph::is_directed(igraph::as.igraph(e)))
+
+  eu <- edge_vec(
+    from = c(1L, 2L, 1L, 3L),
+    to = c(2L, 3L, 3L, 1L),
+    nodes = data.frame(label = c("A", "B", "C")),
+    directed = FALSE
+  )
+  expect_false(igraph::is_directed(igraph::as.igraph(eu)))
+})

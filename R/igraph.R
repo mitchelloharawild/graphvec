@@ -6,7 +6,7 @@
 #' @param x A `node_vec`, `agg_vec`, `agg_df`, or `edge_vec` object.
 #' @param ... Additional arguments (currently unused).
 #'
-#' @return An [igraph::igraph()] directed graph.
+#' @return An [igraph::igraph()] object.
 #'
 #' @name as.igraph
 #' @seealso [node_vec()], [agg_vec()], [agg_df()], [edge_vec()]
@@ -20,7 +20,7 @@ as.igraph.agg_vec <- function(x, ...) {
   is_agg <- is_aggregated(x)
   parent <- cummax(seq_along(is_agg) * is_agg)
   from <- which(!is_agg & parent > 0L)
-  igraph_from_edges(from = from, to = parent[from], n = length(x))
+  igraph_from_edges(from = from, to = parent[from], n = length(x), directed = TRUE)
 }
 
 #' @rdname as.igraph
@@ -33,8 +33,9 @@ as.igraph.agg_df <- function(x, ...) {
 #' @exportS3Method igraph::as.igraph
 as.igraph.node_vec <- function(x, ...) {
   e <- attr(x, "edges")
-  # Vertex count comes from `x`, not the edges, so trailing isolated nodes aren't dropped.
-  igraph_from_edges(from = e[["from"]], to = e[["to"]], n = length(x))
+  # Node identity is positional, so the vertex count comes from `x` rather than
+  # from the edges -- otherwise trailing isolated nodes would be dropped.
+  igraph_from_edges(from = e[["from"]], to = e[["to"]], n = length(x), directed = attr(x, "directed"))
 }
 
 #' @rdname as.igraph
@@ -44,15 +45,18 @@ as.igraph.edge_vec <- function(x, ...) {
   igraph_from_edges(
     from = e[["from"]],
     to = e[["to"]],
-    n = NROW(attr(x, "nodes"))
+    n = NROW(attr(x, "nodes")),
+    directed = attr(x, "directed")
   )
 }
 
-# Build a directed igraph on exactly `n` vertices, so that nodes without any
-# incident edges are preserved.
-igraph_from_edges <- function(from, to, n) {
+# Build an igraph on exactly `n` vertices, so that nodes without any
+# incident edges are preserved. `directed` has no default -- every caller
+# must decide and pass it explicitly, so a source of directedness can't be
+# silently dropped again.
+igraph_from_edges <- function(from, to, n, directed) {
   igraph::add_edges(
-    igraph::make_empty_graph(n = n, directed = TRUE),
+    igraph::make_empty_graph(n = n, directed = directed),
     rbind(as.integer(from), as.integer(to))
   )
 }
