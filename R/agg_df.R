@@ -30,10 +30,8 @@ agg_df <- function(...) {
   new_agg_df(cols)
 }
 
-# Low-level constructor: cols is a named list of already-validated agg_vec
-# columns. Kept as a plain classed list (like edge_vec's fields), not a real
-# data.frame, so `$`/`[[` reach the columns directly while `[`/`c` below get
-# row (not column) semantics.
+# Plain classed list of already-validated agg_vec columns, not a real
+# data.frame, so `[`/`c` below get row (not column) semantics.
 new_agg_df <- function(cols = list()) {
   sizes <- vapply(cols, length, integer(1))
   if (length(unique(sizes)) > 1) {
@@ -82,7 +80,7 @@ c.agg_df <- function(...) {
 
 # Edge table for the aggregation lattice: row i -> row j whenever j
 # aggregates exactly one more column than i, matching i on every other
-# column's disaggregated value. Child -> parent, per DESIGN.md's convention.
+# column's disaggregated value.
 agg_lattice_edges <- function(x) {
   cols <- unclass(x)
   p <- length(cols)
@@ -92,17 +90,13 @@ agg_lattice_edges <- function(x) {
 
   n <- length(x)
   agg_mat <- vapply(cols, agg_vec_is_agg, logical(n))
-  # Per-column key strings: "" where aggregated (so it drops out of any
-  # paste it takes part in), the formatted value otherwise.
+  # Per-column key strings: "" where aggregated, formatted value otherwise.
   key_mat <- vapply(seq_len(p), function(k) {
     ifelse(agg_mat[, k], "", as.character(agg_vec_expand(cols[[k]])))
   }, character(n))
 
-  # Cumulative left-to-right and right-to-left pastes across columns, so the
-  # row key for "every column except j" is one paste0() of the two halves.
-  # The original repasted all p-1 other columns from scratch for every j
-  # (and again separately for child vs. parent rows), which was O(p^2 * n);
-  # this is O(p * n).
+  # Cumulative left-to-right and right-to-left pastes, so the row key for
+  # "every column except j" is one paste0() of the two halves.
   empty <- rep("", n)
   left <- right <- vector("list", p + 1L)
   left[[1L]] <- empty

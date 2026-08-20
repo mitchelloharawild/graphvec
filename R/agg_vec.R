@@ -26,10 +26,8 @@ agg_vec <- function(x = character(), aggregated = logical(NROW(x))){
   new_agg_vec(x[!is_agg], which(is_agg))
 }
 
-# Low-level constructor: x is the disaggregated values (length i); agg_pos
-# is the sorted positions of aggregated values in the full length-n vector
-# (n = i + length(agg_pos)). x is wrapped in a list so its class/attributes
-# are stored untouched rather than being overwritten.
+# x: disaggregated values. agg_pos: their aggregated positions in the full
+# vector. x is wrapped in a list so its class/attributes aren't overwritten.
 new_agg_vec <- function(x, agg_pos) {
   structure(list(x), class = "agg_vec", agg_pos = agg_pos)
 }
@@ -146,8 +144,7 @@ is.na.agg_vec <- function(x) {
   is.na(agg_vec_expand(x)) & !agg_vec_is_agg(x)
 }
 
-# The 1-column special case of an agg_df's lattice: with no other columns to
-# match on, every aggregated position becomes a parent of every
+# 1-column special case: every aggregated position is a parent of every
 # non-aggregated position (a single star).
 #' @rdname reorient
 #' @export

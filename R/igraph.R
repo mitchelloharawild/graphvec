@@ -15,13 +15,8 @@ NULL
 #' @rdname as.igraph
 #' @exportS3Method igraph::as.igraph
 as.igraph.agg_vec <- function(x, ...) {
-  # agg_vec never stores an edge table (DESIGN.md 8.3): within one star,
-  # `from` is every disaggregated position and `to` is that star's
-  # aggregate position, computed on demand rather than materialised into a
-  # node_vec. A panel is a forest of such stars -- `aggregated` may be TRUE
-  # at more than one position, each the root of its own disjoint star, with
-  # the disaggregated rows immediately following it (up to the next
-  # aggregate row) as its children.
+  # A forest of stars: each aggregated position is the parent of the
+  # disaggregated rows immediately following it, up to the next aggregate row.
   is_agg <- is_aggregated(x)
   parent <- cummax(seq_along(is_agg) * is_agg)
   from <- which(!is_agg & parent > 0L)
@@ -38,8 +33,7 @@ as.igraph.agg_df <- function(x, ...) {
 #' @exportS3Method igraph::as.igraph
 as.igraph.node_vec <- function(x, ...) {
   e <- attr(x, "edges")
-  # Node identity is positional, so the vertex count comes from `x` rather than
-  # from the edges -- otherwise trailing isolated nodes would be dropped.
+  # Vertex count comes from `x`, not the edges, so trailing isolated nodes aren't dropped.
   igraph_from_edges(from = e[["from"]], to = e[["to"]], n = length(x))
 }
 
