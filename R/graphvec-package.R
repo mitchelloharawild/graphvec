@@ -1,5 +1,5 @@
 #' @docType package
-#' @keywords package
+#' @keywords internal package
 "_PACKAGE"
 
 ## usethis namespace: start

@@ -23,3 +23,4 @@ are dropped, surviving edges are remapped to the new positions, and
 replicated nodes (e.g. \code{x[c(1, 1, 2)]}) clone the edges incident to the
 original.
 }
+\keyword{internal}

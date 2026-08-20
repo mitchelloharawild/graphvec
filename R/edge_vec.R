@@ -143,6 +143,7 @@ pillar_shaft.edge_vec <- function(x, ...) {
 #' @param i Indices to select, as for `` `[` ``.
 #' @param ... Passed on.
 #' @return An `edge_vec` containing only the selected edges.
+#' @keywords internal
 #' @export
 `[.edge_vec` <- function(x, i, ...) {
   if (missing(i)) {

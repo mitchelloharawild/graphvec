@@ -19,3 +19,30 @@ development:
 authors:
   Mitchell O'Hara-Wild:
     href: https://mitchelloharawild.com
+
+reference:
+- title: Graph vectors
+  desc: Vectorised graph data structures.
+  contents:
+  - node_vec
+  - edge_vec
+  - agg_vec
+  - agg_df
+
+- title: Graph structure
+  desc: Access the nodes and edges of a graph vector, and identify aggregated elements.
+  contents:
+  - nodes
+  - edges
+  - is_aggregated
+
+- title: Interoperability
+  desc: Convert graph vectors to other graph representations.
+  contents:
+  - as.igraph
+
+- title: Developer tools
+  desc: Low-level constructors for extending graphvec's classes.
+  contents:
+  - new_node_vec
+  - new_edge_vec

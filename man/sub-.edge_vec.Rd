@@ -21,3 +21,4 @@ Slicing an \code{edge_vec} selects edges directly: dropping or reordering
 edges never invalidates a node reference, so \code{nodes}/\code{directed} are
 unaffected -- unlike slicing a \code{\link[=node_vec]{node_vec()}}, no remap is needed.
 }
+\keyword{internal}

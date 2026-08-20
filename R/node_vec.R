@@ -165,6 +165,7 @@ node_vec_reindex_edges <- function(n, idx, edges) {
 #' @param ... Passed on.
 #' @return A `node_vec` containing only the selected nodes, with `edges`
 #'   restricted to the induced subgraph.
+#' @keywords internal
 #' @export
 `[.node_vec` <- function(x, i, ...) {
   if (missing(i)) {
