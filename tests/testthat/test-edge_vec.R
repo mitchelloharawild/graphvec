@@ -53,6 +53,43 @@ test_that("$.edge_vec retrieves node data for from and to when nodes is a plain 
   expect_equal(e$to, c("B", "C"))
 })
 
+test_that("edge_vec() accepts a list `from`/`to` as a hyperedge column", {
+  e <- edge_vec(
+    from = list(c(1L, 2L)),
+    to = 3L,
+    nodes = data.frame(label = c("A", "B", "C"))
+  )
+  expect_s3_class(e, "edge_vec")
+  expect_length(e, 1L)
+})
+
+test_that("$.edge_vec resolves a hyperedge column to one node slice per edge", {
+  e <- edge_vec(
+    from = list(c(1L, 2L), 3L),
+    to = c(3L, 1L),
+    nodes = data.frame(label = c("A", "B", "C"))
+  )
+  expect_equal(e$from, list(data.frame(label = c("A", "B")), data.frame(label = "C")))
+  expect_equal(e$to, data.frame(label = c("C", "A")))
+})
+
+test_that("format.edge_vec() braces a hyperedge role with more than one node", {
+  e <- edge_vec(
+    from = list(c(1L, 2L)),
+    to = 3L,
+    nodes = data.frame(label = c("A", "B", "C"))
+  )
+  expect_equal(format(e), "[{A,B}]->[C]")
+})
+
+test_that("c.edge_vec() up-casts an ordinary `from`/`to` to a hyperedge column to combine with one", {
+  e1 <- edge_vec(from = list(c(1L, 2L)), to = 1L, nodes = data.frame(label = c("A", "B")))
+  e2 <- edge_vec(from = 1L, to = 2L, nodes = data.frame(label = c("X", "Y")))
+  u <- c(e1, e2)
+
+  expect_equal(format(u), c("[{A,B}]->[A]", "[X]->[Y]"))
+})
+
 test_that("$.edge_vec rejects invalid field names", {
   e <- edge_vec(
     from = c(1L, 2L),

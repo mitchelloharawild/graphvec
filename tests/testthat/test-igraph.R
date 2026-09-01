@@ -43,6 +43,38 @@ test_that("as.igraph() drops agg_vec rows with no preceding aggregate root", {
   expect_equal(igraph::ecount(ig), 0L)
 })
 
+test_that("as.igraph() gives every consecutive `<aggregated>` value as a child's parent (a hyperedge)", {
+  skip_if_not_installed("igraph")
+  # Two aggregate rows (1, 2) with no child between them are both parents of
+  # the children that follow (3, 4) -- order among the aggregates shouldn't
+  # matter, and this can't be expressed as an ordinary igraph edge list.
+  v <- agg_vec(c(NA, NA, "A", "B"), aggregated = c(TRUE, TRUE, FALSE, FALSE))
+  expect_error(igraph::as.igraph(v), class = "rlang_error")
+})
+
+test_that("as.igraph() still converts a lone `<aggregated>` value to ordinary edges", {
+  skip_if_not_installed("igraph")
+  # Regression guard: only a *run* of more than one aggregate should trip the
+  # hyperedge path -- a single aggregate followed later by another (with
+  # children in between) must stay two ordinary single-parent stars.
+  v <- agg_vec(
+    c(NA, "A", NA, "B"),
+    aggregated = c(TRUE, FALSE, TRUE, FALSE)
+  )
+  ig <- igraph::as.igraph(v)
+  expect_equal(igraph::ecount(ig), 2L)
+  expect_equal(igraph::as_edgelist(ig, names = FALSE), cbind(c(2L, 4L), c(1L, 3L)))
+})
+
+test_that("as.igraph() errors on a hyperedge node_vec/edge_vec (igraph has no hyperedge concept)", {
+  skip_if_not_installed("igraph")
+  g <- node_vec(x = c("A", "B", "C"), from = list(c(1L, 2L)), to = 3L)
+  expect_error(igraph::as.igraph(g), class = "rlang_error")
+
+  e <- edge_vec(from = list(c(1L, 2L)), to = 3L, nodes = c("A", "B", "C"))
+  expect_error(igraph::as.igraph(e), class = "rlang_error")
+})
+
 test_that("as.igraph() converts agg_df to an igraph object", {
   skip_if_not_installed("igraph")
   # A single crossed cell (row 1) with its two one-column aggregates (rows

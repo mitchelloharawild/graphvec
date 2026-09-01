@@ -4,11 +4,11 @@
 \name{graphvec-package}
 \alias{graphvec}
 \alias{graphvec-package}
-\title{graphvec: Vectorised graph data structures}
+\title{graphvec: Vectorised Graph Data Structures}
 \description{
 \if{html}{\figure{logo.svg}{options: style='float: right' alt='logo' width='120'}}
 
-Extends vectors to include graph relationships between their elements, and offers tools to compute useful summaries of the graph structure for use in summarising, filtering, and otherwise manipulating the graph.
+Extends vectors to include graph relationships between their elements, and offers tools to compute useful summaries of the graph structure for use in summarising, filtering, and otherwise manipulating the graph. Node identity is positional rather than value-based, so isolated nodes and repeated values are represented without special handling. Three complementary data structures are provided, each an ordinary vector that stays a column in a data frame and slices consistently with it: 'node_vec' is vectorised along the nodes of a graph, 'edge_vec' is vectorised along its edges, and 'agg_vec' (with the tabular 'agg_df') represents the aggregation structure common in data analysis, such as a total row over a set of categories. This makes graph relationships a native part of tidy rectangular data analysis workflows, alongside tools such as those in 'dplyr'. Each of these can also be converted to 'igraph' objects for further analysis.
 }
 \seealso{
 Useful links:

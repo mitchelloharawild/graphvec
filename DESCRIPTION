@@ -23,6 +23,7 @@ Description: Extends vectors to include graph relationships between their
     'igraph' objects for further analysis.
 License: MIT + file LICENSE
 Imports:
+    cli,
     tibble
 Suggests: 
     crayon,

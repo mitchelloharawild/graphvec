@@ -4,9 +4,12 @@
 #' attributes.
 #'
 #' @param x A vector representing the nodes in the graph.
-#' @param from Integer vector of 'from' node positions into `x`. Hyperedges
-#' (multiple 'from' nodes per edge) are not yet supported.
-#' @param to Integer vector of 'to' node positions into `x`.
+#' @param from Integer vector of 'from' node positions into `x`, one per
+#' edge. A list of integer vectors instead opts into hyperedges: each
+#' element gives the (zero or more) 'from' positions for that edge, an
+#' ordinary edge being the length-1 case.
+#' @param to Integer vector of 'to' node positions into `x`, or a list of
+#' integer vectors for hyperedges, the same way as `from`.
 #' @param ... Named edge attribute vectors (e.g. `weight = c(1, 2, 5)`),
 #' recycled to the number of edges. `from` and `to` are reserved and cannot
 #' be used as attribute names. Attribute columns are stored on the edge
@@ -38,8 +41,8 @@ node_vec <- function(x = list(), from = integer(), to = integer(), ..., directed
   stopifnot(!is.na(directed))
 
   fields <- new_edge_attrs(from, to, ...)
-  stopifnot(is.integer(fields$from))
-  stopifnot(is.integer(fields$to))
+  stopifnot(is_valid_incidence(fields$from))
+  stopifnot(is_valid_incidence(fields$to))
   edges <- tibble::as_tibble(fields)
 
   new_node_vec(x = x, edges = edges, directed = directed)
@@ -125,9 +128,12 @@ node_label <- function(x, ...) {
 
 # Induced-subgraph edge remap for a node_vec sliced from `n` nodes down to
 # `idx` (the new node's old position, with repeats for replicated nodes and
-# NA for positions with no source). Edges losing an endpoint are dropped;
-# edges whose endpoints were replicated are cloned once per combination of
-# replica positions, carrying the same attribute values as the original.
+# NA for positions with no source). An edge is dropped if any node it
+# references (in either role, and for every member of a hyperedge role) was
+# dropped; an edge whose referenced nodes were replicated is cloned once per
+# combination of replica positions, carrying the same attribute values as
+# the original. `from`/`to` stay whatever shape (plain or hyperedge) they
+# arrived in.
 node_vec_reindex_edges <- function(n, idx, edges) {
   new_positions <- vector("list", n)
   for (j in seq_along(idx)) {
@@ -138,26 +144,36 @@ node_vec_reindex_edges <- function(n, idx, edges) {
 
   from <- edges[["from"]]
   to <- edges[["to"]]
+  from_is_hyper <- is.list(from)
+  to_is_hyper <- is.list(to)
 
-  new_from <- integer()
-  new_to <- integer()
+  new_from <- list()
+  new_to <- list()
   new_source <- integer()
 
   for (e in seq_along(to)) {
-    from_opts <- new_positions[[from[e]]]
-    to_opts <- new_positions[[to[e]]]
+    from_val <- if (from_is_hyper) from[[e]] else from[e]
+    to_val <- if (to_is_hyper) to[[e]] else to[e]
+
+    from_opts <- incidence_options(from_val, new_positions)
+    to_opts <- incidence_options(to_val, new_positions)
     if (length(from_opts) == 0L || length(to_opts) == 0L) next
 
-    combos <- expand.grid(from = from_opts, to = to_opts, KEEP.OUT.ATTRS = FALSE)
-    new_from <- c(new_from, combos$from)
-    new_to <- c(new_to, combos$to)
-    new_source <- c(new_source, rep(e, nrow(combos)))
+    # `from` varies fastest, `to` slowest -- the same order expand.grid()
+    # would produce for expand.grid(from = from_opts, to = to_opts).
+    for (t in to_opts) {
+      for (f in from_opts) {
+        new_from[[length(new_from) + 1L]] <- f
+        new_to[[length(new_to) + 1L]] <- t
+        new_source <- c(new_source, e)
+      }
+    }
   }
 
   new_edges <- edges[new_source, , drop = FALSE]
   rownames(new_edges) <- NULL
-  new_edges[["from"]] <- new_from
-  new_edges[["to"]] <- new_to
+  new_edges[["from"]] <- if (from_is_hyper) as_incidence_list(new_from) else as.integer(unlist(new_from, use.names = FALSE))
+  new_edges[["to"]] <- if (to_is_hyper) as_incidence_list(new_to) else as.integer(unlist(new_to, use.names = FALSE))
   new_edges
 }
 
@@ -260,10 +276,21 @@ c.node_vec <- function(...) {
 
   edges <- Map(function(x, offset) {
     e <- attr(x, "edges")
-    e[["from"]] <- e[["from"]] + offset
-    e[["to"]] <- e[["to"]] + offset
+    e[["from"]] <- offset_incidence(e[["from"]], offset)
+    e[["to"]] <- offset_incidence(e[["to"]], offset)
     e
   }, xs, offsets)
+
+  # Up-cast to a hyperedge column if any source uses one for this role, so an
+  # ordinary and a hyperedge node_vec can still be combined.
+  for (col in c("from", "to")) {
+    if (any(vapply(edges, function(e) is.list(e[[col]]), logical(1)))) {
+      edges <- lapply(edges, function(e) {
+        e[[col]] <- as_incidence_list(e[[col]])
+        e
+      })
+    }
+  }
 
   new_node_vec(
     x = combine_values(lapply(xs, node_vec_data)),

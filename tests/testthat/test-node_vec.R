@@ -28,9 +28,45 @@ test_that("node_vec() accepts an empty vector", {
   expect_length(g, 0L)
 })
 
-test_that("node_vec() requires `from`/`to` to be plain integer vectors (hyperedges not yet supported)", {
-  expect_error(node_vec(x = c("A", "B", "C"), from = list(1L), to = 2L))
-  expect_error(node_vec(x = c("A", "B", "C"), from = list(c(1L, 2L)), to = 3L))
+test_that("node_vec() accepts a list `from`/`to` as a hyperedge column", {
+  # A single hyperedge: "from" nodes 1 and 2 both feed into node 3.
+  g <- node_vec(x = c("A", "B", "C"), from = list(c(1L, 2L)), to = 3L)
+  expect_s3_class(g, "node_vec")
+  expect_equal(attr(g, "edges")$from, list(c(1L, 2L)), ignore_attr = TRUE)
+})
+
+test_that("node_vec() rejects a `from`/`to` list containing non-integer elements", {
+  expect_error(node_vec(x = c("A", "B", "C"), from = list("A"), to = 2L))
+})
+
+test_that("`[.node_vec` drops a hyperedge losing any one of its members", {
+  # A -> C hyperedge from {A, B}; slicing out B should drop the whole edge.
+  g <- node_vec(x = c("A", "B", "C"), from = list(c(1L, 2L)), to = 3L)
+  m <- g[c(1, 3)]
+  expect_length(attr(m, "edges")$from, 0L)
+})
+
+test_that("`[.node_vec` clones a hyperedge once per combination of replicated members", {
+  g <- node_vec(x = c("A", "B", "C"), from = list(c(1L, 2L)), to = 3L)
+  m <- g[c(1, 1, 2, 3)] # A has 2 replicas (1, 2), B has 1 (3), C is now 4
+  expect_equal(
+    attr(m, "edges")$from,
+    list(c(1L, 3L), c(2L, 3L)),
+    ignore_attr = TRUE
+  )
+  expect_equal(attr(m, "edges")$to, c(4L, 4L))
+})
+
+test_that("c.node_vec() up-casts an ordinary `from`/`to` to a hyperedge column to combine with one", {
+  g1 <- node_vec(x = c("A", "B", "C"), from = list(c(1L, 2L)), to = 3L)
+  g2 <- node_vec(x = c("X", "Y"), from = 1L, to = 2L)
+  u <- c(g1, g2)
+  expect_equal(
+    attr(u, "edges")$from,
+    list(c(1L, 2L), 4L),
+    ignore_attr = TRUE
+  )
+  expect_equal(attr(u, "edges")$to, c(3L, 5L))
 })
 
 test_that("node_vec() accepts a data frame of node attributes, sized by row count", {

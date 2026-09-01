@@ -3,9 +3,12 @@
 #' An `edge_vec` is a vector of graph edges with associated node data stored as
 #' attributes.
 #'
-#' @param from Integer vector of 'from' node indices. Hyperedges (multiple
-#' 'from' nodes per edge) are not yet supported.
-#' @param to Integer vector of 'to' node indices.
+#' @param from Integer vector of 'from' node indices, one per edge. A list of
+#' integer vectors instead opts into hyperedges: each element gives the
+#' (zero or more) 'from' node positions for that edge, an ordinary edge
+#' being the length-1 case.
+#' @param to Integer vector of 'to' node indices, or a list of integer
+#' vectors for hyperedges, the same way as `from`.
 #' @param ... Named edge attribute vectors (e.g. `weight = c(1, 2, 5)`),
 #' recycled to the number of edges. `from` and `to` are reserved and cannot
 #' be used as attribute names. Attribute columns are stored on the edge table
@@ -41,8 +44,8 @@
 edge_vec <- function(from = integer(), to = integer(), ..., nodes = data.frame(), directed = TRUE) {
   fields <- new_edge_attrs(from, to, ...)
 
-  stopifnot(is.integer(fields$from))
-  stopifnot(is.integer(fields$to))
+  stopifnot(is_valid_incidence(fields$from))
+  stopifnot(is_valid_incidence(fields$to))
   stopifnot(is.atomic(nodes) || is.list(nodes))
   stopifnot(is.logical(directed), length(directed) == 1)
   stopifnot(!is.na(directed))
@@ -57,8 +60,11 @@ new_edge_attrs <- function(from, to, ...) {
   if (length(attrs) > 0 && (is.null(names(attrs)) || any(names(attrs) == ""))) {
     stop("All edge attributes passed via `...` must be named.", call. = FALSE)
   }
-  # data.frame() recycles each field up to the others' length and errors on mismatch.
-  as.list(do.call(data.frame, c(list(from = from, to = to), attrs, list(stringsAsFactors = FALSE))))
+  # Recycles each field up to the others' length and errors on mismatch, same
+  # as data.frame() -- but also handles a hyperedge (list) `from`/`to` column,
+  # which data.frame() refuses to recycle against a plain one.
+  cols <- recycle_common(c(list(from = from, to = to), attrs))
+  as.list(edge_fields_df(cols))
 }
 
 # Drops "edge_vec" from x's class and clears the nodes/directed attributes,
@@ -77,13 +83,15 @@ edge_vec_data <- strip_edge_vec
 # The fields, rewrapped as a genuine data frame for call sites that need
 # real row-wise semantics (`[.data.frame`/rbind() require it).
 edge_vec_fields_df <- function(x) {
-  do.call(data.frame, c(edge_vec_data(x), list(stringsAsFactors = FALSE)))
+  edge_fields_df(edge_vec_data(x))
 }
 
 #' Constructor function for edge_vec
 #'
-#' @param from Integer vector of 'from' node indices.
-#' @param to Integer vector of 'to' node indices.
+#' @param from Integer vector of 'from' node indices, or a list of integer
+#' vectors for hyperedges.
+#' @param to Integer vector of 'to' node indices, or a list of integer
+#' vectors for hyperedges.
 #' @param ... Named edge attribute fields, already recycled to the number of
 #' edges.
 #' @param nodes Vector of node data (any vector, including a data
@@ -101,7 +109,7 @@ edge_vec_fields_df <- function(x) {
 #'
 #' @export
 new_edge_vec <- function(from = integer(), to = integer(), ..., nodes = data.frame(), directed = TRUE) {
-  fields <- do.call(data.frame, c(list(from = from, to = to), list(...), list(stringsAsFactors = FALSE)))
+  fields <- new_edge_attrs(from, to, ...)
   new_edge_vec_fields(fields, nodes = nodes, directed = directed)
 }
 
@@ -122,9 +130,9 @@ format.edge_vec <- function(x, ...){
   arrow <- if (isTRUE(attr(x, "directed"))) "->" else "--"
   sprintf(
     "[%s]%s[%s]",
-    node_label(slice_rows(key_data, fields[["from"]])),
+    incidence_label(key_data, fields[["from"]]),
     arrow,
-    node_label(slice_rows(key_data, fields[["to"]]))
+    incidence_label(key_data, fields[["to"]])
   )
 }
 
@@ -196,10 +204,21 @@ c.edge_vec <- function(...) {
 
   fields <- Map(function(x, offset) {
     f <- edge_vec_fields_df(x)
-    f[["from"]] <- f[["from"]] + offset
-    f[["to"]] <- f[["to"]] + offset
+    f[["from"]] <- offset_incidence(f[["from"]], offset)
+    f[["to"]] <- offset_incidence(f[["to"]], offset)
     f
   }, xs, offsets)
+
+  # Up-cast to a hyperedge column if any source uses one for this role, so an
+  # ordinary and a hyperedge edge_vec can still be combined.
+  for (col in c("from", "to")) {
+    if (any(vapply(fields, function(f) is.list(f[[col]]), logical(1)))) {
+      fields <- lapply(fields, function(f) {
+        f[[col]] <- as_incidence_list(f[[col]])
+        f
+      })
+    }
+  }
 
   new_edge_vec_fields(
     fields = rbind_fill(fields),
@@ -248,7 +267,7 @@ type_sum.edge_vec <- function(x, ...) {
   fields <- edge_vec_data(x)
 
   if (name %in% c("from", "to")) {
-    return(slice_rows(attr(x, "nodes"), fields[[name]]))
+    return(incidence_slice(attr(x, "nodes"), fields[[name]]))
   }
 
   if (name %in% names(fields)) {

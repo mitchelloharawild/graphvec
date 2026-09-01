@@ -9,10 +9,13 @@ node_vec(x = list(), from = integer(), to = integer(), ..., directed = TRUE)
 \arguments{
 \item{x}{A vector representing the nodes in the graph.}
 
-\item{from}{Integer vector of 'from' node positions into \code{x}. Hyperedges
-(multiple 'from' nodes per edge) are not yet supported.}
+\item{from}{Integer vector of 'from' node positions into \code{x}, one per
+edge. A list of integer vectors instead opts into hyperedges: each
+element gives the (zero or more) 'from' positions for that edge, an
+ordinary edge being the length-1 case.}
 
-\item{to}{Integer vector of 'to' node positions into \code{x}.}
+\item{to}{Integer vector of 'to' node positions into \code{x}, or a list of
+integer vectors for hyperedges, the same way as \code{from}.}
 
 \item{...}{Named edge attribute vectors (e.g. \code{weight = c(1, 2, 5)}),
 recycled to the number of edges. \code{from} and \code{to} are reserved and cannot

@@ -13,9 +13,11 @@ new_edge_vec(
 )
 }
 \arguments{
-\item{from}{Integer vector of 'from' node indices.}
+\item{from}{Integer vector of 'from' node indices, or a list of integer
+vectors for hyperedges.}
 
-\item{to}{Integer vector of 'to' node indices.}
+\item{to}{Integer vector of 'to' node indices, or a list of integer
+vectors for hyperedges.}
 
 \item{...}{Named edge attribute fields, already recycled to the number of
 edges.}

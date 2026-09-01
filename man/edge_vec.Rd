@@ -13,10 +13,13 @@ edge_vec(
 )
 }
 \arguments{
-\item{from}{Integer vector of 'from' node indices. Hyperedges (multiple
-'from' nodes per edge) are not yet supported.}
+\item{from}{Integer vector of 'from' node indices, one per edge. A list of
+integer vectors instead opts into hyperedges: each element gives the
+(zero or more) 'from' node positions for that edge, an ordinary edge
+being the length-1 case.}
 
-\item{to}{Integer vector of 'to' node indices.}
+\item{to}{Integer vector of 'to' node indices, or a list of integer
+vectors for hyperedges, the same way as \code{from}.}
 
 \item{...}{Named edge attribute vectors (e.g. \code{weight = c(1, 2, 5)}),
 recycled to the number of edges. \code{from} and \code{to} are reserved and cannot

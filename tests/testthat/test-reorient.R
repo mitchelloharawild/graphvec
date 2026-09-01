@@ -89,6 +89,13 @@ test_that("edge attribute columns survive nodes()/edges() reorientation lossless
   expect_equal(e3$weight, c(10, 20))
 })
 
-test_that("node_vec() rejects hyperedges (from must be a plain integer vector)", {
-  expect_error(node_vec(x = c("A", "B", "C"), from = list(c(1L, 2L)), to = 3L))
+test_that("hyperedges reorient losslessly between node_vec and edge_vec", {
+  g <- node_vec(x = c("A", "B", "C"), from = list(c(1L, 2L)), to = 3L)
+  e <- edges(g)
+  expect_equal(e$from, list(c("A", "B")))
+  expect_equal(e$to, "C")
+
+  g2 <- nodes(e)
+  expect_equal(attr(g2, "edges")$from, list(c(1L, 2L)), ignore_attr = TRUE)
+  expect_equal(attr(g2, "edges")$to, 3L)
 })
