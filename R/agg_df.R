@@ -7,6 +7,18 @@
 #' another row whenever the parent aggregates exactly one more column and
 #' matches on every other column's disaggregated value.
 #'
+#' @details
+#' An `agg_df`'s rows form a lattice of aggregation levels, with one
+#' elementary chain per column (or nested group of columns, e.g.
+#' `State/Region` together), combined the way a symbolic formula like
+#' `Purpose * (State / Region)` would combine them. See [agg_vec()] for the
+#' OLAP `CUBE`/`ROLLUP` correspondence this generalises, and for what the
+#' representation deliberately does not support: it is limited to nested
+#' and crossed dimension structures inferred by key matching, not a general
+#' hypergraph, and a partially-crossed ("pruned"/unbalanced) column
+#' combination gives a meet-semilattice missing some joins rather than an
+#' error.
+#'
 #' @param ... Named `agg_vec` columns, all the same length.
 #'
 #' @return An `agg_df` object.

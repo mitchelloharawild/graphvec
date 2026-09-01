@@ -6,6 +6,43 @@
 #' disaggregated values are provided in `x`. Aggregated values are displayed
 #' as `<aggregated>` by default.
 #'
+#' @details
+#' `agg_vec` represents one *dimension* of aggregation as a two-level chain
+#' (disaggregated values below their shared `<aggregated>` total). It
+#' relies on matching key values across columns, not a stored edge, to find
+#' each row's parent (see [agg_df()]). This is the same construction as
+#' SQL's `CUBE`/`ROLLUP`/`GROUPING SETS` (Gray, Bosworth, Layman & Pirahesh,
+#' 1996), where `<aggregated>` plays the role of their sentinel `NULL`
+#' marking "summed over this column"; several `agg_vec` columns combined in
+#' an [`agg_df()`] produce exactly the "lattice of cuboids" of Harinarayan,
+#' Rajaraman & Ullman (1996).
+#'
+#' Because it infers parents rather than storing them, `agg_vec`/`agg_df`
+#' only support the nested (hierarchical) and crossed (grouped) dimension
+#' structures a symbolic formula like `Purpose * (State / Region)` can
+#' produce: always at least a meet-semilattice, and a full distributive
+#' lattice when every pair of combined columns is fully crossed. They
+#' cannot represent a hypergraph, that is, an aggregate whose value is
+#' jointly determined by one *specific, tagged* group of children (a
+#' directed hyperedge/AND-arc), as opposed to an ordinary total reachable
+#' by matching key values. A well-formed `agg_vec` has at most one row per
+#' distinct combination of aggregated/disaggregated values; a duplicate
+#' combination (e.g. two consecutive `<aggregated>` rows with no
+#' disaggregated row between them) can't be resolved to a single parent,
+#' and is reported as a hyperedge by [igraph::as.igraph()] rather than
+#' silently resolved to one. For arbitrary graphs, such as explicit
+#' hyperedges or aggregation structures with no shared bottom series across
+#' pathways (divergent groups), use [node_vec()]/[edge_vec()] directly
+#' instead.
+#'
+#' @references
+#' Gray, J., Bosworth, A., Layman, A., & Pirahesh, H. (1996). Data Cube: A
+#' Relational Aggregation Operator Generalizing Group-By, Cross-Tab, and
+#' Sub-Totals. *ICDE*.
+#'
+#' Harinarayan, V., Rajaraman, A., & Ullman, J. D. (1996). Implementing
+#' Data Cubes Efficiently. *SIGMOD*.
+#'
 #' @param x The vector of values.
 #' @param aggregated A logical vector to identify which values are `<aggregated>`.
 #'
