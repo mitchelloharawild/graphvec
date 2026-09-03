@@ -10,7 +10,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">graphvec</a>
 
-    <small class="nav-text text-danger me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Unreleased version">0.0.0.9000</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Released version">0.1.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -31,14 +31,14 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.svg" class="logo" alt=""><h1>Changelog</h1>
-      <small>Source: <a href="https://github.com/mitchelloharawild/graphvec/blob/main/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
+      <small>Source: <a href="https://github.com/mitchelloharawild/graphvec/blob/v0.1.0/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
     <div class="section level2">
-<h2 class="pkg-version" data-toc-text="development version" id="graphvec-development-version">graphvec (development version)<a class="anchor" aria-label="anchor" href="#graphvec-development-version"></a></h2>
+<h2 class="pkg-version" data-toc-text="0.1.0" id="graphvec-010">graphvec 0.1.0<a class="anchor" aria-label="anchor" href="#graphvec-010"></a></h2>
 <p>Initial CRAN submission.</p>
 <div class="section level3">
-<h3 id="new-features-development-version">New features<a class="anchor" aria-label="anchor" href="#new-features-development-version"></a></h3>
+<h3 id="new-features-0-1-0">New features<a class="anchor" aria-label="anchor" href="#new-features-0-1-0"></a></h3>
 <ul><li>Added <code><a href="../reference/node_vec.html">node_vec()</a></code>, a graph vector of nodes with edges stored as attributes. Slicing induces a subgraph: edges that lose an endpoint are dropped, and remaining endpoints are remapped.</li>
 <li>Added <code><a href="../reference/edge_vec.html">edge_vec()</a></code>, a graph vector of edges with node data stored as attributes. Slicing selects edges directly, leaving nodes unaffected.</li>
 <li>Added <code><a href="../reference/agg_vec.html">agg_vec()</a></code>, an aggregation vector: a <code>node_vec</code> consisting of a parent value (the aggregated value) and its disaggregated children.</li>

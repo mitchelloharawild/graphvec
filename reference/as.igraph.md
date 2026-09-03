@@ -56,7 +56,7 @@ if (requireNamespace("igraph", quietly = TRUE)) {
   )
   igraph::as.igraph(g)
 }
-#> IGRAPH 78a56fd D--- 3 2 -- 
-#> + edges from 78a56fd:
+#> IGRAPH 17f23eb D--- 3 2 -- 
+#> + edges from 17f23eb:
 #> [1] 1->2 2->3
 ```

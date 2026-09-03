@@ -8,16 +8,15 @@
 ## Citation
 
 Source:
-[`DESCRIPTION`](https://github.com/mitchelloharawild/graphvec/blob/main/DESCRIPTION)
+[`DESCRIPTION`](https://github.com/mitchelloharawild/graphvec/blob/v0.1.0/DESCRIPTION)
 
 O'Hara-Wild M (2026). *graphvec: Vectorised Graph Data Structures*. R
-package version 0.0.0.9000,
-<https://pkg.mitchelloharawild.com/graphvec/>.
+package version 0.1.0, <https://pkg.mitchelloharawild.com/graphvec/>.
 
     @Manual{,
       title = {graphvec: Vectorised Graph Data Structures},
       author = {Mitchell O'Hara-Wild},
       year = {2026},
-      note = {R package version 0.0.0.9000},
+      note = {R package version 0.1.0},
       url = {https://pkg.mitchelloharawild.com/graphvec/},
     }
