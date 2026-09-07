@@ -41,37 +41,28 @@ attribute table; for the tree representation, the same external
 contract is upheld via \code{TreeData::order} (see its doc comment).
 }
 
-\subsection{Method \code{is_tree}}{
-Whether this backend is tree/forest-shaped (\code{Repr::Tree}) -- the one
-thing R call sites (once any exist) need to check before calling
-\code{parent()}, per \verb{_dev/petgraph_data_types.md} S3's suggestion of a
-single predicate rather than a per-variant method surface.
-}
-
-\subsection{Method \code{is_dense}}{
-Whether this backend is dense-matrix-shaped (\code{Repr::Dense}) -- a
-test/diagnostic accessor mirroring \code{is_tree()}'s pattern (same
-reasoning: one predicate per variant, not a different method surface
-per shape). Not currently required by any \verb{R/*.R} call site, added
-for the same reason \code{is_tree()} was: this file's tests need a way to
-confirm which \code{Repr} a given \code{new()} call picked.
-}
-
-\subsection{Method \code{is_csr}}{
-Whether this backend is CSR-shaped (\code{Repr::Csr}) -- a test/diagnostic
-accessor mirroring \code{is_tree()}/\code{is_dense()}'s pattern, added for the
-same reason: this file's tests need a way to confirm which \code{Repr} a
-given \code{new()} call picked. Not currently required by any \verb{R/*.R} call
-site.
+\subsection{Method \code{repr_name}}{
+Which physical representation this backend picked, as a stable name
+(\code{"general"}, \code{"tree"}, \code{"dense"}, \code{"csr"}) -- the one diagnostic
+entry point for "which \code{Repr} is this", replacing what used to be a
+separate \code{is_tree()}/\code{is_dense()}/\code{is_csr()} boolean per variant.
+That pattern grew one new \verb{#[extendr]} method -- permanent, exported
+R API the moment it's added, per this file's own "the method set is
+the contract" principle -- for every future \code{Repr} addition; this
+single method's match arm count grows with \code{Repr} instead, so the
+R-visible surface stays fixed no matter how many representations
+\code{GraphBackend} eventually holds. An R call site that needs to gate a
+shape-specific method (e.g. \code{parent()}, only defined for \code{"tree"})
+compares against this rather than calling a dedicated predicate.
 }
 
 \subsection{Method \code{parent}}{
 The 1-based parent position of \code{node} (1-based); \code{0} means \code{node} is
-a root. Only defined when \code{is_tree()} is true -- \code{0} already means
-"root" for a real tree, so a non-tree variant returning \code{0} would be
-silently indistinguishable from a real answer rather than "not
-applicable"; \verb{_dev/petgraph_data_types.md} S3 flags exactly this and
-suggests \verb{panic!}/\code{NA_INTEGER} instead, which is what this does --
+a root. Only defined when \code{repr_name()} is \code{"tree"} -- \code{0} already
+means "root" for a real tree, so a non-tree variant returning \code{0}
+would be silently indistinguishable from a real answer rather than
+"not applicable"; \verb{_dev/petgraph_data_types.md} S3 flags exactly this
+and suggests \verb{panic!}/\code{NA_INTEGER} instead, which is what this does --
 mirroring this project's existing idiom for an operation an input
 shape doesn't support (e.g. \code{check_no_hyperedges()}'s
 \code{cli::cli_abort()}) rather than returning a value that looks valid

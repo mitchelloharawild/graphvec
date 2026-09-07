@@ -208,6 +208,34 @@ fn has_duplicate_edges(from: &[i32], to: &[i32], directed: bool) -> bool {
     false
 }
 
+// Reverse adjacency as a CSR pair, built by counting sort over 1-based
+// `targets` (parallel to `sources`, same length): `ptr[i]..ptr[i+1]` slices
+// `idx` down to the `sources` entries whose target is node `i+1`. Shared by
+// `detect_tree()` (child -> parent edges: `sources` is the child ids,
+// `targets` their parents) and `detect_csr()` (`sources`/`targets` are
+// simply `from`/`to`) -- both need a node's *reverse* adjacency from a
+// representation that is only natively fast in the forward direction
+// (a parent-pointer vector, `Csr`'s own forward-sorted storage), and until
+// this was factored out here, both hand-wrote the identical counting-sort
+// with only variable names differing.
+fn build_reverse_csr(n: usize, sources: &[i32], targets: &[i32]) -> (Vec<i32>, Vec<i32>) {
+    let mut ptr = vec![0i32; n + 1];
+    for &t in targets {
+        ptr[t as usize] += 1;
+    }
+    for i in 0..n {
+        ptr[i + 1] += ptr[i];
+    }
+    let mut cursor = ptr.clone();
+    let mut idx = vec![0i32; targets.len()];
+    for (&s, &t) in sources.iter().zip(targets.iter()) {
+        let slot = cursor[(t - 1) as usize] as usize;
+        idx[slot] = s;
+        cursor[(t - 1) as usize] += 1;
+    }
+    (ptr, idx)
+}
+
 // Build one `MatrixGraph` instantiation from `from`/`to`, generic over
 // `Ty: EdgeType` so the directed/undirected cases share one construction
 // path (`detect_dense()` below picks which `Ty` to instantiate).
@@ -440,24 +468,10 @@ fn detect_csr(n: usize, from: &[i32], to: &[i32], directed: bool) -> Option<CsrD
 
     let csr = build_csr(n, from, to);
 
-    // Reverse (in-)adjacency CSR via counting sort over `to`, the same
-    // technique `detect_tree()` uses to build `children_ptr`/`children_idx`
-    // (generalised here: a node can have any number of in-edges, not at
-    // most one).
-    let mut in_ptr = vec![0i32; n + 1];
-    for &t in to {
-        in_ptr[t as usize] += 1;
-    }
-    for i in 0..n {
-        in_ptr[i + 1] += in_ptr[i];
-    }
-    let mut cursor = in_ptr.clone();
-    let mut in_idx = vec![0i32; from.len()];
-    for (&f, &t) in from.iter().zip(to.iter()) {
-        let slot = cursor[(t - 1) as usize] as usize;
-        in_idx[slot] = f;
-        cursor[(t - 1) as usize] += 1;
-    }
+    // Reverse (in-)adjacency CSR over `from`/`to`, via the shared
+    // counting-sort helper `detect_tree()`'s own reverse (children) index
+    // also uses -- see `build_reverse_csr()`'s doc comment.
+    let (in_ptr, in_idx) = build_reverse_csr(n, from, to);
 
     Some(CsrData {
         csr,
@@ -556,25 +570,14 @@ fn detect_tree(n: usize, from: &[i32], to: &[i32], directed: bool) -> Option<Tre
         }
     }
 
-    // Reverse CSR (children) via counting sort over `parent`.
-    let mut children_ptr = vec![0i32; n + 1];
-    for &p in &parent {
-        if p != 0 {
-            children_ptr[p as usize] += 1;
-        }
-    }
-    for i in 0..n {
-        children_ptr[i + 1] += children_ptr[i];
-    }
-    let mut cursor = children_ptr.clone();
-    let mut children_idx = vec![0i32; from.len()];
-    for (node0, &p) in parent.iter().enumerate() {
-        if p != 0 {
-            let slot = cursor[(p - 1) as usize] as usize;
-            children_idx[slot] = (node0 + 1) as i32;
-            cursor[(p - 1) as usize] += 1;
-        }
-    }
+    // Reverse (children) adjacency, via the shared counting-sort helper
+    // `detect_csr()`'s own reverse (in-)index also uses -- see
+    // `build_reverse_csr()`'s doc comment. `from` is already every non-root
+    // node's own id, exactly once, in construction order (out-degree <= 1
+    // was already enforced above, so no separate source list needs
+    // building); each one's parent-chased target is `parent[c - 1]`.
+    let child_targets: Vec<i32> = from.iter().map(|&c| parent[(c - 1) as usize]).collect();
+    let (children_ptr, children_idx) = build_reverse_csr(n, from, &child_targets);
 
     Some(TreeData {
         parent,
@@ -692,39 +695,34 @@ impl GraphBackend {
         self.directed
     }
 
-    /// Whether this backend is tree/forest-shaped (`Repr::Tree`) -- the one
-    /// thing R call sites (once any exist) need to check before calling
-    /// `parent()`, per `_dev/petgraph_data_types.md` S3's suggestion of a
-    /// single predicate rather than a per-variant method surface.
-    fn is_tree(&self) -> bool {
-        matches!(self.repr, Repr::Tree(_))
-    }
-
-    /// Whether this backend is dense-matrix-shaped (`Repr::Dense`) -- a
-    /// test/diagnostic accessor mirroring `is_tree()`'s pattern (same
-    /// reasoning: one predicate per variant, not a different method surface
-    /// per shape). Not currently required by any `R/*.R` call site, added
-    /// for the same reason `is_tree()` was: this file's tests need a way to
-    /// confirm which `Repr` a given `new()` call picked.
-    fn is_dense(&self) -> bool {
-        matches!(self.repr, Repr::Dense(_))
-    }
-
-    /// Whether this backend is CSR-shaped (`Repr::Csr`) -- a test/diagnostic
-    /// accessor mirroring `is_tree()`/`is_dense()`'s pattern, added for the
-    /// same reason: this file's tests need a way to confirm which `Repr` a
-    /// given `new()` call picked. Not currently required by any `R/*.R` call
-    /// site.
-    fn is_csr(&self) -> bool {
-        matches!(self.repr, Repr::Csr(_))
+    /// Which physical representation this backend picked, as a stable name
+    /// (`"general"`, `"tree"`, `"dense"`, `"csr"`) -- the one diagnostic
+    /// entry point for "which `Repr` is this", replacing what used to be a
+    /// separate `is_tree()`/`is_dense()`/`is_csr()` boolean per variant.
+    /// That pattern grew one new `#[extendr]` method -- permanent, exported
+    /// R API the moment it's added, per this file's own "the method set is
+    /// the contract" principle -- for every future `Repr` addition; this
+    /// single method's match arm count grows with `Repr` instead, so the
+    /// R-visible surface stays fixed no matter how many representations
+    /// `GraphBackend` eventually holds. An R call site that needs to gate a
+    /// shape-specific method (e.g. `parent()`, only defined for `"tree"`)
+    /// compares against this rather than calling a dedicated predicate.
+    fn repr_name(&self) -> String {
+        match &self.repr {
+            Repr::General(_) => "general",
+            Repr::Tree(_) => "tree",
+            Repr::Dense(_) => "dense",
+            Repr::Csr(_) => "csr",
+        }
+        .to_string()
     }
 
     /// The 1-based parent position of `node` (1-based); `0` means `node` is
-    /// a root. Only defined when `is_tree()` is true -- `0` already means
-    /// "root" for a real tree, so a non-tree variant returning `0` would be
-    /// silently indistinguishable from a real answer rather than "not
-    /// applicable"; `_dev/petgraph_data_types.md` S3 flags exactly this and
-    /// suggests `panic!`/`NA_INTEGER` instead, which is what this does --
+    /// a root. Only defined when `repr_name()` is `"tree"` -- `0` already
+    /// means "root" for a real tree, so a non-tree variant returning `0`
+    /// would be silently indistinguishable from a real answer rather than
+    /// "not applicable"; `_dev/petgraph_data_types.md` S3 flags exactly this
+    /// and suggests `panic!`/`NA_INTEGER` instead, which is what this does --
     /// mirroring this project's existing idiom for an operation an input
     /// shape doesn't support (e.g. `check_no_hyperedges()`'s
     /// `cli::cli_abort()`) rather than returning a value that looks valid
@@ -733,7 +731,7 @@ impl GraphBackend {
         match &self.repr {
             Repr::Tree(t) => t.parent[(node - 1) as usize],
             Repr::General(_) | Repr::Dense(_) | Repr::Csr(_) => {
-                panic!("`parent()` is only defined when `is_tree()` is TRUE")
+                panic!("`parent()` is only defined when `repr_name()` is \"tree\"")
             }
         }
     }
@@ -995,6 +993,31 @@ extendr_module! {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Test-only shape predicates, mirroring `repr_name()`'s match arms but
+    // as plain booleans for terser assertions below. Deliberately NOT
+    // `#[extendr]` (this `impl` block lives inside `#[cfg(test)]`, so it
+    // never compiles into the R-facing build) -- these used to be public
+    // `is_tree()`/`is_dense()`/`is_csr()` methods on `GraphBackend` itself,
+    // which meant every one was permanent, exported R API (extendr
+    // generates an R wrapper per method in a `#[extendr] impl` block); one
+    // stable `repr_name()` replaced them for any real R/cross-language use
+    // (see its doc comment), and this crate-internal impl keeps the terser
+    // `g.is_tree()` spelling for this file's own tests without paying that
+    // cost again per variant.
+    impl GraphBackend {
+        fn is_tree(&self) -> bool {
+            matches!(self.repr, Repr::Tree(_))
+        }
+
+        fn is_dense(&self) -> bool {
+            matches!(self.repr, Repr::Dense(_))
+        }
+
+        fn is_csr(&self) -> bool {
+            matches!(self.repr, Repr::Csr(_))
+        }
+    }
 
     // A `node_vec`/`edge_vec` sliced with `x[i]` relies on `edge_endpoints()`
     // enumerating edges in construction order -- confirm petgraph's
@@ -1364,7 +1387,7 @@ mod tests {
     // (see `GraphBackend::parent()`'s `Repr::General(_) | Repr::Dense(_)`
     // arm), so this doesn't need to pin down which of the two a cycle picks.
     #[test]
-    #[should_panic(expected = "`parent()` is only defined when `is_tree()` is TRUE")]
+    #[should_panic(expected = "`parent()` is only defined when `repr_name()` is \"tree\"")]
     fn parent_panics_on_non_tree_repr() {
         test! {
             let g = GraphBackend::new(3, vec![1, 2, 3], vec![2, 3, 1], true); // a cycle
@@ -1784,7 +1807,7 @@ mod tests {
     // Repr::Dense (see `GraphBackend::parent()`'s `Repr::General(_) |
     // Repr::Dense(_) | Repr::Csr(_)` arm).
     #[test]
-    #[should_panic(expected = "`parent()` is only defined when `is_tree()` is TRUE")]
+    #[should_panic(expected = "`parent()` is only defined when `repr_name()` is \"tree\"")]
     fn csr_parent_panics() {
         test! {
             let from = vec![1, 2, 3, 4, 5, 1];

@@ -31,37 +31,28 @@ NULL
 #'contract is upheld via `TreeData::order` (see its doc comment).
 #'}
 #'
-#'\subsection{Method `is_tree`}{
-#'Whether this backend is tree/forest-shaped (`Repr::Tree`) -- the one
-#'thing R call sites (once any exist) need to check before calling
-#'`parent()`, per `_dev/petgraph_data_types.md` S3's suggestion of a
-#'single predicate rather than a per-variant method surface.
-#'}
-#'
-#'\subsection{Method `is_dense`}{
-#'Whether this backend is dense-matrix-shaped (`Repr::Dense`) -- a
-#'test/diagnostic accessor mirroring `is_tree()`'s pattern (same
-#'reasoning: one predicate per variant, not a different method surface
-#'per shape). Not currently required by any `R/*.R` call site, added
-#'for the same reason `is_tree()` was: this file's tests need a way to
-#'confirm which `Repr` a given `new()` call picked.
-#'}
-#'
-#'\subsection{Method `is_csr`}{
-#'Whether this backend is CSR-shaped (`Repr::Csr`) -- a test/diagnostic
-#'accessor mirroring `is_tree()`/`is_dense()`'s pattern, added for the
-#'same reason: this file's tests need a way to confirm which `Repr` a
-#'given `new()` call picked. Not currently required by any `R/*.R` call
-#'site.
+#'\subsection{Method `repr_name`}{
+#'Which physical representation this backend picked, as a stable name
+#'(`"general"`, `"tree"`, `"dense"`, `"csr"`) -- the one diagnostic
+#'entry point for "which `Repr` is this", replacing what used to be a
+#'separate `is_tree()`/`is_dense()`/`is_csr()` boolean per variant.
+#'That pattern grew one new `#[extendr]` method -- permanent, exported
+#'R API the moment it's added, per this file's own "the method set is
+#'the contract" principle -- for every future `Repr` addition; this
+#'single method's match arm count grows with `Repr` instead, so the
+#'R-visible surface stays fixed no matter how many representations
+#'`GraphBackend` eventually holds. An R call site that needs to gate a
+#'shape-specific method (e.g. `parent()`, only defined for `"tree"`)
+#'compares against this rather than calling a dedicated predicate.
 #'}
 #'
 #'\subsection{Method `parent`}{
 #'The 1-based parent position of `node` (1-based); `0` means `node` is
-#'a root. Only defined when `is_tree()` is true -- `0` already means
-#'"root" for a real tree, so a non-tree variant returning `0` would be
-#'silently indistinguishable from a real answer rather than "not
-#'applicable"; `_dev/petgraph_data_types.md` S3 flags exactly this and
-#'suggests `panic!`/`NA_INTEGER` instead, which is what this does --
+#'a root. Only defined when `repr_name()` is `"tree"` -- `0` already
+#'means "root" for a real tree, so a non-tree variant returning `0`
+#'would be silently indistinguishable from a real answer rather than
+#'"not applicable"; `_dev/petgraph_data_types.md` S3 flags exactly this
+#'and suggests `panic!`/`NA_INTEGER` instead, which is what this does --
 #'mirroring this project's existing idiom for an operation an input
 #'shape doesn't support (e.g. `check_no_hyperedges()`'s
 #'`cli::cli_abort()`) rather than returning a value that looks valid
@@ -137,11 +128,7 @@ GraphBackend$n_edges <- function() .Call(wrap__GraphBackend__n_edges, self)
 
 GraphBackend$is_directed <- function() .Call(wrap__GraphBackend__is_directed, self)
 
-GraphBackend$is_tree <- function() .Call(wrap__GraphBackend__is_tree, self)
-
-GraphBackend$is_dense <- function() .Call(wrap__GraphBackend__is_dense, self)
-
-GraphBackend$is_csr <- function() .Call(wrap__GraphBackend__is_csr, self)
+GraphBackend$repr_name <- function() .Call(wrap__GraphBackend__repr_name, self)
 
 GraphBackend$parent <- function(node) .Call(wrap__GraphBackend__parent, self, node)
 
