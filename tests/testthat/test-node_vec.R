@@ -16,10 +16,13 @@ test_that("node_vec() preserves the length of x", {
   expect_length(g, 4L)
 })
 
-test_that("node_vec() stores edges as an attribute", {
+test_that("node_vec() records the edges between the given nodes", {
+  # Rewritten: the non-hyperedge case no longer stores from/to positions
+  # directly in attr(x, "edges") (_dev/RUST_BACKEND.md moves topology into
+  # the Rust GraphBackend) -- check the same logical property (which edges
+  # exist) via the public edges()/format() surface instead.
   g <- node_vec(x = c("A", "B", "C"), from = c(1L, 2L), to = c(2L, 3L))
-  stored <- attr(g, "edges")
-  expect_equal(stored[["to"]], c(2L, 3L))
+  expect_equal(format(edges(g)), c("[A]->[B]", "[B]->[C]"))
 })
 
 test_that("node_vec() accepts an empty vector", {
@@ -89,7 +92,9 @@ test_that("data-frame-valued node_vec slices as an induced subgraph, same as any
   m <- g[2:3]
   expect_length(m, 2L)
   expect_equal(node_vec_data(m), data.frame(name = c("B", "C")))
-  expect_equal(attr(m, "edges")$to, 2L)
+  # Rewritten (see the analogous rewrite above): check the surviving edge via
+  # edges()/format() rather than attr(x, "edges")'s internal positions.
+  expect_equal(format(edges(m)), "[B]->[C]")
 })
 
 test_that("node_vec() accepts named edge attributes via ...", {
@@ -168,8 +173,8 @@ test_that("`[.node_vec` remaps surviving edges to the new positions", {
   m <- g[2:3]
   expect_length(m, 2L)
   expect_equal(format(m), c("B", "C"))
-  expect_equal(attr(m, "edges")$from, 1L)
-  expect_equal(attr(m, "edges")$to, 2L)
+  # Rewritten (see above): check via edges()/format(), not internal positions.
+  expect_equal(format(edges(m)), "[B]->[C]")
 })
 
 test_that("`[.node_vec` drops edges that lose an endpoint", {
@@ -180,7 +185,12 @@ test_that("`[.node_vec` drops edges that lose an endpoint", {
   )
   m <- g[c(1, 4)]
   expect_length(m, 2L)
-  expect_length(attr(m, "edges")$to, 0L)
+  # Rewritten: attr(m, "edges")$to was NULL either way once "to" stopped
+  # being a column of the ordinary case's edges attribute, which made the
+  # original assertion (expect_length(..., 0L)) pass vacuously regardless of
+  # whether the edge actually survived -- check edge count via edges()
+  # instead, which does exercise the drop.
+  expect_length(edges(m), 0L)
 })
 
 test_that("`[.node_vec` clones incident edges when a node is replicated", {
@@ -188,8 +198,8 @@ test_that("`[.node_vec` clones incident edges when a node is replicated", {
   m <- g[c(1, 1, 2)]
   expect_length(m, 3L)
   expect_equal(format(m), c("A", "A", "B"))
-  expect_equal(attr(m, "edges")$from, c(1L, 2L))
-  expect_equal(attr(m, "edges")$to, c(3L, 3L))
+  # Rewritten (see above): check via edges()/format(), not internal positions.
+  expect_equal(format(edges(m)), c("[A]->[B]", "[A]->[B]"))
 })
 
 test_that("`[.node_vec` supports negative and logical indices", {
@@ -233,7 +243,8 @@ test_that("node_vec slicing works as a data frame column (e.g. under dplyr)", {
   df$g <- g
   filtered <- dplyr::filter(df, id %in% c(2, 3))
   expect_equal(format(filtered$g), c("B", "C"))
-  expect_equal(attr(filtered$g, "edges")$to, 2L)
+  # Rewritten (see above): check via edges()/format(), not internal positions.
+  expect_equal(format(edges(filtered$g)), "[B]->[C]")
 })
 
 test_that("node_vec() layers its class onto x rather than boxing it, so x's own methods still work", {
@@ -283,15 +294,17 @@ test_that("sort(), rev(), head() route through `[` and inherit its induced-subgr
 
   s <- sort(g)
   expect_equal(format(s), c("A", "B", "C"))
-  expect_equal(attr(s, "edges")$from, c(3L, 1L))
-  expect_equal(attr(s, "edges")$to, c(1L, 2L))
+  # Rewritten (see above): reordering nodes never changes which *values* an
+  # edge connects, so the same logical edges (checked via edges()/format(),
+  # not internal positions) should survive sort() unchanged.
+  expect_equal(format(edges(s)), c("[C]->[A]", "[A]->[B]"))
 
   r <- rev(g)
   expect_equal(format(r), c("B", "A", "C"))
 
   h <- head(g, 2)
   expect_equal(format(h), c("C", "A"))
-  expect_equal(attr(h, "edges")$to, 2L)
+  expect_equal(format(edges(h)), "[C]->[A]")
 })
 
 test_that("unique.node_vec() drops duplicate-valued nodes and their incident edges, via `[`", {
@@ -300,7 +313,10 @@ test_that("unique.node_vec() drops duplicate-valued nodes and their incident edg
   expect_equal(format(u), c("A", "B"))
   # The edge between the two "A" duplicates is dropped, not redirected onto
   # the surviving node, since duplicate 2 (the endpoint) no longer exists.
-  expect_length(attr(u, "edges")$to, 0L)
+  # Rewritten (see above): attr(u, "edges")$to was always NULL for the
+  # ordinary case, making the original assertion pass vacuously -- check via
+  # edges() instead, which does exercise the drop.
+  expect_length(edges(u), 0L)
 })
 
 test_that("c.node_vec() is a disjoint union: values concatenate, second graph's edges are offset", {
@@ -309,8 +325,8 @@ test_that("c.node_vec() is a disjoint union: values concatenate, second graph's 
   u <- c(g1, g2)
 
   expect_equal(format(u), c("A", "B", "X", "Y"))
-  expect_equal(attr(u, "edges")$from, c(1L, 3L))
-  expect_equal(attr(u, "edges")$to, c(2L, 4L))
+  # Rewritten (see above): check via edges()/format(), not internal positions.
+  expect_equal(format(edges(u)), c("[A]->[B]", "[X]->[Y]"))
 })
 
 test_that("c.node_vec() rejects combining with a non-node_vec or a mismatched `directed`", {
@@ -333,8 +349,8 @@ test_that("rep.node_vec() clones a replicated node's incident edges, like `[` do
   expect_equal(format(r), c("A", "B", "A", "B"))
   # rep(x, 2) tiles the whole vector (positions 1,2,1,2), so the A->B edge
   # is cloned once per combination of A's replicas (1, 3) and B's (2, 4).
-  expect_equal(attr(r, "edges")$from, c(1L, 3L, 1L, 3L))
-  expect_equal(attr(r, "edges")$to, c(2L, 2L, 4L, 4L))
+  # Rewritten (see above): check via edges()/format(), not internal positions.
+  expect_equal(format(edges(r)), rep("[A]->[B]", 4))
   expect_equal(attr(r, "edges")$weight, rep(42, 4))
 })
 
@@ -366,12 +382,12 @@ test_that("[<- relabels nodes with plain values", {
   n <- node_vec(c("A", "B", "C"), from = 1:2, to = 2:3)
   n[1] <- "Z"
   expect_equal(format(n), c("Z", "B", "C"))
-  expect_equal(attr(n, "edges")$from, 1:2)
+  expect_equal(format(edges(n)), c("[Z]->[B]", "[B]->[C]"))
 
   nd <- node_vec(data.frame(id = 1:2, lab = c("A", "B")), from = 1L, to = 2L)
   nd[2] <- data.frame(id = 9L, lab = "Z")
   expect_equal(format(nd), c("1:A", "9:Z"))
-  expect_equal(nrow(attr(nd, "edges")), 1L)
+  expect_length(edges(nd), 1L)
 })
 
 test_that("[<- with a node_vec swaps in its nodes and their edges", {
@@ -380,10 +396,9 @@ test_that("[<- with a node_vec swaps in its nodes and their edges", {
   x <- n
   x[2:3] <- m
   expect_equal(format(x), c("A", "X", "Y"))
-  expect_equal(attr(x, "edges")$from, 2L)
-  expect_equal(attr(x, "edges")$to, 3L)
+  expect_equal(format(edges(x)), "[X]->[Y]")
   skip_if_not_installed("vctrs")
-  expect_equal(x, vctrs::vec_assign(n, 2:3, m))
+  expect_same_graph(x, vctrs::vec_assign(n, 2:3, m))
 
   nd <- node_vec(data.frame(id = 1:3), from = 1:2, to = 2:3)
   df <- tibble::tibble(x = nd)

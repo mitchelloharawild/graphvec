@@ -31,7 +31,10 @@ test_that("nodes(edge_vec) converts to a node_vec, keeping isolated nodes", {
   expect_s3_class(n, "node_vec")
   expect_length(n, 4L)
   expect_false(attr(n, "directed"))
-  expect_equal(attr(n, "edges")$to, c(2L, 3L))
+  # Rewritten: the non-hyperedge case no longer stores from/to positions
+  # directly in attr(x, "edges") (_dev/RUST_BACKEND.md) -- check the same
+  # logical property via edges()/format() instead.
+  expect_equal(format(edges(n)), c("[A]--[B]", "[B]--[C]"))
 })
 
 test_that("nodes(edge_vec) converts a data frame of node attributes losslessly", {
@@ -55,7 +58,14 @@ test_that("nodes()/edges() round-trip losslessly in both directions", {
   )
   g2 <- nodes(edges(g))
   expect_equal(format(g2), format(g))
-  expect_equal(attr(g2, "edges"), attr(g, "edges"))
+  # Rewritten: attr(x, "edges") is no longer guaranteed byte-identical across
+  # a round trip for the ordinary case -- edges.node_vec()/nodes.edge_vec()'s
+  # free (no-Rust-call) reorientation (_dev/RUST_BACKEND.md §2.3) carries the
+  # attribute table's *values* across unchanged but doesn't re-wrap it in its
+  # original class (e.g. a tibble becomes a plain list), which is the
+  # intentional cost of skipping the rebuild. Check the same logical
+  # property -- same edges -- via edges()/format() instead.
+  expect_equal(format(edges(g2)), format(edges(g)))
   expect_equal(attr(g2, "directed"), attr(g, "directed"))
 
   e <- edge_vec(from = c(1L, 2L), to = c(2L, 3L), nodes = c("A", "B", "C"))

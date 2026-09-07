@@ -40,11 +40,14 @@ test_that("c.agg_df() row-binds matching-column agg_df objects", {
 })
 
 test_that("nodes()/edges() on a single-column agg_vec form a bipartite star", {
+  # Rewritten to check the same logical property (which nodes connect to
+  # which) via the public edges()/format() surface rather than reaching into
+  # attr(x, "edges")'s internal from/to positions, which the non-hyperedge
+  # case no longer stores directly (_dev/RUST_BACKEND.md).
   v <- agg_vec(c(NA, "A", "B"), aggregated = c(TRUE, FALSE, FALSE))
-  e <- attr(nodes(v), "edges")
-  expect_equal(e$from, c(2L, 3L))
-  expect_equal(e$to, c(1L, 1L))
-  expect_s3_class(edges(v), "edge_vec")
+  e <- edges(v)
+  expect_s3_class(e, "edge_vec")
+  expect_equal(format(e), c("[A]->[<aggregated>]", "[B]->[<aggregated>]"))
 })
 
 test_that("nodes()/edges() on an agg_df form the crossed aggregation lattice", {
@@ -62,17 +65,21 @@ test_that("nodes()/edges() on an agg_df form the crossed aggregation lattice", {
   n <- nodes(kd)
   expect_s3_class(n, "node_vec")
   expect_length(n, 9L)
+  expect_length(edges(n), 12L)
 
-  e <- attr(n, "edges")
-  expect_equal(nrow(e), 12L)
-
+  # Rewritten to check the same logical property (edge positions) via the
+  # public igraph conversion rather than attr(x, "edges")'s internal from/to
+  # columns, which the non-hyperedge case no longer stores directly
+  # (_dev/RUST_BACKEND.md).
+  skip_if_not_installed("igraph")
   # Each fully disaggregated row (6-9) has two parents: its Purpose total and
   # its State total.
-  expected <- data.frame(
+  expected <- cbind(
     from = c(4L, 5L, 6L, 7L, 8L, 9L, 2L, 3L, 6L, 7L, 8L, 9L),
     to =   c(1L, 1L, 2L, 3L, 2L, 3L, 1L, 1L, 4L, 4L, 5L, 5L)
   )
-  observed <- e[order(e$from, e$to), ]
-  rownames(observed) <- NULL
-  expect_equal(observed, expected[order(expected$from, expected$to), ], ignore_attr = TRUE)
+  observed <- igraph::as_edgelist(igraph::as.igraph(n), names = FALSE)
+  observed <- observed[order(observed[, 1], observed[, 2]), ]
+  expected <- expected[order(expected[, 1], expected[, 2]), ]
+  expect_equal(observed, expected, ignore_attr = TRUE)
 })

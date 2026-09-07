@@ -1,9 +1,5 @@
 skip_if_not_installed("vctrs")
 
-edge_pairs <- function(e) {
-  paste0(e[["from"]], "->", e[["to"]])
-}
-
 # -- agg_vec --------------------------------------------------------------
 
 test_that("agg_vec is a vctrs vector", {
@@ -109,9 +105,9 @@ test_that("agg_vec works as a tsibble key", {
 test_that("node_vec keeps its edges through vctrs", {
   n <- new_node_vec(c("A", "B", "C"), edges = data.frame(from = 1:2, to = 2:3))
   expect_equal(vctrs::vec_ptype_abbr(n), "N[chr]")
-  expect_equal(edge_pairs(attr(vctrs::vec_slice(n, c(3, 1, 2)), "edges")), c("2->3", "3->1"))
+  expect_equal(edge_pairs(vctrs::vec_slice(n, c(3, 1, 2))), c("2->3", "3->1"))
   expect_equal(
-    edge_pairs(attr(vctrs::vec_c(n, n), "edges")),
+    edge_pairs(vctrs::vec_c(n, n)),
     c("1->2", "2->3", "4->5", "5->6")
   )
 })
@@ -121,7 +117,7 @@ test_that("vec_c() of node_vecs keeps row order across different graphs", {
   m <- new_node_vec(c("X", "Y"), edges = data.frame(from = 2L, to = 1L))
   out <- vctrs::vec_c(n, m, n)
   expect_equal(format(out), c("A", "B", "C", "X", "Y", "A", "B", "C"))
-  expect_equal(attr(out, "edges"), attr(c(n, m, n), "edges"))
+  expect_same_graph(out, c(n, m, n))
 })
 
 test_that("bind_rows() keeps node_vec edges", {
@@ -130,11 +126,11 @@ test_that("bind_rows() keeps node_vec edges", {
   df <- tibble::tibble(i = n, y = 1:3)
 
   expect_equal(
-    edge_pairs(attr(dplyr::bind_rows(df, df)$i, "edges")),
+    edge_pairs(dplyr::bind_rows(df, df)$i),
     c("1->2", "2->3", "4->5", "5->6")
   )
-  expect_equal(edge_pairs(attr(dplyr::arrange(df, dplyr::desc(y))$i, "edges")), c("3->2", "2->1"))
-  expect_equal(nrow(attr(dplyr::filter(df, y != 2)$i, "edges")), 0L)
+  expect_equal(edge_pairs(dplyr::arrange(df, dplyr::desc(y))$i), c("3->2", "2->1"))
+  expect_length(edges(dplyr::filter(df, y != 2)$i), 0L)
 })
 
 test_that("node_vec equality is value-based", {
@@ -147,18 +143,18 @@ test_that("a data-frame-backed node_vec combines through vctrs", {
   skip_if_not_installed("dplyr")
   nd <- node_vec(data.frame(id = 1:3, lab = c("A", "B", "C")), from = 1:2, to = 2:3)
   expect_null(names(nd))
-  expect_equal(vctrs::vec_c(nd, nd), c(nd, nd))
-  expect_equal(vctrs::list_unchop(list(nd, nd)), c(nd, nd))
+  expect_same_graph(vctrs::vec_c(nd, nd), c(nd, nd))
+  expect_same_graph(vctrs::list_unchop(list(nd, nd)), c(nd, nd))
 
   df <- tibble::tibble(x = nd, y = 1:3)
-  expect_equal(dplyr::bind_rows(df, df)$x, c(nd, nd))
+  expect_same_graph(dplyr::bind_rows(df, df)$x, c(nd, nd))
   expect_equal(nrow(dplyr::left_join(df, df, by = "x")), 3L)
   expect_equal(format(dplyr::summarise(df, z = dplyr::first(x))$z), "1:A")
   expect_equal(format(dplyr::coalesce(nd, nd)), format(nd))
 
   # One column, and as many columns as rows.
   n1 <- node_vec(data.frame(id = 1:3), from = 1L, to = 2L)
-  expect_equal(vctrs::vec_c(n1, n1), c(n1, n1))
+  expect_same_graph(vctrs::vec_c(n1, n1), c(n1, n1))
   n2 <- node_vec(data.frame(id = 1:2, lab = c("A", "B")), from = 1L, to = 2L)
   expect_null(names(vctrs::vec_c(n2, n2)))
 })
@@ -200,8 +196,8 @@ test_that("edge_vec is a vctrs vector", {
 test_that("vec_c() of edge_vecs matches c()", {
   e <- edge_vec(1:2, 2:3, w = c(5, 6), nodes = c("A", "B", "C"))
   f <- edge_vec(1L, 2L, w = 9, nodes = c("X", "Y"))
-  expect_equal(vctrs::vec_c(e, f, e), c(e, f, e))
-  expect_equal(vctrs::vec_c(e, e), c(e, e))
+  expect_same_graph(vctrs::vec_c(e, f, e), c(e, f, e))
+  expect_same_graph(vctrs::vec_c(e, e), c(e, e))
 })
 
 test_that("vec_c() combines ordinary and hyperedge edge_vecs", {
@@ -215,8 +211,8 @@ test_that("edge_vec works with dplyr verbs", {
   skip_if_not_installed("dplyr")
   e <- edge_vec(1:2, 2:3, w = c(5, 6), nodes = c("A", "B", "C"))
   df <- tibble::tibble(e = e, y = 1:2)
-  expect_equal(dplyr::bind_rows(df, df)$e, c(e, e))
-  expect_equal(dplyr::filter(df, y == 2)$e, e[2])
+  expect_same_graph(dplyr::bind_rows(df, df)$e, c(e, e))
+  expect_same_graph(dplyr::filter(df, y == 2)$e, e[2])
 })
 
 test_that("edge_vec equality is by node values, not positions", {
@@ -289,6 +285,6 @@ test_that("edge_vecs with different `directed` can't be combined", {
 test_that("vec_c() of edge_vecs without node data matches c()", {
   e <- edge_vec(1:2, 2:3)
   f <- edge_vec(1L, 2L)
-  expect_equal(vctrs::vec_c(e, f), c(e, f))
+  expect_same_graph(vctrs::vec_c(e, f), c(e, f))
   expect_equal(format(vctrs::vec_init(e, 1)), "[NA]->[NA]")
 })
