@@ -2,38 +2,236 @@ use extendr_api::prelude::*;
 use rustworkx_core::petgraph::graph::{DiGraph, EdgeIndex, NodeIndex};
 use rustworkx_core::petgraph::Direction;
 
+/// The general-purpose representation: today's sole `Repr` variant, an
+/// adjacency-list `Graph` plus the per-node arc counts cached at
+/// construction so `degree()` is O(1) instead of consuming `neighbors()`'s
+/// O(d) walk (petgraph's `Graph` has no cached degree of its own --
+/// confirmed against its API, see `_dev/petgraph_data_types.md` S1).
+/// Counted over the always-directed internal `graph` regardless of the
+/// owning `GraphBackend::directed`, so a self-loop contributes to both and
+/// `out_degree[i] + in_degree[i]` reproduces the doubled-self-loop
+/// convention `neighbors()` already established (see `symmetric_neighbors()`
+/// below and this file's tests).
+struct GeneralData {
+    graph: DiGraph<(), ()>,
+    out_degree: Vec<i32>,
+    in_degree: Vec<i32>,
+}
+
+/// The tree/forest representation (`_dev/petgraph_data_types.md` S2.3): a
+/// parent-pointer vector, no separate edge table. `parent[i]` is the
+/// 1-based parent position of node `i+1`, `0` for a root -- multiple zero
+/// entries mean a forest (several root-ed trees over the same node set),
+/// deliberately accepted, not just a single tree -- see this file's
+/// `detect_tree()` doc comment for why.
+///
+/// A tree's storage alone can't answer `edge_endpoints()` in original
+/// *construction* order (node order and input order are different things
+/// once edges arrive out of node order) even though it can answer every
+/// other query from `parent` alone -- `R/edge_vec.R`/`R/node_vec.R` set
+/// `edge_id <- seq_len(n_edges)` once, right after construction, trusting
+/// edge k of the backend to be the k-th `from`/`to` pair *as originally
+/// supplied*, the same contract `_dev/petgraph_data_types.md` S4's
+/// edge-identity item requires of every representation. `order` is exactly
+/// that original `from` vector (each non-root node appears in it exactly
+/// once, since a valid tree has out-degree <= 1 everywhere) kept around
+/// for this one purpose; `to` for edge `k` is always recoverable as
+/// `parent[order[k] - 1]`, so it isn't stored twice.
+struct TreeData {
+    parent: Vec<i32>,
+    order: Vec<i32>,
+    // Reverse (child) adjacency as a CSR pair, built once at construction
+    // over the same N-1-or-fewer edges the parent vector already encodes
+    // (`_dev/DATA.md` S2.3: "sorted by from, to already *is* this vector,
+    // so no separate construction step exists" -- true for the forward
+    // direction; the reverse direction is this). Without it, `neighbors(i,
+    // "in")`/`degree(i, "in")` would have to scan all N parents on every
+    // call, an O(N) regression `_dev/petgraph_data_types.md`'s O(1)-degree
+    // bar (S1) rules out.
+    children_ptr: Vec<i32>,
+    children_idx: Vec<i32>,
+}
+
+impl TreeData {
+    fn out_neighbors(&self, idx: usize) -> Vec<i32> {
+        match self.parent[idx] {
+            0 => Vec::new(),
+            p => vec![p],
+        }
+    }
+
+    fn in_neighbors(&self, idx: usize) -> Vec<i32> {
+        let start = self.children_ptr[idx] as usize;
+        let end = self.children_ptr[idx + 1] as usize;
+        self.children_idx[start..end].to_vec()
+    }
+
+    fn out_degree(&self, idx: usize) -> i32 {
+        if self.parent[idx] == 0 {
+            0
+        } else {
+            1
+        }
+    }
+
+    fn in_degree(&self, idx: usize) -> i32 {
+        self.children_ptr[idx + 1] - self.children_ptr[idx]
+    }
+}
+
+/// Which physical representation a `GraphBackend` picked for one graph
+/// (`_dev/petgraph_data_types.md` S3). Private -- never `#[extendr]` itself,
+/// matched inside every `GraphBackend` method so the R-visible class and
+/// method set stay identical no matter which variant got chosen.
+enum Repr {
+    General(GeneralData),
+    Tree(TreeData),
+}
+
+/// Directed, out-degree <= 1 for every node, no cycle -- accepts a *forest*
+/// (several root-ed trees over the same node set), not only a single tree.
+///
+/// `_dev/DATA.md` states this two ways that read as in tension: S2.3's own
+/// "Default for" bullet says "exactly one root", but S3's actual selection
+/// algorithm -- the one `_dev/petgraph_data_types.md` S5 says to "port...
+/// don't redesign" -- calls it a "tree/forest validator" with "one root per
+/// component". Decision made here, stated plainly per
+/// `_dev/petgraph_data_types.md` S5's own instruction: implement the forest
+/// form. Reasons: (1) it's S3's literal wording, the section titled as the
+/// authoritative selection algorithm; (2) a parent-pointer vector supports
+/// it for free -- multiple `0` entries cost nothing extra to store or query,
+/// there is no separate "single tree" representation being given up; (3) it
+/// is a strict superset of the single-root form, so nothing that would have
+/// qualified under a stricter reading is excluded, only more graphs
+/// (legitimate forests) are additionally accepted. See this file's
+/// `forest_with_two_roots_is_still_tree_shaped` test.
+///
+/// Cycle detection matters even though out-degree <= 1 alone looks
+/// tree-like: a node whose out-edge chain (chasing `parent` repeatedly)
+/// never reaches a `0` root, including a self-loop (`parent[i] == i + 1`),
+/// is a cycle -- petgraph's `Graph` already accepts exactly this shape as a
+/// perfectly ordinary directed graph (see the pre-existing
+/// `induced_subgraph_drops_dangling_and_clones_replicated` test's 1->2->3->1
+/// triangle), so it must be rejected here, not assumed away by the
+/// out-degree check alone.
+fn detect_tree(n: usize, from: &[i32], to: &[i32], directed: bool) -> Option<TreeData> {
+    if !directed {
+        return None;
+    }
+
+    let mut out_count = vec![0i32; n];
+    let mut parent = vec![0i32; n];
+    for (&f, &t) in from.iter().zip(to.iter()) {
+        if f < 1 || (f as usize) > n || t < 1 || (t as usize) > n {
+            return None;
+        }
+        let fi = (f - 1) as usize;
+        out_count[fi] += 1;
+        if out_count[fi] > 1 {
+            return None;
+        }
+        parent[fi] = t;
+    }
+
+    // Cycle check: chase each node's parent chain, three-colouring as it
+    // goes (0 unvisited, 1 in-progress-on-this-chase, 2 proven acyclic).
+    // Revisiting a `1` node means the chain looped back on itself without
+    // reaching a root -- a cycle. O(N) total: every node is chased at most
+    // once as a fresh start, and a chain stops the moment it reaches
+    // already-`2` ground, so no edge is walked more than twice.
+    let mut state = vec![0u8; n];
+    for start in 0..n {
+        if state[start] != 0 {
+            continue;
+        }
+        let mut path: Vec<usize> = Vec::new();
+        let mut cur = start;
+        loop {
+            match state[cur] {
+                0 => {
+                    state[cur] = 1;
+                    path.push(cur);
+                    match parent[cur] {
+                        0 => break,
+                        p => cur = (p - 1) as usize,
+                    }
+                }
+                1 => return None,
+                _ => break,
+            }
+        }
+        for node in path {
+            state[node] = 2;
+        }
+    }
+
+    // Reverse CSR (children) via counting sort over `parent`.
+    let mut children_ptr = vec![0i32; n + 1];
+    for &p in &parent {
+        if p != 0 {
+            children_ptr[p as usize] += 1;
+        }
+    }
+    for i in 0..n {
+        children_ptr[i + 1] += children_ptr[i];
+    }
+    let mut cursor = children_ptr.clone();
+    let mut children_idx = vec![0i32; from.len()];
+    for (node0, &p) in parent.iter().enumerate() {
+        if p != 0 {
+            let slot = cursor[(p - 1) as usize] as usize;
+            children_idx[slot] = (node0 + 1) as i32;
+            cursor[(p - 1) as usize] += 1;
+        }
+    }
+
+    Some(TreeData {
+        parent,
+        order: from.to_vec(),
+        children_ptr,
+        children_idx,
+    })
+}
+
 /// The shared topology backing a `node_vec`/`edge_vec` pair (non-hyperedge
-/// case only -- see `_dev/RUST_BACKEND.md`). Edges are stored as a plain
-/// directed arc list regardless of `directed`; `directed` is metadata that
-/// the query methods interpret, not a different graph type. This keeps the
-/// object immutable and shareable: a `node_vec`, its `edges()` reorientation,
-/// and any `edge_vec` sliced from it can all hold the same pointer.
+/// case only -- see `_dev/RUST_BACKEND.md`). Wraps one of several physical
+/// `Repr` variants, auto-selected at construction from graph shape
+/// (`_dev/petgraph_data_types.md` S3/S5); `directed` is metadata every
+/// variant's query methods interpret, not itself part of the shape
+/// decision beyond gating which variants are eligible (only a directed
+/// graph can be tree-shaped, see `detect_tree()`). This keeps the object
+/// immutable and shareable: a `node_vec`, its `edges()` reorientation, and
+/// any `edge_vec` sliced from it can all hold the same pointer.
 ///
 /// @export
 #[extendr]
 struct GraphBackend {
-    graph: DiGraph<(), ()>,
+    repr: Repr,
     directed: bool,
-    // Cached per-node arc counts, computed once at construction so
-    // `degree()` is O(1) instead of consuming `neighbors()`'s O(d) walk
-    // (petgraph's `Graph` has no cached degree of its own -- confirmed
-    // against its API, see `_dev/petgraph_data_types.md` S1). Counted over
-    // the always-directed internal `graph` regardless of `self.directed`,
-    // so a self-loop contributes to both and `out_degree[i] + in_degree[i]`
-    // reproduces the doubled-self-loop convention `neighbors()` already
-    // established (see `symmetric_neighbors()` below and this file's tests).
-    out_degree: Vec<i32>,
-    in_degree: Vec<i32>,
 }
 
 #[extendr]
 impl GraphBackend {
     /// Build a graph on `n` nodes from 1-based `from`/`to` positions.
-    /// Edges are added in input order and never removed afterwards, so
-    /// edge ids (0-based internally, 1-based at the R boundary) stay stable
-    /// and match the row order of the R-side edge attribute table.
+    /// Automatically picks the cheapest `Repr` the graph's shape qualifies
+    /// for (`_dev/petgraph_data_types.md` S3/S5 -- this decision belongs
+    /// here, not in R, so there is exactly one place shape detection can
+    /// drift out of sync with the representation it feeds). For the
+    /// general representation, edges are added in input order and never
+    /// removed afterwards, so edge ids (0-based internally, 1-based at the
+    /// R boundary) stay stable and match the row order of the R-side edge
+    /// attribute table; for the tree representation, the same external
+    /// contract is upheld via `TreeData::order` (see its doc comment).
     fn new(n: i32, from: Vec<i32>, to: Vec<i32>, directed: bool) -> Self {
         let n = if n > 0 { n as usize } else { 0 };
+
+        if let Some(tree) = detect_tree(n, &from, &to, directed) {
+            return GraphBackend {
+                repr: Repr::Tree(tree),
+                directed,
+            };
+        }
+
         let mut graph = DiGraph::<(), ()>::with_capacity(n, from.len());
         for _ in 0..n {
             graph.add_node(());
@@ -48,23 +246,58 @@ impl GraphBackend {
             in_degree[(*t - 1) as usize] += 1;
         }
         GraphBackend {
-            graph,
+            repr: Repr::General(GeneralData {
+                graph,
+                out_degree,
+                in_degree,
+            }),
             directed,
-            out_degree,
-            in_degree,
         }
     }
 
     fn n_nodes(&self) -> i32 {
-        self.graph.node_count() as i32
+        match &self.repr {
+            Repr::General(g) => g.graph.node_count() as i32,
+            Repr::Tree(t) => t.parent.len() as i32,
+        }
     }
 
     fn n_edges(&self) -> i32 {
-        self.graph.edge_count() as i32
+        match &self.repr {
+            Repr::General(g) => g.graph.edge_count() as i32,
+            Repr::Tree(t) => t.order.len() as i32,
+        }
     }
 
     fn is_directed(&self) -> bool {
         self.directed
+    }
+
+    /// Whether this backend is tree/forest-shaped (`Repr::Tree`) -- the one
+    /// thing R call sites (once any exist) need to check before calling
+    /// `parent()`, per `_dev/petgraph_data_types.md` S3's suggestion of a
+    /// single predicate rather than a per-variant method surface.
+    fn is_tree(&self) -> bool {
+        matches!(self.repr, Repr::Tree(_))
+    }
+
+    /// The 1-based parent position of `node` (1-based); `0` means `node` is
+    /// a root. Only defined when `is_tree()` is true -- `0` already means
+    /// "root" for a real tree, so a non-tree variant returning `0` would be
+    /// silently indistinguishable from a real answer rather than "not
+    /// applicable"; `_dev/petgraph_data_types.md` S3 flags exactly this and
+    /// suggests `panic!`/`NA_INTEGER` instead, which is what this does --
+    /// mirroring this project's existing idiom for an operation an input
+    /// shape doesn't support (e.g. `check_no_hyperedges()`'s
+    /// `cli::cli_abort()`) rather than returning a value that looks valid
+    /// but means something else per variant.
+    fn parent(&self, node: i32) -> i32 {
+        match &self.repr {
+            Repr::Tree(t) => t.parent[(node - 1) as usize],
+            Repr::General(_) => {
+                panic!("`parent()` is only defined when `is_tree()` is TRUE")
+            }
+        }
     }
 
     /// 1-based neighbour positions of `node` (1-based). For an undirected
@@ -75,60 +308,64 @@ impl GraphBackend {
     /// concatenated). One entry per incident edge, not deduplicated, so
     /// `degree()` can just be `neighbors().len()`.
     fn neighbors(&self, node: i32, mode: &str) -> Vec<i32> {
-        let idx = NodeIndex::new((node - 1) as usize);
+        let idx = (node - 1) as usize;
         if !self.directed {
             return self.symmetric_neighbors(idx);
         }
         match mode {
-            "out" => self.directed_neighbors(idx, Direction::Outgoing),
-            "in" => self.directed_neighbors(idx, Direction::Incoming),
+            "out" => self.out_neighbors_at(idx),
+            "in" => self.in_neighbors_at(idx),
             "all" => self.symmetric_neighbors(idx),
             _ => panic!("`mode` must be one of \"out\", \"in\", \"all\", not \"{mode}\""),
         }
     }
 
-    /// O(1): a `ptr`-difference-style lookup into the degree counts cached
-    /// at construction, not a `neighbors().len()` walk. Must stay in exact
-    /// agreement with `neighbors()`'s semantics above (mode handling, panic
-    /// on an invalid mode, doubled self-loop) -- see this file's tests.
+    /// O(1): a `ptr`-difference-style lookup, not a `neighbors().len()`
+    /// walk, for either variant (the general representation's construction-
+    /// time cache, or the tree representation's `parent`/reverse-CSR
+    /// arrays). Must stay in exact agreement with `neighbors()`'s semantics
+    /// above (mode handling, panic on an invalid mode, doubled self-loop)
+    /// -- see this file's tests.
     fn degree(&self, node: i32, mode: &str) -> i32 {
         let idx = (node - 1) as usize;
         if !self.directed {
-            return self.out_degree[idx] + self.in_degree[idx];
+            return self.out_degree_at(idx) + self.in_degree_at(idx);
         }
         match mode {
-            "out" => self.out_degree[idx],
-            "in" => self.in_degree[idx],
-            "all" => self.out_degree[idx] + self.in_degree[idx],
+            "out" => self.out_degree_at(idx),
+            "in" => self.in_degree_at(idx),
+            "all" => self.out_degree_at(idx) + self.in_degree_at(idx),
             _ => panic!("`mode` must be one of \"out\", \"in\", \"all\", not \"{mode}\""),
         }
     }
 
     /// Adjacency test. For an undirected graph, checks both orientations.
     fn has_edge(&self, from: i32, to: i32) -> bool {
-        let fi = NodeIndex::new((from - 1) as usize);
-        let ti = NodeIndex::new((to - 1) as usize);
-        if self.graph.find_edge(fi, ti).is_some() {
-            return true;
+        match &self.repr {
+            Repr::General(g) => {
+                let fi = NodeIndex::new((from - 1) as usize);
+                let ti = NodeIndex::new((to - 1) as usize);
+                if g.graph.find_edge(fi, ti).is_some() {
+                    return true;
+                }
+                !self.directed && g.graph.find_edge(ti, fi).is_some()
+            }
+            Repr::Tree(t) => {
+                // Tree is only ever selected when `directed` is true (see
+                // `detect_tree()`), so there is no "check both
+                // orientations" branch to mirror here -- a node has at
+                // most one outgoing edge (to its parent) full stop.
+                let fi = (from - 1) as usize;
+                t.parent[fi] == to
+            }
         }
-        !self.directed && self.graph.find_edge(ti, fi).is_some()
     }
 
     /// All edges as 1-based `(from, to)` pairs, in construction/edge-id
     /// order. Backs `edge_vec`'s `format()`/`$from`/`$to` and `as.igraph()`
     /// -- no R-side edge table is needed for topology once this exists.
     fn edge_endpoints(&self) -> List {
-        let m = self.graph.edge_count();
-        let mut from: Vec<i32> = Vec::with_capacity(m);
-        let mut to: Vec<i32> = Vec::with_capacity(m);
-        for i in 0..m {
-            let (a, b) = self
-                .graph
-                .edge_endpoints(EdgeIndex::new(i))
-                .expect("edge index in range");
-            from.push(a.index() as i32 + 1);
-            to.push(b.index() as i32 + 1);
-        }
+        let (from, to) = self.edge_list();
         list!(from = from, to = to)
     }
 
@@ -147,8 +384,22 @@ impl GraphBackend {
     /// edge id that surviving new edge `k` was cloned from, so the R side
     /// can carry edge attribute columns across replication with
     /// `edges[source_edge, ]`.
+    ///
+    /// This is representation-independent: it works from `edge_list()`'s
+    /// output alone (S4's edge-identity contract, already upheld there),
+    /// never `self.repr` directly, so it needs no per-variant duplicate.
+    /// The result is a plain from/to/source_edge list either way -- it does
+    /// not construct a new `GraphBackend` itself (R reconstructs one from
+    /// these lists via `new()`, confirmed by grepping `R/node_vec.R`'s
+    /// `[.node_vec`), so the *new* backend's shape (which needn't match the
+    /// old one -- an induced subgraph of a tree is not generally a tree,
+    /// e.g. dropping a root splits it into a forest, or replication can
+    /// reintroduce a cycle) is re-decided by `new()`'s own detection from
+    /// scratch, same as it would be for any other from/to/directed input.
     fn induced_subgraph(&self, idx: Vec<i32>) -> List {
-        let n_old = self.graph.node_count();
+        let n_old = self.n_nodes() as usize;
+        let (efrom, eto) = self.edge_list();
+
         let mut new_positions: Vec<Vec<i32>> = vec![Vec::new(); n_old];
         for (j, &p) in idx.iter().enumerate() {
             if p >= 1 && (p as usize) <= n_old {
@@ -160,13 +411,9 @@ impl GraphBackend {
         let mut new_to: Vec<i32> = Vec::new();
         let mut source_edge: Vec<i32> = Vec::new();
 
-        for i in 0..self.graph.edge_count() {
-            let (a, b) = self
-                .graph
-                .edge_endpoints(EdgeIndex::new(i))
-                .expect("edge index in range");
-            let from_opts = &new_positions[a.index()];
-            let to_opts = &new_positions[b.index()];
+        for (i, (&a, &b)) in efrom.iter().zip(eto.iter()).enumerate() {
+            let from_opts = &new_positions[(a - 1) as usize];
+            let to_opts = &new_positions[(b - 1) as usize];
             if from_opts.is_empty() || to_opts.is_empty() {
                 continue;
             }
@@ -184,25 +431,89 @@ impl GraphBackend {
 }
 
 impl GraphBackend {
+    // All edges as 1-based `(from, to)` pairs, in construction/edge-id
+    // order -- the one place both `edge_endpoints()` and
+    // `induced_subgraph()` read topology from, so every `Repr` variant
+    // needs to get this right exactly once (`_dev/petgraph_data_types.md`
+    // S4's edge-identity item) rather than per call site.
+    fn edge_list(&self) -> (Vec<i32>, Vec<i32>) {
+        match &self.repr {
+            Repr::General(g) => {
+                let m = g.graph.edge_count();
+                let mut from: Vec<i32> = Vec::with_capacity(m);
+                let mut to: Vec<i32> = Vec::with_capacity(m);
+                for i in 0..m {
+                    let (a, b) = g
+                        .graph
+                        .edge_endpoints(EdgeIndex::new(i))
+                        .expect("edge index in range");
+                    from.push(a.index() as i32 + 1);
+                    to.push(b.index() as i32 + 1);
+                }
+                (from, to)
+            }
+            Repr::Tree(t) => {
+                let to: Vec<i32> = t
+                    .order
+                    .iter()
+                    .map(|&c| t.parent[(c - 1) as usize])
+                    .collect();
+                (t.order.clone(), to)
+            }
+        }
+    }
+
     // The symmetric neighbour set, out edges then in edges. Deliberately
     // NOT `Graph::neighbors_undirected()`: that method special-cases a
     // self-loop to report it once (see its doc comment/impl -- it exists to
     // stop a *genuinely* undirected `petgraph` graph from double-reporting
     // one physical edge via both its incoming and outgoing adjacency
-    // lists). Our graph is always the `Directed` petgraph type internally
-    // (see the struct doc), so `neighbors_directed()` for each direction
-    // never applies that skip (it only triggers when `self.graph.is_directed()`
-    // is false, which for us is never), giving the doubled count the
-    // undirected-self-loop convention wants. Confirmed by this file's tests
-    // rather than assumed -- the two methods disagree on exactly this case.
-    fn symmetric_neighbors(&self, idx: NodeIndex) -> Vec<i32> {
-        let mut v = self.directed_neighbors(idx, Direction::Outgoing);
-        v.extend(self.directed_neighbors(idx, Direction::Incoming));
+    // lists). Our general representation is always the `Directed` petgraph
+    // type internally (see `GeneralData`), so `neighbors_directed()` for
+    // each direction never applies that skip (it only triggers when
+    // `self.graph.is_directed()` is false, which for us is never), giving
+    // the doubled count the undirected-self-loop convention wants.
+    // Confirmed by this file's tests rather than assumed -- the two methods
+    // disagree on exactly this case. The tree representation has no
+    // self-loop case at all (`detect_tree()` rejects any cycle, a self-loop
+    // included), so this doubling never arises there -- see this file's
+    // `tree_shaped_graph_has_no_self_loop_case` test.
+    fn symmetric_neighbors(&self, idx: usize) -> Vec<i32> {
+        let mut v = self.out_neighbors_at(idx);
+        v.extend(self.in_neighbors_at(idx));
         v
     }
 
-    fn directed_neighbors(&self, idx: NodeIndex, dir: Direction) -> Vec<i32> {
-        self.graph
+    fn out_neighbors_at(&self, idx: usize) -> Vec<i32> {
+        match &self.repr {
+            Repr::General(g) => Self::directed_neighbors(g, NodeIndex::new(idx), Direction::Outgoing),
+            Repr::Tree(t) => t.out_neighbors(idx),
+        }
+    }
+
+    fn in_neighbors_at(&self, idx: usize) -> Vec<i32> {
+        match &self.repr {
+            Repr::General(g) => Self::directed_neighbors(g, NodeIndex::new(idx), Direction::Incoming),
+            Repr::Tree(t) => t.in_neighbors(idx),
+        }
+    }
+
+    fn out_degree_at(&self, idx: usize) -> i32 {
+        match &self.repr {
+            Repr::General(g) => g.out_degree[idx],
+            Repr::Tree(t) => t.out_degree(idx),
+        }
+    }
+
+    fn in_degree_at(&self, idx: usize) -> i32 {
+        match &self.repr {
+            Repr::General(g) => g.in_degree[idx],
+            Repr::Tree(t) => t.in_degree(idx),
+        }
+    }
+
+    fn directed_neighbors(g: &GeneralData, idx: NodeIndex, dir: Direction) -> Vec<i32> {
+        g.graph
             .neighbors_directed(idx, dir)
             .map(|n| n.index() as i32 + 1)
             .collect()
@@ -233,6 +544,7 @@ mod tests {
             let from = vec![3, 1, 2, 1];
             let to = vec![1, 2, 3, 3];
             let g = GraphBackend::new(3, from.clone(), to.clone(), true);
+            assert!(!g.is_tree()); // sanity: this input isn't tree-shaped (node 1 has out-degree 2)
             let ends = g.edge_endpoints();
             let got_from: Vec<i32> = ends.dollar("from").unwrap().as_integer_vector().unwrap();
             let got_to: Vec<i32> = ends.dollar("to").unwrap().as_integer_vector().unwrap();
@@ -312,8 +624,10 @@ mod tests {
         test! {
             // Triangle 1-2-3 (edges 1->2, 2->3, 3->1); new nodes <- old 1, 1, 2
             // (node 1 replicated, node 3 dropped): edge 1->2 clones once per
-            // replica of 1, edges touching 3 vanish.
+            // replica of 1, edges touching 3 vanish. Also a cycle, so this is
+            // General, not Tree -- confirmed below.
             let g = GraphBackend::new(3, vec![1, 2, 3], vec![2, 3, 1], true);
+            assert!(!g.is_tree());
             let remap = g.induced_subgraph(vec![1, 1, 2]);
             let from: Vec<i32> = remap.dollar("from").unwrap().as_integer_vector().unwrap();
             let to: Vec<i32> = remap.dollar("to").unwrap().as_integer_vector().unwrap();
@@ -338,6 +652,252 @@ mod tests {
             let remap = g.induced_subgraph(vec![0, 2]);
             let from: Vec<i32> = remap.dollar("from").unwrap().as_integer_vector().unwrap();
             assert!(from.is_empty());
+        }
+    }
+
+    // -- Repr::Tree ----------------------------------------------------
+    //
+    // Every S4 contract item (`_dev/petgraph_data_types.md`), covered for
+    // Repr::Tree specifically -- none of it is inherited by assumption from
+    // Repr::General's tests above.
+
+    // Node identity: dense 1..N, stable, representation-independent. This
+    // holds trivially for a tree (the R constructor hands over exactly N
+    // node positions and TreeData never reorders or compacts them -- same
+    // as General, see `_dev/petgraph_data_types.md` S4's first bullet), but
+    // stating it plainly rather than skipping it per that section's own
+    // instruction: n_nodes() reports N and every node 1..N is independently
+    // addressable, replicated or not, root or not.
+    #[test]
+    fn tree_node_identity_is_dense_and_stable() {
+        test! {
+            // 4-node, 2-root forest: 1 and 2 are roots; 3's parent is 1,
+            // 4's parent is 2.
+            let g = GraphBackend::new(4, vec![3, 4], vec![1, 2], true);
+            assert!(g.is_tree());
+            assert_eq!(g.n_nodes(), 4);
+            for node in 1..=4 {
+                // every position answers queries independently of the others
+                let _ = g.parent(node);
+                let _ = g.degree(node, "all");
+            }
+            assert_eq!(g.parent(1), 0);
+            assert_eq!(g.parent(2), 0);
+            assert_eq!(g.parent(3), 1);
+            assert_eq!(g.parent(4), 2);
+        }
+    }
+
+    // Edge identity / enumeration order -- the one real risk per S4: a
+    // tree's own storage is naturally node-ordered (parent[i] indexed by
+    // node), which is *not* generally construction order once edges arrive
+    // out of node order, unlike Repr::General's insertion-order EdgeIndex.
+    // `TreeData::order` exists specifically to bridge this. Mirrors
+    // `edge_endpoints_preserve_construction_order` above, deliberately with
+    // edges out of node order so an accidental node-order reconstruction
+    // (e.g. naively porting DATA.md S2.3's `from = seq_len(N)[-roots]`
+    // formula, which is node-ordered) would be caught.
+    #[test]
+    fn tree_edge_endpoints_preserve_construction_order() {
+        test! {
+            // Node 3's parent (edge 3->1) is supplied before node 1's own
+            // out-edge... except node 1 is a root here, so use a 4-node
+            // chain-like tree instead and still scramble input order:
+            // edges (child -> parent): 4->2, 2->1, 3->1. Node order would
+            // be [2, 3, 4]; construction order is [4, 2, 3].
+            let from = vec![4, 2, 3];
+            let to = vec![2, 1, 1];
+            let g = GraphBackend::new(4, from.clone(), to.clone(), true);
+            assert!(g.is_tree());
+            let ends = g.edge_endpoints();
+            let got_from: Vec<i32> = ends.dollar("from").unwrap().as_integer_vector().unwrap();
+            let got_to: Vec<i32> = ends.dollar("to").unwrap().as_integer_vector().unwrap();
+            assert_eq!(got_from, from);
+            assert_eq!(got_to, to);
+        }
+    }
+
+    // A tree by definition has no self-loops (a self-loop is a cycle,
+    // rejected by `detect_tree()`) and, since `detect_tree()` requires
+    // `directed`, no undirected case either -- confirmed explicitly here
+    // rather than left unstated, per S4's self-loop-convention bullet.
+    #[test]
+    fn tree_shaped_graph_has_no_self_loop_case() {
+        test! {
+            // A self-loop is a 1-node cycle: rejected, falls back to General.
+            let looped = GraphBackend::new(1, vec![1], vec![1], true);
+            assert!(!looped.is_tree());
+
+            // Undirected is never tree-shaped, even if the underlying
+            // shape (out-degree <= 1, acyclic) would otherwise qualify.
+            let undirected = GraphBackend::new(2, vec![1], vec![2], false);
+            assert!(!undirected.is_tree());
+        }
+    }
+
+    // Repr::Tree's degree()/neighbors() must agree with what Repr::General
+    // would compute for the *same edge set* -- checked here against
+    // manually-counted expected values (in/out-degree by counting
+    // occurrences in from/to directly) rather than against a forced-General
+    // instance of the same tree-shaped input, since shape selection is
+    // automatic and not possible to override from outside `new()`.
+    #[test]
+    fn tree_degree_matches_general_convention_for_same_edges() {
+        test! {
+            // 5-node, 1-root tree: 1 is root; 2,3 -> 1; 4,5 -> 2.
+            let from = vec![2, 3, 4, 5];
+            let to = vec![1, 1, 2, 2];
+            let g = GraphBackend::new(5, from.clone(), to.clone(), true);
+            assert!(g.is_tree());
+            for node in 1..=5i32 {
+                let expected_out = from.iter().filter(|&&f| f == node).count() as i32;
+                let expected_in = to.iter().filter(|&&t| t == node).count() as i32;
+                assert_eq!(g.degree(node, "out"), expected_out, "out-degree of {node}");
+                assert_eq!(g.degree(node, "in"), expected_in, "in-degree of {node}");
+                assert_eq!(g.degree(node, "all"), expected_out + expected_in, "total degree of {node}");
+                assert_eq!(g.neighbors(node, "out").len() as i32, expected_out);
+                assert_eq!(g.neighbors(node, "in").len() as i32, expected_in);
+            }
+        }
+    }
+
+    // `mode` semantics must match Repr::General exactly: "out"/"in"/"all",
+    // and an invalid mode panics with the identical message (both variants
+    // share the same match arm in `neighbors()`/`degree()`, so this is
+    // mostly a structural guarantee, but S4 asks for it tested, not
+    // assumed).
+    #[test]
+    #[should_panic(expected = "`mode` must be one of \"out\", \"in\", \"all\", not \"sideways\"")]
+    fn tree_neighbors_invalid_mode_panics_like_general() {
+        test! {
+            let g = GraphBackend::new(2, vec![1], vec![2], true);
+            assert!(g.is_tree());
+            g.neighbors(1, "sideways");
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "`mode` must be one of \"out\", \"in\", \"all\", not \"sideways\"")]
+    fn tree_degree_invalid_mode_panics_like_general() {
+        test! {
+            let g = GraphBackend::new(2, vec![1], vec![2], true);
+            assert!(g.is_tree());
+            g.degree(1, "sideways");
+        }
+    }
+
+    // induced_subgraph()'s replication/drop logic, mirroring
+    // `induced_subgraph_drops_dangling_and_clones_replicated` /
+    // `induced_subgraph_treats_zero_as_no_source` above, for a tree-shaped
+    // input. Note (stated per this task's own ask): the result is not
+    // itself required to be tree-shaped -- dropping the root of a tree
+    // splits it into a dangling-free forest of the remaining subtrees, or
+    // (as here) can leave a plain from/to/source_edge list that a fresh
+    // `new()` call would reclassify entirely independently; this method
+    // itself is representation-agnostic (see `edge_list()`).
+    #[test]
+    fn tree_induced_subgraph_drops_dangling_and_clones_replicated() {
+        test! {
+            // 3-node chain: 1 is root; 2->1; 3->2.
+            let g = GraphBackend::new(3, vec![2, 3], vec![1, 2], true);
+            assert!(g.is_tree());
+            // New nodes <- old 2, 2, 3 (node 2 replicated, node 1/root dropped):
+            // edge 2->1 vanishes (1 has no new position), edge 3->2 clones once
+            // per replica of 2.
+            let remap = g.induced_subgraph(vec![2, 2, 3]);
+            let from: Vec<i32> = remap.dollar("from").unwrap().as_integer_vector().unwrap();
+            let to: Vec<i32> = remap.dollar("to").unwrap().as_integer_vector().unwrap();
+            let source_edge: Vec<i32> = remap
+                .dollar("source_edge")
+                .unwrap()
+                .as_integer_vector()
+                .unwrap();
+            // Old edge 2 (3->2) survives once per (new-from replica, new-to) combo:
+            // old 3 maps to new {3}, old 2 maps to new {1, 2} -> two clones.
+            assert_eq!(from, vec![3, 3]);
+            assert_eq!(to.len(), 2); // clones to both replicas of node 2
+            assert_eq!(source_edge, vec![2, 2]);
+            let mut sorted_to = to.clone();
+            sorted_to.sort();
+            assert_eq!(sorted_to, vec![1, 2]);
+        }
+    }
+
+    #[test]
+    fn tree_induced_subgraph_treats_zero_as_no_source() {
+        test! {
+            let g = GraphBackend::new(2, vec![1], vec![2], true); // 1's parent is 2
+            assert!(g.is_tree());
+            let remap = g.induced_subgraph(vec![0, 2]);
+            let from: Vec<i32> = remap.dollar("from").unwrap().as_integer_vector().unwrap();
+            assert!(from.is_empty());
+        }
+    }
+
+    // -- Shape detection itself ------------------------------------------
+
+    #[test]
+    fn tree_shaped_graph_picks_tree_repr() {
+        test! {
+            let g = GraphBackend::new(3, vec![1, 2], vec![2, 3], true);
+            assert!(g.is_tree());
+        }
+    }
+
+    // A second root does NOT disqualify a graph from Repr::Tree in this
+    // implementation -- deliberate (see `detect_tree()`'s doc comment):
+    // the storage is a forest representation, and this is the concrete
+    // case that distinguishes "forest" from "single tree only".
+    #[test]
+    fn forest_with_two_roots_is_still_tree_shaped() {
+        test! {
+            // Two separate one-edge trees over the same 4-node set:
+            // 1 is root of {1, 2}; 3 is root of {3, 4}.
+            let g = GraphBackend::new(4, vec![2, 4], vec![1, 3], true);
+            assert!(g.is_tree());
+            assert_eq!(g.parent(1), 0);
+            assert_eq!(g.parent(2), 1);
+            assert_eq!(g.parent(3), 0);
+            assert_eq!(g.parent(4), 3);
+        }
+    }
+
+    #[test]
+    fn node_with_out_degree_two_picks_general_repr() {
+        test! {
+            // Node 1 has two outgoing edges (1->2, 1->3): not tree-shaped.
+            let g = GraphBackend::new(3, vec![1, 1], vec![2, 3], true);
+            assert!(!g.is_tree());
+        }
+    }
+
+    #[test]
+    fn a_cycle_picks_general_repr() {
+        test! {
+            let g = GraphBackend::new(3, vec![1, 2, 3], vec![2, 3, 1], true);
+            assert!(!g.is_tree());
+        }
+    }
+
+    #[test]
+    fn undirected_graph_never_picks_tree_repr() {
+        test! {
+            // Otherwise tree-shaped (out-degree <= 1, acyclic), but undirected.
+            let g = GraphBackend::new(3, vec![1, 2], vec![2, 3], false);
+            assert!(!g.is_tree());
+        }
+    }
+
+    // `parent()` on a non-tree backend: explicit panic, not a silent
+    // sentinel (see `GraphBackend::parent()`'s doc comment for why 0 would
+    // be the wrong choice here).
+    #[test]
+    #[should_panic(expected = "`parent()` is only defined when `is_tree()` is TRUE")]
+    fn parent_panics_on_general_repr() {
+        test! {
+            let g = GraphBackend::new(3, vec![1, 2, 3], vec![2, 3, 1], true); // a cycle
+            assert!(!g.is_tree());
+            g.parent(1);
         }
     }
 }

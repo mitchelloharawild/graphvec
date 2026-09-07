@@ -6,20 +6,49 @@
 NULL
 
 #' The shared topology backing a `node_vec`/`edge_vec` pair (non-hyperedge
-#' case only -- see `_dev/RUST_BACKEND.md`). Edges are stored as a plain
-#' directed arc list regardless of `directed`; `directed` is metadata that
-#' the query methods interpret, not a different graph type. This keeps the
-#' object immutable and shareable: a `node_vec`, its `edges()` reorientation,
-#' and any `edge_vec` sliced from it can all hold the same pointer.
+#' case only -- see `_dev/RUST_BACKEND.md`). Wraps one of several physical
+#' `Repr` variants, auto-selected at construction from graph shape
+#' (`_dev/petgraph_data_types.md` S3/S5); `directed` is metadata every
+#' variant's query methods interpret, not itself part of the shape
+#' decision beyond gating which variants are eligible (only a directed
+#' graph can be tree-shaped, see `detect_tree()`). This keeps the object
+#' immutable and shareable: a `node_vec`, its `edges()` reorientation, and
+#' any `edge_vec` sliced from it can all hold the same pointer.
 #'
 #' @export
 #'
 #' @section Methods:
 #'\subsection{Method `new`}{
 #'Build a graph on `n` nodes from 1-based `from`/`to` positions.
-#'Edges are added in input order and never removed afterwards, so
-#'edge ids (0-based internally, 1-based at the R boundary) stay stable
-#'and match the row order of the R-side edge attribute table.
+#'Automatically picks the cheapest `Repr` the graph's shape qualifies
+#'for (`_dev/petgraph_data_types.md` S3/S5 -- this decision belongs
+#'here, not in R, so there is exactly one place shape detection can
+#'drift out of sync with the representation it feeds). For the
+#'general representation, edges are added in input order and never
+#'removed afterwards, so edge ids (0-based internally, 1-based at the
+#'R boundary) stay stable and match the row order of the R-side edge
+#'attribute table; for the tree representation, the same external
+#'contract is upheld via `TreeData::order` (see its doc comment).
+#'}
+#'
+#'\subsection{Method `is_tree`}{
+#'Whether this backend is tree/forest-shaped (`Repr::Tree`) -- the one
+#'thing R call sites (once any exist) need to check before calling
+#'`parent()`, per `_dev/petgraph_data_types.md` S3's suggestion of a
+#'single predicate rather than a per-variant method surface.
+#'}
+#'
+#'\subsection{Method `parent`}{
+#'The 1-based parent position of `node` (1-based); `0` means `node` is
+#'a root. Only defined when `is_tree()` is true -- `0` already means
+#'"root" for a real tree, so a non-tree variant returning `0` would be
+#'silently indistinguishable from a real answer rather than "not
+#'applicable"; `_dev/petgraph_data_types.md` S3 flags exactly this and
+#'suggests `panic!`/`NA_INTEGER` instead, which is what this does --
+#'mirroring this project's existing idiom for an operation an input
+#'shape doesn't support (e.g. `check_no_hyperedges()`'s
+#'`cli::cli_abort()`) rather than returning a value that looks valid
+#'but means something else per variant.
 #'}
 #'
 #'\subsection{Method `neighbors`}{
@@ -33,10 +62,12 @@ NULL
 #'}
 #'
 #'\subsection{Method `degree`}{
-#'O(1): a `ptr`-difference-style lookup into the degree counts cached
-#'at construction, not a `neighbors().len()` walk. Must stay in exact
-#'agreement with `neighbors()`'s semantics above (mode handling, panic
-#'on an invalid mode, doubled self-loop) -- see this file's tests.
+#'O(1): a `ptr`-difference-style lookup, not a `neighbors().len()`
+#'walk, for either variant (the general representation's construction-
+#'time cache, or the tree representation's `parent`/reverse-CSR
+#'arrays). Must stay in exact agreement with `neighbors()`'s semantics
+#'above (mode handling, panic on an invalid mode, doubled self-loop)
+#'-- see this file's tests.
 #'}
 #'
 #'\subsection{Method `has_edge`}{
@@ -65,6 +96,18 @@ NULL
 #'edge id that surviving new edge `k` was cloned from, so the R side
 #'can carry edge attribute columns across replication with
 #'`edges[source_edge, ]`.
+#'
+#'This is representation-independent: it works from `edge_list()`'s
+#'output alone (S4's edge-identity contract, already upheld there),
+#'never `self.repr` directly, so it needs no per-variant duplicate.
+#'The result is a plain from/to/source_edge list either way -- it does
+#'not construct a new `GraphBackend` itself (R reconstructs one from
+#'these lists via `new()`, confirmed by grepping `R/node_vec.R`'s
+#'`[.node_vec`), so the *new* backend's shape (which needn't match the
+#'old one -- an induced subgraph of a tree is not generally a tree,
+#'e.g. dropping a root splits it into a forest, or replication can
+#'reintroduce a cycle) is re-decided by `new()`'s own detection from
+#'scratch, same as it would be for any other from/to/directed input.
 #'}
 #'
 GraphBackend <- new.env(parent = emptyenv())
@@ -76,6 +119,10 @@ GraphBackend$n_nodes <- function() .Call(wrap__GraphBackend__n_nodes, self)
 GraphBackend$n_edges <- function() .Call(wrap__GraphBackend__n_edges, self)
 
 GraphBackend$is_directed <- function() .Call(wrap__GraphBackend__is_directed, self)
+
+GraphBackend$is_tree <- function() .Call(wrap__GraphBackend__is_tree, self)
+
+GraphBackend$parent <- function(node) .Call(wrap__GraphBackend__parent, self, node)
 
 GraphBackend$neighbors <- function(node, mode) .Call(wrap__GraphBackend__neighbors, self, node, mode)
 
