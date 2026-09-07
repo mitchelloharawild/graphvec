@@ -42,3 +42,7 @@ Roxygen: list(markdown = TRUE)
 Config/roxygen2/version: 8.0.0
 URL: https://pkg.mitchelloharawild.com/graphvec/, https://github.com/mitchelloharawild/graphvec
 BugReports: https://github.com/mitchelloharawild/graphvec/issues
+Config/rextendr/version: 0.5.0
+SystemRequirements: Cargo (Rust's package manager), rustc >= 1.65.0, xz
+Depends: 
+    R (>= 4.2)
