@@ -57,6 +57,14 @@ for the same reason \code{is_tree()} was: this file's tests need a way to
 confirm which \code{Repr} a given \code{new()} call picked.
 }
 
+\subsection{Method \code{is_csr}}{
+Whether this backend is CSR-shaped (\code{Repr::Csr}) -- a test/diagnostic
+accessor mirroring \code{is_tree()}/\code{is_dense()}'s pattern, added for the
+same reason: this file's tests need a way to confirm which \code{Repr} a
+given \code{new()} call picked. Not currently required by any \verb{R/*.R} call
+site.
+}
+
 \subsection{Method \code{parent}}{
 The 1-based parent position of \code{node} (1-based); \code{0} means \code{node} is
 a root. Only defined when \code{is_tree()} is true -- \code{0} already means

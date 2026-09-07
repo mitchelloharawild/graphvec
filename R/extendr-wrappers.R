@@ -47,6 +47,14 @@ NULL
 #'confirm which `Repr` a given `new()` call picked.
 #'}
 #'
+#'\subsection{Method `is_csr`}{
+#'Whether this backend is CSR-shaped (`Repr::Csr`) -- a test/diagnostic
+#'accessor mirroring `is_tree()`/`is_dense()`'s pattern, added for the
+#'same reason: this file's tests need a way to confirm which `Repr` a
+#'given `new()` call picked. Not currently required by any `R/*.R` call
+#'site.
+#'}
+#'
 #'\subsection{Method `parent`}{
 #'The 1-based parent position of `node` (1-based); `0` means `node` is
 #'a root. Only defined when `is_tree()` is true -- `0` already means
@@ -132,6 +140,8 @@ GraphBackend$is_directed <- function() .Call(wrap__GraphBackend__is_directed, se
 GraphBackend$is_tree <- function() .Call(wrap__GraphBackend__is_tree, self)
 
 GraphBackend$is_dense <- function() .Call(wrap__GraphBackend__is_dense, self)
+
+GraphBackend$is_csr <- function() .Call(wrap__GraphBackend__is_csr, self)
 
 GraphBackend$parent <- function(node) .Call(wrap__GraphBackend__parent, self, node)
 

@@ -1,4 +1,5 @@
 use extendr_api::prelude::*;
+use rustworkx_core::petgraph::csr::{Csr, NodeIndex as CsrNodeIndex};
 use rustworkx_core::petgraph::graph::{DiGraph, EdgeIndex, NodeIndex};
 use rustworkx_core::petgraph::matrix_graph::{MatrixGraph, NodeIndex as MatrixNodeIndex};
 use rustworkx_core::petgraph::{Directed, Direction, EdgeType, Undirected};
@@ -267,6 +268,206 @@ fn detect_dense(n: usize, from: &[i32], to: &[i32], directed: bool) -> Option<De
     })
 }
 
+/// The general-purpose CSR representation (`_dev/petgraph_data_types.md`
+/// S2/S6 item 4): a `petgraph::csr::Csr` built once at construction, chosen
+/// by `detect_csr()` below for any graph that is not tree-shaped
+/// (`Repr::Tree`), not dense enough -- or dense but with a duplicate edge
+/// (`Repr::Dense`) -- **and has no duplicate edges of its own**.
+///
+/// **Deliberate deviation from S6 item 4's literal wording -- confirmed with
+/// the user before starting, not a silent reinterpretation.** That section
+/// describes this variant as *replacing* `Repr::General` outright, "the
+/// general-purpose variant." Reading `Csr`'s 0.8.3 source directly (not from
+/// memory) shows why that would be wrong: **`Csr` cannot represent a
+/// multigraph.** `add_edge()` silently no-ops (returns `false`, easy to
+/// miss) on a repeated `(a, b)` pair, and the bulk constructor
+/// `from_sorted_edges()` errors on one (its `EdgesNotSorted` check requires
+/// strictly increasing targets within a source row, which a duplicate
+/// violates). `_dev/DATA.md`'s own cost table lists `edge_multiplicity` as
+/// an operation the general backend must answer -- a parallel edge is a
+/// legitimate case this project's data model supports, not one already
+/// excluded upstream the way it is for `Repr::Dense`'s `MatrixGraph` (S4
+/// item 3, same limitation, same fix, same `has_duplicate_edges()` gate).
+/// So `Repr::General` stays exactly as it was: the always-correct fallback
+/// for anything none of the more specific variants -- tree, dense, or this
+/// one -- can hold, multigraphs included. `Repr::Csr` is a genuinely new,
+/// narrower bucket carved out of what `_dev/DATA.md` S3 step 5 described as
+/// one homogeneous "otherwise" catch-all: duplicate-free, non-tree,
+/// below-density-threshold graphs go here; everything else that isn't
+/// tree/dense (including any graph with a duplicate edge) falls through to
+/// `Repr::General`. See `GraphBackend::new()`'s selection order for where
+/// this split actually happens.
+///
+/// **Directed-internal storage, matching `Repr::General`/`Repr::Dense`**:
+/// built as `Csr<(), (), Directed>` regardless of `GraphBackend::directed`,
+/// storing exactly the arcs supplied to `new()` (one per input edge, never
+/// mirrored) -- not `Csr<_, _, Undirected>`. Checked directly against
+/// `Csr::from_sorted_edges()`'s own doc comment: an `Undirected`-typed `Csr`
+/// requires the input edge list to already contain *both* `(u, v)` and
+/// `(v, u)` for every logical edge, which this project's undirected
+/// convention (an edge stored once, `directed` interpreted by the query
+/// methods) doesn't produce; `Csr::try_add_edge`'s own `a != b` guard also
+/// shows a self-loop only gets mirrored once even under `Undirected` --
+/// one more convention to fight rather than lean on. Storing directed arcs
+/// and combining out+in for the symmetric view, exactly like `GeneralData`,
+/// sidesteps all of that.
+///
+/// **This unlocks genuine O(1) degree in both directions** -- unlike
+/// `Repr::Dense`, which had to fall back to scanning retained `from`/`to`
+/// vectors because an `Undirected`-typed `MatrixGraph` has no separate
+/// out/in adjacency to double through (S4's self-loop-convention risk).
+/// `csr.out_degree()` is petgraph's own O(1) row-length primitive; `in_ptr`/
+/// `in_idx` below are a reverse CSR over the same edges, built once at
+/// construction -- the same pattern `TreeData::children_ptr`/
+/// `children_idx` established for the tree variant's reverse (child)
+/// direction, since `Csr` itself, like a parent-pointer vector, only gives
+/// O(1) lookup in its one native (forward) direction. A self-loop is stored
+/// once (one arc `a -> a`) but is counted once by `out_degree` and once by
+/// the reverse index's `in_degree`, reproducing the doubled-self-loop
+/// convention for free -- confirmed by
+/// `csr_self_loop_counts_twice_in_undirected_degree`, not just assumed.
+///
+/// **Edge identity**: the same simple fix `Repr::Dense` uses, not the
+/// "hidden permutation vector" `_dev/petgraph_data_types.md` S4 describes as
+/// the fallback for a variant whose *natural* storage order differs from
+/// input order -- which `Csr` genuinely is (it wants source-then-target
+/// sorted storage, a real permutation of arbitrary construction order,
+/// unlike `Repr::Tree`/`Repr::Dense`, which had no separate storage order to
+/// permute against in the first place). `from`/`to` below are the original
+/// vectors exactly as supplied to `new()`, kept verbatim alongside `csr`;
+/// `edge_endpoints()`/`induced_subgraph()` answer from those via
+/// `GraphBackend::edge_list()`, never from `csr` directly (which is built
+/// from a *separately sorted clone*, see `build_csr()`). `csr` itself is
+/// used for exactly two things: `has_edge()`'s adjacency test and the O(1)
+/// degree/neighbour primitives above.
+struct CsrData {
+    csr: Csr<(), (), Directed>,
+    from: Vec<i32>,
+    to: Vec<i32>,
+    // Reverse (in-)adjacency as a CSR pair, built once at construction over
+    // the same edges `csr` already encodes -- see this struct's doc comment
+    // ("genuine O(1) degree in both directions").
+    in_ptr: Vec<i32>,
+    in_idx: Vec<i32>,
+}
+
+impl CsrData {
+    fn out_neighbors(&self, idx: usize) -> Vec<i32> {
+        self.csr
+            .neighbors_slice(idx as CsrNodeIndex)
+            .iter()
+            .map(|&n| n as i32 + 1)
+            .collect()
+    }
+
+    fn in_neighbors(&self, idx: usize) -> Vec<i32> {
+        let start = self.in_ptr[idx] as usize;
+        let end = self.in_ptr[idx + 1] as usize;
+        self.in_idx[start..end].to_vec()
+    }
+
+    fn out_degree(&self, idx: usize) -> i32 {
+        self.csr.out_degree(idx as CsrNodeIndex) as i32
+    }
+
+    fn in_degree(&self, idx: usize) -> i32 {
+        self.in_ptr[idx + 1] - self.in_ptr[idx]
+    }
+
+    fn has_edge(&self, from: i32, to: i32, directed: bool) -> bool {
+        let fi = (from - 1) as CsrNodeIndex;
+        let ti = (to - 1) as CsrNodeIndex;
+        if self.csr.contains_edge(fi, ti) {
+            return true;
+        }
+        // No storage-level "check both orientations" trick available here
+        // (unlike `Repr::Dense`'s `Undirected`-typed `MatrixGraph`, which
+        // stores one bit per unordered pair and so already agrees both
+        // ways): `csr` is always `Directed`-typed storage of exactly the
+        // supplied arcs (this struct's doc comment), so an undirected query
+        // must explicitly try the reverse arc too, the same fallback
+        // `Repr::General` uses over its own always-directed `DiGraph`.
+        !directed && self.csr.contains_edge(ti, fi)
+    }
+}
+
+// Build a `Csr<(), (), Directed>` from `from`/`to` (original, 1-based,
+// arbitrary order): sorts a *separate clone* of the 0-based pairs, since
+// `Csr::from_sorted_edges()` wants source-then-target sorted, strictly
+// increasing input (its own `EdgesNotSorted` check rejects a duplicate
+// target for the same source) -- this is only ever called once
+// `has_duplicate_edges()` has already ruled a duplicate out (`detect_csr()`
+// below), so the sort can't turn up one `from_sorted_edges()` would reject.
+// Sorting a clone rather than `from`/`to` themselves is what keeps
+// `edge_endpoints()`/`induced_subgraph()` (via `GraphBackend::edge_list()`)
+// answering in original construction order (S4's edge-identity item) --
+// `csr` ends up a second, differently-ordered copy of the same edges, never
+// the source of truth for enumeration.
+fn build_csr(n: usize, from: &[i32], to: &[i32]) -> Csr<(), (), Directed> {
+    let mut pairs: Vec<(u32, u32)> = from
+        .iter()
+        .zip(to.iter())
+        .map(|(&f, &t)| ((f - 1) as u32, (t - 1) as u32))
+        .collect();
+    pairs.sort_unstable();
+    let mut csr = Csr::<(), (), Directed>::from_sorted_edges(&pairs)
+        .expect("pairs are pre-sorted and duplicate-free (has_duplicate_edges() already checked)");
+    // `from_sorted_edges()` sizes the graph to `max_node_id + 1` -- it has
+    // no way to know `n` beyond what the edges themselves imply -- so an
+    // isolated highest-numbered node (or an empty edge list entirely) needs
+    // padding up to `n` explicitly.
+    while csr.node_count() < n {
+        csr.add_node(());
+    }
+    csr
+}
+
+/// `_dev/petgraph_data_types.md` S4 item 4 (this file's deliberate deviation
+/// from `_dev/DATA.md` S6 item 4 -- see `CsrData`'s doc comment): whether a
+/// graph `detect_tree()` and `detect_dense()` already rejected qualifies for
+/// `Repr::Csr` -- it does unless it has a duplicate edge, the same
+/// `has_duplicate_edges()` gate `detect_dense()` already uses (design
+/// recommendation 4: reuse it rather than write a second, possibly-
+/// inconsistent check), since `Csr` physically cannot hold a multigraph any
+/// more than `MatrixGraph` can. Only called for graphs that already failed
+/// both earlier checks, matching this file's selection order (tree, then
+/// density/duplicate-gated dense, then duplicate-gated CSR, then otherwise
+/// general).
+fn detect_csr(n: usize, from: &[i32], to: &[i32], directed: bool) -> Option<CsrData> {
+    if has_duplicate_edges(from, to, directed) {
+        return None;
+    }
+
+    let csr = build_csr(n, from, to);
+
+    // Reverse (in-)adjacency CSR via counting sort over `to`, the same
+    // technique `detect_tree()` uses to build `children_ptr`/`children_idx`
+    // (generalised here: a node can have any number of in-edges, not at
+    // most one).
+    let mut in_ptr = vec![0i32; n + 1];
+    for &t in to {
+        in_ptr[t as usize] += 1;
+    }
+    for i in 0..n {
+        in_ptr[i + 1] += in_ptr[i];
+    }
+    let mut cursor = in_ptr.clone();
+    let mut in_idx = vec![0i32; from.len()];
+    for (&f, &t) in from.iter().zip(to.iter()) {
+        let slot = cursor[(t - 1) as usize] as usize;
+        in_idx[slot] = f;
+        cursor[(t - 1) as usize] += 1;
+    }
+
+    Some(CsrData {
+        csr,
+        from: from.to_vec(),
+        to: to.to_vec(),
+        in_ptr,
+        in_idx,
+    })
+}
+
 /// Which physical representation a `GraphBackend` picked for one graph
 /// (`_dev/petgraph_data_types.md` S3). Private -- never `#[extendr]` itself,
 /// matched inside every `GraphBackend` method so the R-visible class and
@@ -275,6 +476,7 @@ enum Repr {
     General(GeneralData),
     Tree(TreeData),
     Dense(DenseData),
+    Csr(CsrData),
 }
 
 /// Directed, out-degree <= 1 for every node, no cycle -- accepts a *forest*
@@ -428,6 +630,23 @@ impl GraphBackend {
             };
         }
 
+        // `_dev/DATA.md` S3 step 5's "otherwise" catch-all splits in two
+        // here, a deliberate deviation from `_dev/petgraph_data_types.md` S6
+        // item 4's literal wording (`CsrData`'s doc comment has the full
+        // reasoning, confirmed with the user before implementing): a graph
+        // that reaches this point (not tree-shaped, not dense enough or
+        // dense-with-a-duplicate) goes to the new `Repr::Csr` if it has no
+        // duplicate edges of its own -- `Csr` cannot hold a multigraph any
+        // more than `MatrixGraph` can -- and only falls through to
+        // `Repr::General` (unchanged, still the always-correct fallback)
+        // when it does.
+        if let Some(csr) = detect_csr(n, &from, &to, directed) {
+            return GraphBackend {
+                repr: Repr::Csr(csr),
+                directed,
+            };
+        }
+
         let mut graph = DiGraph::<(), ()>::with_capacity(n, from.len());
         for _ in 0..n {
             graph.add_node(());
@@ -456,6 +675,7 @@ impl GraphBackend {
             Repr::General(g) => g.graph.node_count() as i32,
             Repr::Tree(t) => t.parent.len() as i32,
             Repr::Dense(d) => d.out_degree.len() as i32,
+            Repr::Csr(c) => c.csr.node_count() as i32,
         }
     }
 
@@ -464,6 +684,7 @@ impl GraphBackend {
             Repr::General(g) => g.graph.edge_count() as i32,
             Repr::Tree(t) => t.order.len() as i32,
             Repr::Dense(d) => d.from.len() as i32,
+            Repr::Csr(c) => c.from.len() as i32,
         }
     }
 
@@ -489,6 +710,15 @@ impl GraphBackend {
         matches!(self.repr, Repr::Dense(_))
     }
 
+    /// Whether this backend is CSR-shaped (`Repr::Csr`) -- a test/diagnostic
+    /// accessor mirroring `is_tree()`/`is_dense()`'s pattern, added for the
+    /// same reason: this file's tests need a way to confirm which `Repr` a
+    /// given `new()` call picked. Not currently required by any `R/*.R` call
+    /// site.
+    fn is_csr(&self) -> bool {
+        matches!(self.repr, Repr::Csr(_))
+    }
+
     /// The 1-based parent position of `node` (1-based); `0` means `node` is
     /// a root. Only defined when `is_tree()` is true -- `0` already means
     /// "root" for a real tree, so a non-tree variant returning `0` would be
@@ -502,7 +732,7 @@ impl GraphBackend {
     fn parent(&self, node: i32) -> i32 {
         match &self.repr {
             Repr::Tree(t) => t.parent[(node - 1) as usize],
-            Repr::General(_) | Repr::Dense(_) => {
+            Repr::General(_) | Repr::Dense(_) | Repr::Csr(_) => {
                 panic!("`parent()` is only defined when `is_tree()` is TRUE")
             }
         }
@@ -581,6 +811,7 @@ impl GraphBackend {
                     DenseMatrix::Undirected(m) => m.has_edge(fi, ti),
                 }
             }
+            Repr::Csr(c) => c.has_edge(from, to, self.directed),
         }
     }
 
@@ -684,6 +915,7 @@ impl GraphBackend {
                 (t.order.clone(), to)
             }
             Repr::Dense(d) => (d.from.clone(), d.to.clone()),
+            Repr::Csr(c) => (c.from.clone(), c.to.clone()),
         }
     }
 
@@ -713,6 +945,7 @@ impl GraphBackend {
             Repr::General(g) => Self::directed_neighbors(g, NodeIndex::new(idx), Direction::Outgoing),
             Repr::Tree(t) => t.out_neighbors(idx),
             Repr::Dense(d) => d.out_neighbors(idx),
+            Repr::Csr(c) => c.out_neighbors(idx),
         }
     }
 
@@ -721,6 +954,7 @@ impl GraphBackend {
             Repr::General(g) => Self::directed_neighbors(g, NodeIndex::new(idx), Direction::Incoming),
             Repr::Tree(t) => t.in_neighbors(idx),
             Repr::Dense(d) => d.in_neighbors(idx),
+            Repr::Csr(c) => c.in_neighbors(idx),
         }
     }
 
@@ -729,6 +963,7 @@ impl GraphBackend {
             Repr::General(g) => g.out_degree[idx],
             Repr::Tree(t) => t.out_degree(idx),
             Repr::Dense(d) => d.out_degree[idx],
+            Repr::Csr(c) => c.out_degree(idx),
         }
     }
 
@@ -737,6 +972,7 @@ impl GraphBackend {
             Repr::General(g) => g.in_degree[idx],
             Repr::Tree(t) => t.in_degree(idx),
             Repr::Dense(d) => d.in_degree[idx],
+            Repr::Csr(c) => c.in_degree(idx),
         }
     }
 
@@ -1332,32 +1568,49 @@ mod tests {
     // root (`detect_tree()` rejects it as a cycle -- see its own doc
     // comment), so it falls through to the density check same as any other
     // non-tree graph. M=10, N choose 2 = 45, density = 10/45 ~= 0.222, below
-    // threshold -- picks General, not Dense.
+    // threshold, and no duplicate edges -- picks Csr, not Dense.
+    //
+    // Renamed from `below_density_threshold_picks_general_repr` (this input
+    // used to be General's example of the "otherwise" catch-all before
+    // `Repr::Csr` existed): with the duplicate-free/duplicate split this
+    // file's `Repr::Csr` deviation introduces (`CsrData`'s doc comment,
+    // `GraphBackend::new()`'s selection-site comment), `Repr::General` is
+    // now reached only when a graph *has* a duplicate edge -- see
+    // `duplicate_edge_despite_density_falls_back_to_general_repr` below for
+    // that case, and the "-- CSR selection logic --" tests further down for
+    // the CSR/General split itself.
     #[test]
-    fn below_density_threshold_picks_general_repr() {
+    fn below_density_threshold_picks_csr_repr() {
         test! {
             let from: Vec<i32> = (1..=10).collect();
             let to: Vec<i32> = (2..=10).chain(std::iter::once(1)).collect();
             let g = GraphBackend::new(10, from, to, true);
             assert!(!g.is_tree());
             assert!(!g.is_dense());
+            assert!(g.is_csr());
         }
     }
 
     // A duplicate edge despite being dense: falls back to Repr::General
-    // regardless of density, since Repr::Dense physically cannot hold a
-    // multigraph (`MatrixGraph::add_edge()` panics on a repeated pair --
-    // `_dev/petgraph_data_types.md` S4 item 3). n=3 undirected, edge (1,2)
+    // regardless of density, since neither Repr::Dense nor (this file's
+    // `Repr::Csr` addition) Repr::Csr can physically hold a multigraph
+    // (`MatrixGraph::add_edge()` panics on a repeated pair, `Csr::add_edge()`
+    // silently no-ops on one -- `_dev/petgraph_data_types.md` S4 item 3 and
+    // `CsrData`'s doc comment respectively). n=3 undirected, edge (1,2)
     // supplied twice plus (2,3): density = 3/(3 choose 2) = 1.0 > 0.3 --
     // would otherwise qualify for Dense, but the duplicate gate forces
-    // General instead. Compare `dense_enough_duplicate_free_graph_picks_dense_repr`
-    // above, same shape minus the duplicate, which does pick Dense.
+    // General instead (and would still force General even below the density
+    // threshold, since the same gate applies to Csr -- see the "-- CSR
+    // selection logic --" tests further down). Compare
+    // `dense_enough_duplicate_free_graph_picks_dense_repr` above, same shape
+    // minus the duplicate, which does pick Dense.
     #[test]
     fn duplicate_edge_despite_density_falls_back_to_general_repr() {
         test! {
             let g = GraphBackend::new(3, vec![1, 1, 2], vec![2, 2, 3], false);
             assert!(!g.is_tree());
             assert!(!g.is_dense());
+            assert!(!g.is_csr());
             // Still a perfectly ordinary graph otherwise -- General answers
             // has_edge()/degree() for it exactly as it would for any input.
             assert!(g.has_edge(1, 2));
@@ -1371,13 +1624,304 @@ mod tests {
     // is tree-shaped AND would also clear DENSE_THRESHOLD if the density
     // check ran on it (density = 1/(2 choose 2) = 1.0 > 0.3) -- proving the
     // tree check really does short-circuit before density is ever
-    // evaluated, not just that both checks happen to agree.
+    // evaluated, not just that both checks happen to agree. Also never
+    // reaches the CSR check for the same reason (tree wins first).
     #[test]
     fn tree_shaped_graph_never_reaches_density_check() {
         test! {
             let g = GraphBackend::new(2, vec![2], vec![1], true);
             assert!(g.is_tree());
             assert!(!g.is_dense());
+            assert!(!g.is_csr());
+        }
+    }
+
+    // -- Repr::Csr ---------------------------------------------------------
+    //
+    // Every S4 contract item (`_dev/petgraph_data_types.md`), covered for
+    // Repr::Csr specifically -- none of it is inherited by assumption from
+    // any other variant's tests above. See `CsrData`'s doc comment and
+    // `GraphBackend::new()`'s selection-site comment for this file's
+    // deliberate deviation from `_dev/DATA.md` S6 item 4's literal wording
+    // (Repr::Csr as a new, narrower bucket alongside Repr::General, not a
+    // replacement for it).
+
+    // Node identity: dense 1..N, stable, representation-independent -- holds
+    // trivially here too (same reasoning as
+    // `tree_node_identity_is_dense_and_stable`/
+    // `dense_node_identity_is_dense_and_stable`), stated plainly per S4's
+    // own instruction rather than skipped. n=8 directed path 1->2->3->4->5->6
+    // plus 1->3 (node 1 has out-degree 2, so never tree-shaped); density =
+    // 6/(8 choose 2) = 6/28 ~= 0.214, below DENSE_THRESHOLD, no duplicate
+    // edges -- picks Csr.
+    #[test]
+    fn csr_node_identity_is_dense_and_stable() {
+        test! {
+            let from = vec![1, 2, 3, 4, 5, 1];
+            let to = vec![2, 3, 4, 5, 6, 3];
+            let g = GraphBackend::new(8, from, to, true);
+            assert!(!g.is_tree());
+            assert!(!g.is_dense());
+            assert!(g.is_csr());
+            assert_eq!(g.n_nodes(), 8);
+            for node in 1..=8 {
+                // every position answers queries independently of the others
+                let _ = g.degree(node, "all");
+                let _ = g.neighbors(node, "all");
+            }
+        }
+    }
+
+    // Edge identity / enumeration order -- the one real risk per S4, and the
+    // risk this variant actually has for real (unlike Repr::Tree/Repr::Dense,
+    // which had no separate storage order to permute against in the first
+    // place): `Csr`'s native storage is source-then-target sorted, a real
+    // permutation of arbitrary construction order. `CsrData::from`/`to`
+    // exist specifically to answer this -- `csr` itself (built from a
+    // *separately sorted clone*, `build_csr()`) is never consulted by
+    // `edge_endpoints()`/`induced_subgraph()`. Deliberately scrambled input
+    // (not sorted by either endpoint, and not node-order either) so an
+    // accidental fall-through to `csr`'s own storage order would be caught.
+    // n=8 directed, 6 edges (same shape as
+    // `csr_node_identity_is_dense_and_stable`, deliberately reordered and
+    // duplicate-free) -- density = 6/28 ~= 0.214 < 0.3, picks Csr.
+    #[test]
+    fn csr_edge_endpoints_preserve_construction_order() {
+        test! {
+            let from = vec![5, 1, 4, 1, 2, 3];
+            let to = vec![6, 3, 5, 2, 3, 4];
+            let g = GraphBackend::new(8, from.clone(), to.clone(), true);
+            assert!(g.is_csr());
+            let ends = g.edge_endpoints();
+            let got_from: Vec<i32> = ends.dollar("from").unwrap().as_integer_vector().unwrap();
+            let got_to: Vec<i32> = ends.dollar("to").unwrap().as_integer_vector().unwrap();
+            assert_eq!(got_from, from);
+            assert_eq!(got_to, to);
+        }
+    }
+
+    // Self-loop/undirected-degree convention: S4 explicitly warns not to
+    // assume any petgraph type agrees with `Graph`'s "a loop counts twice"
+    // convention (established for Repr::General by
+    // `self_loop_counts_twice_in_undirected_degree`) in either direction --
+    // confirmed to actually differ for Repr::Dense's `MatrixGraph`
+    // (`dense_self_loop_counts_twice_in_undirected_degree`'s comment), so
+    // Repr::Csr gets its own check rather than inheriting the assumption.
+    // `CsrData`'s doc comment predicts this holds "for free" here (a
+    // self-loop is one arc `a -> a`, counted once by `csr.out_degree()` and
+    // once more by the reverse (`in_ptr`/`in_idx`) index) -- this test is
+    // what actually confirms that prediction rather than trusting the
+    // arithmetic. n=6 undirected, self-loop on node 1 plus an ordinary edge
+    // to node 2 (nodes 3-6 isolated, just to keep density below threshold):
+    // density = 2/(6 choose 2) = 2/15 ~= 0.133 < 0.3, no duplicate pairs
+    // ((1,1) and (1,2) are distinct canonical keys) -- picks Csr.
+    #[test]
+    fn csr_self_loop_counts_twice_in_undirected_degree() {
+        test! {
+            let g = GraphBackend::new(6, vec![1, 1], vec![1, 2], false);
+            assert!(g.is_csr());
+            assert_eq!(g.degree(1, "all"), 3); // loop (2) + edge to 2 (1)
+            assert_eq!(g.degree(2, "all"), 1);
+            let mut ns = g.neighbors(1, "all");
+            ns.sort();
+            assert_eq!(ns, vec![1, 1, 2]); // order isn't a contract, only the multiset is
+        }
+    }
+
+    // `mode` semantics must match every other variant exactly: "out"/"in"/
+    // "all" for directed, invalid values panic identically. n=8 directed,
+    // 6 edges (same shape as `csr_node_identity_is_dense_and_stable`) --
+    // density = 6/28 ~= 0.214 < 0.3, duplicate-free -- picks Csr.
+    #[test]
+    fn csr_mode_semantics_match_other_variants() {
+        test! {
+            let from = vec![1, 2, 3, 4, 5, 1];
+            let to = vec![2, 3, 4, 5, 6, 3];
+            let g = GraphBackend::new(8, from, to, true);
+            assert!(g.is_csr());
+            assert_eq!(g.degree(1, "out"), 2); // 1->2, 1->3
+            assert_eq!(g.degree(1, "in"), 0);
+            assert_eq!(g.degree(1, "all"), 2);
+            assert_eq!(g.degree(3, "out"), 1); // 3->4
+            assert_eq!(g.degree(3, "in"), 2); // 2->3, 1->3
+            assert_eq!(g.degree(3, "all"), 3);
+            for node in 1..=8 {
+                for mode in ["out", "in", "all"] {
+                    assert_eq!(
+                        g.degree(node, mode),
+                        g.neighbors(node, mode).len() as i32
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "`mode` must be one of \"out\", \"in\", \"all\", not \"sideways\"")]
+    fn csr_neighbors_invalid_mode_panics_like_other_variants() {
+        test! {
+            let from = vec![1, 2, 3, 4, 5, 1];
+            let to = vec![2, 3, 4, 5, 6, 3];
+            let g = GraphBackend::new(8, from, to, true);
+            assert!(g.is_csr());
+            g.neighbors(1, "sideways");
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "`mode` must be one of \"out\", \"in\", \"all\", not \"sideways\"")]
+    fn csr_degree_invalid_mode_panics_like_other_variants() {
+        test! {
+            let from = vec![1, 2, 3, 4, 5, 1];
+            let to = vec![2, 3, 4, 5, 6, 3];
+            let g = GraphBackend::new(8, from, to, true);
+            assert!(g.is_csr());
+            g.degree(1, "sideways");
+        }
+    }
+
+    // `parent()` panics on Repr::Csr the same way it does on Repr::General/
+    // Repr::Dense (see `GraphBackend::parent()`'s `Repr::General(_) |
+    // Repr::Dense(_) | Repr::Csr(_)` arm).
+    #[test]
+    #[should_panic(expected = "`parent()` is only defined when `is_tree()` is TRUE")]
+    fn csr_parent_panics() {
+        test! {
+            let from = vec![1, 2, 3, 4, 5, 1];
+            let to = vec![2, 3, 4, 5, 6, 3];
+            let g = GraphBackend::new(8, from, to, true);
+            assert!(g.is_csr());
+            g.parent(1);
+        }
+    }
+
+    // induced_subgraph()'s replication/drop logic, mirroring
+    // `induced_subgraph_drops_dangling_and_clones_replicated` /
+    // `induced_subgraph_treats_zero_as_no_source` above, for a Csr-shaped
+    // input, and confirming (as those tests' own comments already establish
+    // for General/Tree/Dense) that induced_subgraph() never constructs a
+    // GraphBackend itself -- it returns plain lists, representation-
+    // independent (see `induced_subgraph()`'s doc comment and `edge_list()`,
+    // which `Repr::Csr` participates in like every other variant).
+    #[test]
+    fn csr_induced_subgraph_drops_dangling_and_clones_replicated() {
+        test! {
+            // 8-node directed path 1->2->3->4->5->6 plus 1->3 (never
+            // Tree-shaped: node 1 has out-degree 2); density = 6/28 ~= 0.214
+            // < 0.3, duplicate-free -- picks Csr.
+            let from = vec![1, 2, 3, 4, 5, 1];
+            let to = vec![2, 3, 4, 5, 6, 3];
+            let g = GraphBackend::new(8, from, to, true);
+            assert!(g.is_csr());
+            // New nodes <- old 1, 1, 2 (node 1 replicated, node 3 dropped):
+            // edge 1->2 clones once per replica of 1; edges touching 3
+            // (1->3, 3->4) vanish; edges among untouched old nodes (4,5,6,7,8)
+            // vanish too since none of them have a new position.
+            let remap = g.induced_subgraph(vec![1, 1, 2]);
+            let from_out: Vec<i32> = remap.dollar("from").unwrap().as_integer_vector().unwrap();
+            let to_out: Vec<i32> = remap.dollar("to").unwrap().as_integer_vector().unwrap();
+            let source_edge: Vec<i32> = remap
+                .dollar("source_edge")
+                .unwrap()
+                .as_integer_vector()
+                .unwrap();
+            // Old edge 1 (1->2) survives once per (new-from replica, new-to)
+            // combo: old 1 maps to new {1, 2}, old 2 maps to new {3} -> two
+            // clones.
+            assert_eq!(from_out, vec![1, 2]);
+            assert_eq!(to_out, vec![3, 3]);
+            assert_eq!(source_edge, vec![1, 1]);
+        }
+    }
+
+    #[test]
+    fn csr_induced_subgraph_treats_zero_as_no_source() {
+        test! {
+            // n=6 undirected (never tree-shaped); density = 1/(6 choose 2)
+            // = 1/15 ~= 0.067 < 0.3, no duplicates -- picks Csr.
+            let g = GraphBackend::new(6, vec![1], vec![2], false);
+            assert!(g.is_csr());
+            // New node 1 has no source (sentinel 0); new node 2 <- old node 2.
+            let remap = g.induced_subgraph(vec![0, 2]);
+            let from: Vec<i32> = remap.dollar("from").unwrap().as_integer_vector().unwrap();
+            assert!(from.is_empty());
+        }
+    }
+
+    // -- CSR selection logic ------------------------------------------------
+
+    // A duplicate-free, non-tree, below-density-threshold graph picks
+    // Repr::Csr -- same shape/reasoning as `below_density_threshold_picks_csr_repr`
+    // above, restated here alongside the rest of the selection-order tests.
+    #[test]
+    fn duplicate_free_below_density_threshold_picks_csr_repr() {
+        test! {
+            let from = vec![1, 2, 3, 4, 5, 1];
+            let to = vec![2, 3, 4, 5, 6, 3];
+            let g = GraphBackend::new(8, from, to, true);
+            assert!(!g.is_tree());
+            assert!(!g.is_dense());
+            assert!(g.is_csr());
+        }
+    }
+
+    // A graph with a duplicate edge, otherwise identical in shape to one
+    // that would pick Csr, picks Repr::General instead -- `Csr::add_edge()`
+    // silently no-ops on a repeated `(a, b)` pair and
+    // `Csr::from_sorted_edges()` errors on one (`CsrData`'s doc comment), so
+    // `detect_csr()` gates on the same `has_duplicate_edges()` check
+    // `detect_dense()` already uses (design recommendation 4) rather than
+    // ever attempting to build a `Csr` that can't hold the input. n=8
+    // directed, same shape as `duplicate_free_below_density_threshold_picks_csr_repr`
+    // but with 1->2 supplied twice: density unaffected by the duplicate
+    // (still 6/28 < 0.3, using the distinct-pair count) -- would otherwise
+    // qualify for Csr, but the duplicate forces General.
+    #[test]
+    fn duplicate_edge_below_density_threshold_picks_general_repr() {
+        test! {
+            let from = vec![1, 2, 3, 4, 5, 1, 1];
+            let to = vec![2, 3, 4, 5, 6, 3, 2];
+            let g = GraphBackend::new(8, from, to, true);
+            assert!(!g.is_tree());
+            assert!(!g.is_dense());
+            assert!(!g.is_csr());
+            assert!(g.has_edge(1, 2));
+            assert_eq!(g.degree(1, "out"), 3); // 1->2 (x2) + 1->3
+        }
+    }
+
+    // A dense, duplicate-free graph picks Repr::Dense, not Repr::Csr --
+    // confirms the ordering (tree check, then density check, then
+    // CSR-eligibility, then general fallback): the density check runs
+    // *before* the CSR check, so a graph that clears the density threshold
+    // never reaches `detect_csr()` at all. Same input as
+    // `dense_enough_duplicate_free_graph_picks_dense_repr` above (complete
+    // undirected triangle, density = 3/(3 choose 2) = 1.0 > 0.3).
+    #[test]
+    fn dense_duplicate_free_graph_picks_dense_not_csr_repr() {
+        test! {
+            let g = GraphBackend::new(3, vec![1, 1, 2], vec![2, 3, 3], false);
+            assert!(!g.is_tree());
+            assert!(g.is_dense());
+            assert!(!g.is_csr());
+        }
+    }
+
+    // A tree-shaped graph never reaches the CSR check at all -- the tree
+    // check runs first and short-circuits (same ordering point
+    // `tree_shaped_graph_never_reaches_density_check` above makes for the
+    // density check). This graph is tree-shaped AND would also be
+    // duplicate-free and below the density threshold if either later check
+    // ran on it, proving the tree check really does short-circuit before
+    // the CSR check is ever evaluated, not just that the checks happen to
+    // agree.
+    #[test]
+    fn tree_shaped_graph_never_reaches_csr_check() {
+        test! {
+            let g = GraphBackend::new(3, vec![1, 2], vec![2, 3], true);
+            assert!(g.is_tree());
+            assert!(!g.is_dense());
+            assert!(!g.is_csr());
         }
     }
 }
