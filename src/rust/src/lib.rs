@@ -14,6 +14,16 @@ use rustworkx_core::petgraph::Direction;
 struct GraphBackend {
     graph: DiGraph<(), ()>,
     directed: bool,
+    // Cached per-node arc counts, computed once at construction so
+    // `degree()` is O(1) instead of consuming `neighbors()`'s O(d) walk
+    // (petgraph's `Graph` has no cached degree of its own -- confirmed
+    // against its API, see `_dev/petgraph_data_types.md` S1). Counted over
+    // the always-directed internal `graph` regardless of `self.directed`,
+    // so a self-loop contributes to both and `out_degree[i] + in_degree[i]`
+    // reproduces the doubled-self-loop convention `neighbors()` already
+    // established (see `symmetric_neighbors()` below and this file's tests).
+    out_degree: Vec<i32>,
+    in_degree: Vec<i32>,
 }
 
 #[extendr]
@@ -28,12 +38,21 @@ impl GraphBackend {
         for _ in 0..n {
             graph.add_node(());
         }
+        let mut out_degree = vec![0i32; n];
+        let mut in_degree = vec![0i32; n];
         for (f, t) in from.iter().zip(to.iter()) {
             let fi = NodeIndex::new((*f - 1) as usize);
             let ti = NodeIndex::new((*t - 1) as usize);
             graph.add_edge(fi, ti, ());
+            out_degree[(*f - 1) as usize] += 1;
+            in_degree[(*t - 1) as usize] += 1;
         }
-        GraphBackend { graph, directed }
+        GraphBackend {
+            graph,
+            directed,
+            out_degree,
+            in_degree,
+        }
     }
 
     fn n_nodes(&self) -> i32 {
@@ -68,8 +87,21 @@ impl GraphBackend {
         }
     }
 
+    /// O(1): a `ptr`-difference-style lookup into the degree counts cached
+    /// at construction, not a `neighbors().len()` walk. Must stay in exact
+    /// agreement with `neighbors()`'s semantics above (mode handling, panic
+    /// on an invalid mode, doubled self-loop) -- see this file's tests.
     fn degree(&self, node: i32, mode: &str) -> i32 {
-        self.neighbors(node, mode).len() as i32
+        let idx = (node - 1) as usize;
+        if !self.directed {
+            return self.out_degree[idx] + self.in_degree[idx];
+        }
+        match mode {
+            "out" => self.out_degree[idx],
+            "in" => self.in_degree[idx],
+            "all" => self.out_degree[idx] + self.in_degree[idx],
+            _ => panic!("`mode` must be one of \"out\", \"in\", \"all\", not \"{mode}\""),
+        }
     }
 
     /// Adjacency test. For an undirected graph, checks both orientations.
@@ -234,6 +266,31 @@ mod tests {
             assert_eq!(g.degree(1, "out"), 1);
             assert_eq!(g.degree(1, "in"), 1);
             assert_eq!(g.degree(1, "all"), 2);
+        }
+    }
+
+    // `degree()` stopped being `neighbors().len()` when it moved to a
+    // construction-time cache -- pin the two down as agreeing on every
+    // mode, directed and undirected, so a future edit to one path can't
+    // silently drift from the other.
+    #[test]
+    fn degree_matches_neighbors_len_every_mode() {
+        test! {
+            let gd = GraphBackend::new(3, vec![1, 1, 2], vec![1, 2, 3], true);
+            for node in 1..=3 {
+                for mode in ["out", "in", "all"] {
+                    assert_eq!(
+                        gd.degree(node, mode),
+                        gd.neighbors(node, mode).len() as i32
+                    );
+                }
+            }
+
+            let gu = GraphBackend::new(3, vec![1, 1, 2], vec![1, 2, 3], false);
+            for node in 1..=3 {
+                // mode is ignored when undirected -- any value must agree.
+                assert_eq!(gu.degree(node, "all"), gu.neighbors(node, "all").len() as i32);
+            }
         }
     }
 

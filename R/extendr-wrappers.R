@@ -32,6 +32,13 @@ NULL
 #'`degree()` can just be `neighbors().len()`.
 #'}
 #'
+#'\subsection{Method `degree`}{
+#'O(1): a `ptr`-difference-style lookup into the degree counts cached
+#'at construction, not a `neighbors().len()` walk. Must stay in exact
+#'agreement with `neighbors()`'s semantics above (mode handling, panic
+#'on an invalid mode, doubled self-loop) -- see this file's tests.
+#'}
+#'
 #'\subsection{Method `has_edge`}{
 #'Adjacency test. For an undirected graph, checks both orientations.
 #'}
