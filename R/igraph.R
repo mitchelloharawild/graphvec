@@ -64,16 +64,21 @@ as.igraph.agg_df <- function(x, ...) {
 #' @rdname as.igraph
 #' @exportS3Method igraph::as.igraph
 as.igraph.node_vec <- function(x, ...) {
-  e <- attr(x, "edges")
+  graph <- attr(x, "graph")
   # Node identity is positional, so the vertex count comes from `x` rather than
   # from the edges -- otherwise trailing isolated nodes would be dropped.
+  if (!is.null(graph)) {
+    e <- graph$edge_endpoints()
+    return(igraph_from_edges(from = e$from, to = e$to, n = length(x), directed = attr(x, "directed")))
+  }
+  e <- attr(x, "edges")
   igraph_from_edges(from = e[["from"]], to = e[["to"]], n = length(x), directed = attr(x, "directed"))
 }
 
 #' @rdname as.igraph
 #' @exportS3Method igraph::as.igraph
 as.igraph.edge_vec <- function(x, ...) {
-  e <- edge_vec_data(x)
+  e <- edge_vec_endpoints(x)
   igraph_from_edges(
     from = e[["from"]],
     to = e[["to"]],

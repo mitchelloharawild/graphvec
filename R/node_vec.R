@@ -64,14 +64,47 @@ node_vec <- function(x = list(), from = integer(), to = integer(), ..., directed
 #'
 #' @export
 new_node_vec <- function(x = list(), edges = data.frame(from = integer(), to = integer()), directed = TRUE) {
-  # "data.frame" is excluded from the external class so no data.frame generic
-  # can hijack a data-frame-backed x; the true class is cached below so
-  # strip_node_vec() can restore it when real data-frame semantics are needed.
+  from <- edges[["from"]]
+  to <- edges[["to"]]
+
+  # Hyperedges (list-valued from/to) are out of scope for the Rust backend
+  # (_dev/RUST_BACKEND.md) -- keep today's edges-attribute representation
+  # exactly as-is, unaccelerated.
+  if (is.list(from) || is.list(to)) {
+    # "data.frame" is excluded from the external class so no data.frame
+    # generic can hijack a data-frame-backed x; the true class is cached
+    # below so strip_node_vec() can restore it when real data-frame
+    # semantics are needed.
+    value_class <- class(x)
+    return(structure(
+      x,
+      class = c("node_vec", setdiff(value_class, "data.frame")),
+      value_class = value_class,
+      edges = edges,
+      directed = directed
+    ))
+  }
+
+  # Ordinary case: topology moves into a shared GraphBackend; `edges` keeps
+  # only the attribute columns (everything but from/to), aligned 1:1 with
+  # the graph's edge order -- this is what removes the two-copies problem
+  # `_dev/RUST_BACKEND.md` describes.
+  graph <- graphvec_backend_new(NROW(x), from, to, directed)
+  attrs <- edges[setdiff(names(edges), c("from", "to"))]
+  new_node_vec_backend(x, graph = graph, edges = attrs, directed = directed)
+}
+
+# Low-level constructor for the non-hyperedge (Rust-backed) case: `edges` is
+# already the attribute-only table aligned with `graph`'s edge order, and
+# `graph` is already built -- used by new_node_vec() and by
+# nodes.edge_vec()'s free (no-Rust-call) reorientation.
+new_node_vec_backend <- function(x, graph, edges, directed) {
   value_class <- class(x)
   structure(
     x,
     class = c("node_vec", setdiff(value_class, "data.frame")),
     value_class = value_class,
+    graph = graph,
     edges = edges,
     directed = directed
   )
@@ -106,6 +139,7 @@ strip_node_vec <- function(x) {
   # (node_vec-layered) class, which has "data.frame" excluded.
   value_class <- attr(x, "value_class")
   attr(x, "edges") <- NULL
+  attr(x, "graph") <- NULL # absent (NULL already) for the hyperedge case
   attr(x, "directed") <- NULL
   attr(x, "value_class") <- NULL
   oldClass(x) <- NULL
@@ -137,6 +171,10 @@ node_label <- function(x, ...) {
 # combination of replica positions, carrying the same attribute values as
 # the original. `from`/`to` stay whatever shape (plain or hyperedge) they
 # arrived in.
+#
+# Hyperedge-only fallback: the ordinary (non-hyperedge) case is handled by
+# GraphBackend$induced_subgraph() instead (_dev/RUST_BACKEND.md), which is
+# the same computation done in Rust over a plain (non-list) from/to.
 node_vec_reindex_edges <- function(n, idx, edges) {
   new_positions <- vector("list", n)
   for (j in seq_along(idx)) {
@@ -212,11 +250,26 @@ node_vec_reindex_edges <- function(n, idx, edges) {
   # slice_rows(), not base `[`: a bare index on a data-frame-valued x
   # otherwise means "select columns", not "select rows".
   val <- slice_rows(strip_node_vec(x), idx)
-  new_node_vec(
-    x = val,
-    edges = node_vec_reindex_edges(n, idx, attr(x, "edges")),
-    directed = attr(x, "directed")
-  )
+
+  graph <- attr(x, "graph")
+  if (!is.null(graph)) {
+    # Ordinary case: the Rust side computes the induced subgraph directly
+    # (dropped/cloned edges, remapped positions); `source_edge` says which
+    # original edge each surviving new edge carries its attributes from.
+    remap <- graphvec_backend_induced_subgraph(graph, idx)
+    attrs <- attr(x, "edges")
+    new_node_vec(
+      x = val,
+      edges = cbind_edge_fields(remap$from, remap$to, attrs[remap$source_edge, , drop = FALSE]),
+      directed = attr(x, "directed")
+    )
+  } else {
+    new_node_vec(
+      x = val,
+      edges = node_vec_reindex_edges(n, idx, attr(x, "edges")),
+      directed = attr(x, "directed")
+    )
+  }
 }
 
 # A plain `value` relabels the selected nodes, keeping every edge. A
@@ -241,7 +294,7 @@ node_vec_reindex_edges <- function(n, idx, edges) {
   } else {
     data[i] <- value
   }
-  new_node_vec(x = data, edges = attr(x, "edges"), directed = attr(x, "directed"))
+  new_node_vec(x = data, edges = node_vec_full_edges(x), directed = attr(x, "directed"))
 }
 
 #' @export
@@ -316,6 +369,22 @@ nodes.node_vec <- function(x, ...) {
 #' @rdname reorient
 #' @export
 edges.node_vec <- function(x, ...) {
+  graph <- attr(x, "graph")
+  if (!is.null(graph)) {
+    # Free reorientation (_dev/RUST_BACKEND.md §2.3): a node_vec's `edges`
+    # attribute is always already aligned 1:1 with `graph`'s edge order, so
+    # this is just a re-wrap -- same graph pointer, same attribute table,
+    # no Rust call, no from/to materialised.
+    return(new_edge_vec_backend(
+      attrs = attr(x, "edges"),
+      nodes = node_vec_data(x),
+      directed = attr(x, "directed"),
+      graph = graph,
+      edge_id = seq_len(graph$n_edges())
+    ))
+  }
+
+  # Hyperedge path: unchanged.
   edge_table <- attr(x, "edges")
 
   # Attribute columns beyond from/to travel across reorientation too.
@@ -328,6 +397,20 @@ edges.node_vec <- function(x, ...) {
     as.list(edge_table[attr_names]),
     list(nodes = node_vec_data(x), directed = attr(x, "directed"))
   ))
+}
+
+# A full from/to/attrs data frame for a node_vec's edges, whichever way
+# they're stored -- the shape both the hyperedge path and c()'s up-casting
+# already expect. For the ordinary (Rust-backed) case, from/to are
+# materialised transiently from `graph`, never kept as a second persistent
+# copy (new_node_vec() strips them back out again once the caller is done).
+node_vec_full_edges <- function(x) {
+  graph <- attr(x, "graph")
+  if (is.null(graph)) {
+    return(attr(x, "edges"))
+  }
+  ends <- graph$edge_endpoints()
+  cbind_edge_fields(ends$from, ends$to, attr(x, "edges"))
 }
 
 #' @export
@@ -356,7 +439,7 @@ c.node_vec <- function(...) {
   offsets <- cumsum(c(0L, utils::head(sizes, -1L)))
 
   edges <- Map(function(x, offset) {
-    e <- attr(x, "edges")
+    e <- node_vec_full_edges(x)
     e[["from"]] <- offset_incidence(e[["from"]], offset)
     e[["to"]] <- offset_incidence(e[["to"]], offset)
     e

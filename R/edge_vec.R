@@ -67,11 +67,14 @@ new_edge_attrs <- function(from, to, ...) {
   as.list(edge_fields_df(cols))
 }
 
-# Drops "edge_vec" from x's class and clears the nodes/directed attributes,
-# leaving the plain from/to/attrs fields as an unclassed named list.
+# Drops "edge_vec" from x's class and clears the nodes/directed/graph/edge_id
+# attributes, leaving the plain attribute fields as an unclassed named list
+# (ordinary case) or the plain from/to/attrs fields (hyperedge case).
 strip_edge_vec <- function(x) {
   attr(x, "nodes") <- NULL
   attr(x, "directed") <- NULL
+  attr(x, "graph") <- NULL # absent (NULL already) for the hyperedge case
+  attr(x, "edge_id") <- NULL
   cls <- setdiff(oldClass(x), "edge_vec")
   oldClass(x) <- NULL
   if (!identical(cls, class(x))) oldClass(x) <- cls
@@ -80,10 +83,31 @@ strip_edge_vec <- function(x) {
 
 edge_vec_data <- strip_edge_vec
 
-# The fields, rewrapped as a genuine data frame for call sites that need
-# real row-wise semantics (`[.data.frame`/rbind() require it).
+# The current from/to positions, in x's current row order -- derived from
+# `graph` for the ordinary case (never stored a second time), or read
+# directly off the fields for the hyperedge case.
+edge_vec_endpoints <- function(x) {
+  graph <- attr(x, "graph")
+  if (is.null(graph)) {
+    fields <- edge_vec_data(x)
+    return(list(from = fields[["from"]], to = fields[["to"]]))
+  }
+  ends <- graph$edge_endpoints()
+  id <- attr(x, "edge_id")
+  list(from = ends$from[id], to = ends$to[id])
+}
+
+# The fields, rewrapped as a genuine data frame with from/to reunited with
+# the attribute columns, for call sites that need real row-wise semantics
+# ([.data.frame/rbind()/as_tibble()/as.igraph() etc.) or the full from/to/
+# attrs shape (c()'s hyperedge up-casting).
 edge_vec_fields_df <- function(x) {
-  edge_fields_df(edge_vec_data(x))
+  graph <- attr(x, "graph")
+  if (is.null(graph)) {
+    return(edge_fields_df(edge_vec_data(x)))
+  }
+  ends <- edge_vec_endpoints(x)
+  cbind_edge_fields(ends$from, ends$to, edge_vec_data(x))
 }
 
 #' Constructor function for edge_vec
@@ -114,10 +138,9 @@ new_edge_vec <- function(from = integer(), to = integer(), ..., nodes = data.fra
 }
 
 # Low-level constructor from an already-assembled from/to/attrs fields
-# table; used internally by [.edge_vec/c.edge_vec to skip re-recycling.
-# class is set to exactly "edge_vec" so no data.frame generic can hijack it.
+# (a plain named list); used internally by [.edge_vec/c.edge_vec to skip
+# re-recycling.
 new_edge_vec_fields <- function(fields, nodes = data.frame(), directed = TRUE) {
-  attr(fields, "row.names") <- NULL # stray leftover once no longer classed data.frame
   # No node data (a zero-column data frame) still has a node count: every
   # position the edges reference. This is what c() offsets by, so combining
   # edge_vecs without node data is a disjoint union like any other.
@@ -125,21 +148,57 @@ new_edge_vec_fields <- function(fields, nodes = data.frame(), directed = TRUE) {
     n_nodes <- max(NROW(nodes), unlist(fields[c("from", "to")], use.names = FALSE), 0L, na.rm = TRUE)
     nodes <- data.frame(row.names = seq_len(n_nodes))
   }
-  structure(fields, class = "edge_vec", nodes = nodes, directed = directed)
+
+  from <- fields[["from"]]
+  to <- fields[["to"]]
+
+  # Hyperedges (list-valued from/to) are out of scope for the Rust backend
+  # (_dev/RUST_BACKEND.md) -- keep today's from/to-in-the-fields
+  # representation exactly as-is, unaccelerated.
+  if (is.list(from) || is.list(to)) {
+    body <- edge_fields_df(fields)
+    attr(body, "row.names") <- NULL # stray leftover once no longer classed data.frame
+    return(structure(body, class = "edge_vec", nodes = nodes, directed = directed))
+  }
+
+  # Ordinary case: topology moves into a shared GraphBackend; the object's
+  # own body keeps only the attribute columns, aligned 1:1 with the graph's
+  # edge order.
+  n_edges <- length(from)
+  graph <- graphvec_backend_new(NROW(nodes), from, to, directed)
+  attrs <- attrs_frame(fields[setdiff(names(fields), c("from", "to"))], n_edges)
+  new_edge_vec_backend(attrs, nodes = nodes, directed = directed, graph = graph, edge_id = seq_len(n_edges))
+}
+
+# Low-level constructor for the non-hyperedge (Rust-backed) case: `attrs` is
+# already the attribute-only table, `graph` is already built, and `edge_id`
+# says which of `graph`'s edges (in which order) `attrs`'s rows correspond
+# to -- used by new_edge_vec_fields() and by nodes.node_vec()'s free
+# (no-Rust-call) reorientation via edges.node_vec().
+new_edge_vec_backend <- function(attrs, nodes, directed, graph, edge_id) {
+  rownames(attrs) <- NULL # keeps the row count even when attrs has 0 columns
+  structure(
+    attrs,
+    class = "edge_vec",
+    nodes = nodes,
+    directed = directed,
+    graph = graph,
+    edge_id = edge_id
+  )
 }
 
 #' @export
 format.edge_vec <- function(x, ...){
   key_data <- attr(x, "nodes")
-  fields <- edge_vec_data(x)
+  ends <- edge_vec_endpoints(x)
   # -- undirected
   # -> directed
   arrow <- if (isTRUE(attr(x, "directed"))) "->" else "--"
   sprintf(
     "[%s]%s[%s]",
-    incidence_label(key_data, fields[["from"]]),
+    incidence_label(key_data, ends$from),
     arrow,
-    incidence_label(key_data, fields[["to"]])
+    incidence_label(key_data, ends$to)
   )
 }
 
@@ -180,6 +239,37 @@ pillar_shaft.edge_vec <- function(x, ...) {
   }
 
   idx <- seq_len(length(x))[i]
+  graph <- attr(x, "graph")
+
+  if (!is.null(graph)) {
+    # No topology remap needed (_dev/RUST_BACKEND.md §2.2): the same graph
+    # is carried forward unchanged, only the attribute table and the
+    # edge-id positions into `graph`'s edge order are subset. Slicing goes
+    # through a genuinely "data.frame"-classed copy (nodes/directed/graph/
+    # edge_id stripped first) rather than x itself: `[.data.frame` calls
+    # length(x) internally, which would otherwise dispatch to
+    # length.edge_vec() (the *edge count*, not the column count) and corrupt
+    # the slice -- most visibly, but not only, when there are 0 attribute
+    # columns.
+    nodes <- attr(x, "nodes")
+    directed <- attr(x, "directed")
+    edge_id <- attr(x, "edge_id")
+    body <- x
+    attr(body, "nodes") <- NULL
+    attr(body, "directed") <- NULL
+    attr(body, "graph") <- NULL
+    attr(body, "edge_id") <- NULL
+    class(body) <- "data.frame"
+    new_attrs <- body[idx, , drop = FALSE]
+    return(new_edge_vec_backend(
+      new_attrs,
+      nodes = nodes,
+      directed = directed,
+      graph = graph,
+      edge_id = edge_id[idx]
+    ))
+  }
+
   new_edge_vec_fields(
     fields = edge_vec_fields_df(x)[idx, , drop = FALSE],
     nodes = attr(x, "nodes"),
@@ -224,7 +314,12 @@ as.list.edge_vec <- function(x, ...) {
 
 #' @export
 length.edge_vec <- function(x) {
-  length(edge_vec_data(x)[["from"]]) # `from` is aligned 1:1 with edges
+  graph <- attr(x, "graph")
+  if (!is.null(graph)) {
+    length(attr(x, "edge_id"))
+  } else {
+    length(edge_vec_data(x)[["from"]]) # `from` is aligned 1:1 with edges
+  }
 }
 
 #' @export
@@ -262,8 +357,11 @@ c.edge_vec <- function(...) {
     }
   }
 
+  # A fresh disjoint-union graph is built from the concatenated (offset)
+  # from/to -- simplest option (_dev/RUST_BACKEND.md §2.4); no benchmarks
+  # justify a dedicated Rust union primitive yet.
   new_edge_vec_fields(
-    fields = rbind_fill(fields),
+    fields = as.list(rbind_fill(fields)),
     nodes = combine_values(lapply(xs, function(x) attr(x, "nodes"))),
     directed = directed
   )
@@ -278,8 +376,25 @@ edges.edge_vec <- function(x, ...) {
 #' @rdname reorient
 #' @export
 nodes.edge_vec <- function(x, ...) {
-  # from/to plus any edge attribute columns, so attributes reorient with the topology.
-  edge_table <- tibble::as_tibble(edge_vec_data(x))
+  graph <- attr(x, "graph")
+  if (!is.null(graph) && identical(attr(x, "edge_id"), seq_len(graph$n_edges()))) {
+    # Free reorientation (_dev/RUST_BACKEND.md §2.3): x still covers every
+    # edge of `graph`, in `graph`'s own order (nothing sliced away), so its
+    # attribute table is already exactly what a node_vec's `edges` attribute
+    # would be -- same graph pointer, no Rust call, no from/to materialised.
+    return(new_node_vec_backend(
+      attr(x, "nodes"),
+      graph = graph,
+      edges = edge_vec_data(x),
+      directed = attr(x, "directed")
+    ))
+  }
+
+  # General path: a hyperedge edge_vec, or one sliced away from the full
+  # edge set its graph represents -- from/to plus any edge attribute columns
+  # so attributes reorient with the topology; new_node_vec() builds a fresh
+  # graph from exactly the edges present.
+  edge_table <- tibble::as_tibble(edge_vec_fields_df(x))
 
   new_node_vec(
     x = attr(x, "nodes"),
@@ -329,7 +444,7 @@ names.edge_vec <- function(x) {
   fields <- edge_vec_data(x)
 
   if (name %in% c("from", "to")) {
-    return(incidence_slice(attr(x, "nodes"), fields[[name]]))
+    return(incidence_slice(attr(x, "nodes"), edge_vec_endpoints(x)[[name]]))
   }
 
   if (name %in% names(fields)) {
@@ -372,7 +487,7 @@ unique.edge_vec <- function(x, incomparables = FALSE, ...) {
 # attributes. Positions stand in for node values when `nodes` holds none.
 edge_vec_value_fields <- function(x) {
   nodes <- attr(x, "nodes")
-  fields <- as.list(edge_vec_data(x))
+  fields <- as.list(edge_vec_fields_df(x))
   for (role in c("from", "to")) {
     pos <- fields[[role]]
     if (!has_node_values(nodes)) {
@@ -400,10 +515,10 @@ unname_rows <- function(x) {
 
 #' @export
 as_tibble.edge_vec <- function(x, ...) {
-  tibble::as_tibble(edge_vec_data(x))
+  tibble::as_tibble(edge_vec_fields_df(x))
 }
 
 #' @export
 as.data.frame.edge_vec <- function(x, ...) {
-  as.data.frame(edge_vec_data(x))
+  edge_vec_fields_df(x)
 }

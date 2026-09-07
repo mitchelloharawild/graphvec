@@ -260,7 +260,7 @@ vec_ptype2.node_vec.node_vec <- function(x, y, ...) {
   check_same_directed(x, y, ...)
   new_node_vec(
     x = vctrs::vec_ptype2(node_vec_data(x), node_vec_data(y), ...),
-    edges = attr(x[integer()], "edges"),
+    edges = node_vec_full_edges(x[integer()]),
     directed = attr(x, "directed")
   )
 }
@@ -269,7 +269,7 @@ vec_cast.node_vec.node_vec <- function(x, to, ...) {
   check_same_directed_cast(x, to, ...)
   new_node_vec(
     x = vctrs::vec_cast(node_vec_data(x), node_vec_data(to), ...),
-    edges = attr(x, "edges"),
+    edges = node_vec_full_edges(x),
     directed = attr(x, "directed")
   )
 }
@@ -299,7 +299,7 @@ vec_proxy_order.edge_vec <- function(x, ...) {
   fields <- edge_vec_value_fields(x)
   for (role in c("from", "to")) {
     if (is.list(fields[[role]]) && !is.data.frame(fields[[role]])) {
-      fields[[role]] <- incidence_set_rank(attr(x, "nodes"), edge_vec_data(x)[[role]])
+      fields[[role]] <- incidence_set_rank(attr(x, "nodes"), edge_vec_endpoints(x)[[role]])
     }
   }
   vctrs::vec_proxy_order(vctrs::new_data_frame(fields, n = length(x)))
@@ -309,8 +309,8 @@ vec_proxy_order.edge_vec <- function(x, ...) {
 # comparison proxy (vec_compare() is the only caller; ordering uses the
 # order proxy above).
 vec_proxy_compare.edge_vec <- function(x, ...) {
-  fields <- edge_vec_data(x)
-  if (is.list(fields[["from"]]) || is.list(fields[["to"]])) {
+  ends <- edge_vec_endpoints(x)
+  if (is.list(ends$from) || is.list(ends$to)) {
     stop("Can't compare hyperedges with `vec_compare()`; use `vec_order()` to sort them.", call. = FALSE)
   }
   vctrs::vec_proxy_compare(vctrs::new_data_frame(edge_vec_value_fields(x), n = length(x)))
@@ -344,7 +344,7 @@ vec_ptype_abbr.edge_vec <- function(x, ...) {
 vec_ptype2.edge_vec.edge_vec <- function(x, y, ...) {
   check_same_directed(x, y, ...)
   new_edge_vec_fields(
-    fields = edge_vec_data(x[integer()]),
+    fields = as.list(edge_vec_fields_df(x[integer()])),
     nodes = vctrs::vec_ptype2(attr(x, "nodes"), attr(y, "nodes"), ...),
     directed = attr(x, "directed")
   )
@@ -353,7 +353,7 @@ vec_ptype2.edge_vec.edge_vec <- function(x, y, ...) {
 vec_cast.edge_vec.edge_vec <- function(x, to, ...) {
   check_same_directed_cast(x, to, ...)
   new_edge_vec_fields(
-    fields = edge_vec_data(x),
+    fields = as.list(edge_vec_fields_df(x)),
     nodes = vctrs::vec_cast(attr(x, "nodes"), vctrs::vec_ptype(attr(to, "nodes")), ...),
     directed = attr(x, "directed")
   )
