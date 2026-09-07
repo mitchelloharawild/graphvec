@@ -4,29 +4,70 @@
 \alias{GraphBackend}
 \alias{$.GraphBackend}
 \title{The shared topology backing a \code{node_vec}/\code{edge_vec} pair (non-hyperedge
-case only -- see \verb{_dev/RUST_BACKEND.md}). Edges are stored as a plain
-directed arc list regardless of \code{directed}; \code{directed} is metadata that
-the query methods interpret, not a different graph type. This keeps the
-object immutable and shareable: a \code{node_vec}, its \code{edges()} reorientation,
-and any \code{edge_vec} sliced from it can all hold the same pointer.}
+case only -- see \verb{_dev/RUST_BACKEND.md}). Wraps one of several physical
+\code{Repr} variants, auto-selected at construction from graph shape
+(\verb{_dev/petgraph_data_types.md} S3/S5); \code{directed} is metadata every
+variant's query methods interpret, not itself part of the shape
+decision beyond gating which variants are eligible (only a directed
+graph can be tree-shaped, see \code{detect_tree()}). This keeps the object
+immutable and shareable: a \code{node_vec}, its \code{edges()} reorientation, and
+any \code{edge_vec} sliced from it can all hold the same pointer.}
 \usage{
 GraphBackend
 }
 \description{
 The shared topology backing a \code{node_vec}/\code{edge_vec} pair (non-hyperedge
-case only -- see \verb{_dev/RUST_BACKEND.md}). Edges are stored as a plain
-directed arc list regardless of \code{directed}; \code{directed} is metadata that
-the query methods interpret, not a different graph type. This keeps the
-object immutable and shareable: a \code{node_vec}, its \code{edges()} reorientation,
-and any \code{edge_vec} sliced from it can all hold the same pointer.
+case only -- see \verb{_dev/RUST_BACKEND.md}). Wraps one of several physical
+\code{Repr} variants, auto-selected at construction from graph shape
+(\verb{_dev/petgraph_data_types.md} S3/S5); \code{directed} is metadata every
+variant's query methods interpret, not itself part of the shape
+decision beyond gating which variants are eligible (only a directed
+graph can be tree-shaped, see \code{detect_tree()}). This keeps the object
+immutable and shareable: a \code{node_vec}, its \code{edges()} reorientation, and
+any \code{edge_vec} sliced from it can all hold the same pointer.
 }
 \section{Methods}{
 
 \subsection{Method \code{new}}{
 Build a graph on \code{n} nodes from 1-based \code{from}/\code{to} positions.
-Edges are added in input order and never removed afterwards, so
-edge ids (0-based internally, 1-based at the R boundary) stay stable
-and match the row order of the R-side edge attribute table.
+Automatically picks the cheapest \code{Repr} the graph's shape qualifies
+for (\verb{_dev/petgraph_data_types.md} S3/S5 -- this decision belongs
+here, not in R, so there is exactly one place shape detection can
+drift out of sync with the representation it feeds). For the
+general representation, edges are added in input order and never
+removed afterwards, so edge ids (0-based internally, 1-based at the
+R boundary) stay stable and match the row order of the R-side edge
+attribute table; for the tree representation, the same external
+contract is upheld via \code{TreeData::order} (see its doc comment).
+}
+
+\subsection{Method \code{is_tree}}{
+Whether this backend is tree/forest-shaped (\code{Repr::Tree}) -- the one
+thing R call sites (once any exist) need to check before calling
+\code{parent()}, per \verb{_dev/petgraph_data_types.md} S3's suggestion of a
+single predicate rather than a per-variant method surface.
+}
+
+\subsection{Method \code{is_dense}}{
+Whether this backend is dense-matrix-shaped (\code{Repr::Dense}) -- a
+test/diagnostic accessor mirroring \code{is_tree()}'s pattern (same
+reasoning: one predicate per variant, not a different method surface
+per shape). Not currently required by any \verb{R/*.R} call site, added
+for the same reason \code{is_tree()} was: this file's tests need a way to
+confirm which \code{Repr} a given \code{new()} call picked.
+}
+
+\subsection{Method \code{parent}}{
+The 1-based parent position of \code{node} (1-based); \code{0} means \code{node} is
+a root. Only defined when \code{is_tree()} is true -- \code{0} already means
+"root" for a real tree, so a non-tree variant returning \code{0} would be
+silently indistinguishable from a real answer rather than "not
+applicable"; \verb{_dev/petgraph_data_types.md} S3 flags exactly this and
+suggests \verb{panic!}/\code{NA_INTEGER} instead, which is what this does --
+mirroring this project's existing idiom for an operation an input
+shape doesn't support (e.g. \code{check_no_hyperedges()}'s
+\code{cli::cli_abort()}) rather than returning a value that looks valid
+but means something else per variant.
 }
 
 \subsection{Method \code{neighbors}}{
@@ -37,6 +78,15 @@ outgoing/incoming adjacency lists -- see the crate's tests). For a
 directed graph, \code{mode} is \code{"out"}, \code{"in"}, or \code{"all"} (both,
 concatenated). One entry per incident edge, not deduplicated, so
 \code{degree()} can just be \verb{neighbors().len()}.
+}
+
+\subsection{Method \code{degree}}{
+O(1): a \code{ptr}-difference-style lookup, not a \verb{neighbors().len()}
+walk, for either variant (the general representation's construction-
+time cache, or the tree representation's \code{parent}/reverse-CSR
+arrays). Must stay in exact agreement with \code{neighbors()}'s semantics
+above (mode handling, panic on an invalid mode, doubled self-loop)
+-- see this file's tests.
 }
 
 \subsection{Method \code{has_edge}}{
@@ -65,6 +115,18 @@ order (new \code{to} slowest, new \code{from} fastest, matching
 edge id that surviving new edge \code{k} was cloned from, so the R side
 can carry edge attribute columns across replication with
 \code{edges[source_edge, ]}.
+
+This is representation-independent: it works from \code{edge_list()}'s
+output alone (S4's edge-identity contract, already upheld there),
+never \code{self.repr} directly, so it needs no per-variant duplicate.
+The result is a plain from/to/source_edge list either way -- it does
+not construct a new \code{GraphBackend} itself (R reconstructs one from
+these lists via \code{new()}, confirmed by grepping \code{R/node_vec.R}'s
+\verb{[.node_vec}), so the \emph{new} backend's shape (which needn't match the
+old one -- an induced subgraph of a tree is not generally a tree,
+e.g. dropping a root splits it into a forest, or replication can
+reintroduce a cycle) is re-decided by \code{new()}'s own detection from
+scratch, same as it would be for any other from/to/directed input.
 }
 }
 

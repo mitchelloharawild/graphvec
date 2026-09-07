@@ -38,6 +38,15 @@ NULL
 #'single predicate rather than a per-variant method surface.
 #'}
 #'
+#'\subsection{Method `is_dense`}{
+#'Whether this backend is dense-matrix-shaped (`Repr::Dense`) -- a
+#'test/diagnostic accessor mirroring `is_tree()`'s pattern (same
+#'reasoning: one predicate per variant, not a different method surface
+#'per shape). Not currently required by any `R/*.R` call site, added
+#'for the same reason `is_tree()` was: this file's tests need a way to
+#'confirm which `Repr` a given `new()` call picked.
+#'}
+#'
 #'\subsection{Method `parent`}{
 #'The 1-based parent position of `node` (1-based); `0` means `node` is
 #'a root. Only defined when `is_tree()` is true -- `0` already means
@@ -121,6 +130,8 @@ GraphBackend$n_edges <- function() .Call(wrap__GraphBackend__n_edges, self)
 GraphBackend$is_directed <- function() .Call(wrap__GraphBackend__is_directed, self)
 
 GraphBackend$is_tree <- function() .Call(wrap__GraphBackend__is_tree, self)
+
+GraphBackend$is_dense <- function() .Call(wrap__GraphBackend__is_dense, self)
 
 GraphBackend$parent <- function(node) .Call(wrap__GraphBackend__parent, self, node)
 

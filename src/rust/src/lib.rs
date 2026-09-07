@@ -1,6 +1,9 @@
 use extendr_api::prelude::*;
 use rustworkx_core::petgraph::graph::{DiGraph, EdgeIndex, NodeIndex};
-use rustworkx_core::petgraph::Direction;
+use rustworkx_core::petgraph::matrix_graph::{MatrixGraph, NodeIndex as MatrixNodeIndex};
+use rustworkx_core::petgraph::{Directed, Direction, EdgeType, Undirected};
+use std::collections::hash_map::RandomState;
+use std::collections::HashSet;
 
 /// The general-purpose representation: today's sole `Repr` variant, an
 /// adjacency-list `Graph` plus the per-node arc counts cached at
@@ -79,6 +82,191 @@ impl TreeData {
     }
 }
 
+// Node index width for `DenseData`'s `MatrixGraph`. petgraph's own default
+// (`matrix_graph::DefaultIx = u16`) caps a graph at 65535 nodes -- far too
+// small for graphvec's node counts -- so this is pinned to `u32` explicitly,
+// matching `petgraph::graph::DefaultIx` (what `GeneralData`'s `DiGraph`
+// already uses).
+type DenseIx = u32;
+
+// One `MatrixGraph` instantiation, generic over `Ty: EdgeType`
+// (`_dev/petgraph_data_types.md` S4: "a real per-variant implementation
+// choice" to store `Directed`/`Undirected` matching the graph's own flag,
+// not a rule copied from `Repr::General`'s always-directed approach). `E`
+// is `()` (no edge weights needed -- presence alone is the payload), so
+// `Null` stays its default, `Option<()>` -- see `DenseData`'s doc comment
+// for what that means for `_dev/petgraph_data_types.md` S2's bit-packing
+// claim.
+type DenseMatrixOf<Ty> = MatrixGraph<(), (), RandomState, Ty, Option<()>, DenseIx>;
+
+/// The two possible concrete `MatrixGraph` monomorphisations `DenseData` can
+/// hold -- `Directed` for a directed graph, `Undirected` for an undirected
+/// one, chosen once at construction to match `GraphBackend::directed`
+/// (`_dev/petgraph_data_types.md` S4's per-variant-storage note). Rust has
+/// no way to make one struct field "either of two concrete generic
+/// instantiations, decided at runtime" without this kind of small wrapper
+/// enum; `DenseData` itself stays a single, non-generic type so `Repr::Dense`
+/// can hold it directly, the same shape every other `Repr` variant has.
+enum DenseMatrix {
+    Directed(DenseMatrixOf<Directed>),
+    Undirected(DenseMatrixOf<Undirected>),
+}
+
+/// The dense representation (`_dev/petgraph_data_types.md` S2/S4 item 3): a
+/// bit-matrix-backed `MatrixGraph`, chosen for graphs past the density
+/// threshold in `detect_dense()` below with no duplicate edges.
+///
+/// **Why `from`/`to` are kept alongside `matrix` rather than answering
+/// everything from the matrix alone**: `MatrixGraph::add_edge()`'s own doc
+/// comment states it plainly -- "MatrixGraph does not allow adding parallel
+/// (duplicate) edges," it panics if one already exists between two nodes --
+/// so presence is keyed purely by the `(node, node)` pair, nothing else.
+/// Unlike `Repr::General`'s `EdgeIndex` (naturally insertion-ordered) or
+/// `Repr::Tree`'s `order` vector (S4 edge-identity item), `MatrixGraph` has
+/// no insertion-order edge enumeration at all to recover original
+/// construction order from. The fix used here is the simple one
+/// `_dev/petgraph_data_types.md` S4 calls out as sufficient when there's no
+/// per-edge storage order to permute against in the first place: keep the
+/// original `from`/`to` vectors verbatim (as supplied to `new()`) and answer
+/// `edge_endpoints()`/`induced_subgraph()` from those directly, via
+/// `GraphBackend::edge_list()` -- mirroring how `Repr::General` answers the
+/// same two methods via `EdgeIndex` today, explicit storage instead of
+/// relying on the matrix.
+///
+/// **Why `degree()`/`neighbors()` are also computed from `from`/`to`
+/// (`out_degree`/`in_degree` below), not from `matrix`'s own neighbour
+/// iteration**: this project's self-loop/undirected-degree convention (a
+/// loop counts twice, `_dev/petgraph_data_types.md` S4) falls out of
+/// `Repr::General`'s *always-directed* internal storage almost by accident
+/// -- a self-loop is stored once but shows up in both a node's outgoing and
+/// incoming adjacency query. A `MatrixGraph<Undirected>` has no separate
+/// out/in adjacency at all (one triangular bit per unordered pair), so
+/// there's no doubling to inherit the same way; rather than trust whatever
+/// `MatrixGraph::neighbors()`/`edges()` happens to do with that single bit
+/// (S4 explicitly warns not to assume any petgraph type agrees with
+/// `Graph`'s convention here, in either direction -- confirmed to actually
+/// differ, see `dense_self_loop_counts_twice_in_undirected_degree`),
+/// `degree()`/`neighbors()` are computed directly from the retained
+/// `from`/`to` vectors, the same convention `GeneralData` establishes,
+/// computed the same way (count/scan occurrences), just against explicit
+/// vectors instead of always-directed petgraph storage.
+///
+/// `matrix` itself is used for exactly one thing: `has_edge()`'s O(1) bit
+/// test (`_dev/DATA.md` S2.5's whole reason to promote to this backend).
+struct DenseData {
+    matrix: DenseMatrix,
+    from: Vec<i32>,
+    to: Vec<i32>,
+    out_degree: Vec<i32>,
+    in_degree: Vec<i32>,
+}
+
+impl DenseData {
+    fn out_neighbors(&self, idx: usize) -> Vec<i32> {
+        let node = (idx + 1) as i32;
+        self.from
+            .iter()
+            .zip(self.to.iter())
+            .filter(|&(&f, _)| f == node)
+            .map(|(_, &t)| t)
+            .collect()
+    }
+
+    fn in_neighbors(&self, idx: usize) -> Vec<i32> {
+        let node = (idx + 1) as i32;
+        self.from
+            .iter()
+            .zip(self.to.iter())
+            .filter(|&(_, &t)| t == node)
+            .map(|(&f, _)| f)
+            .collect()
+    }
+}
+
+// Provisional density threshold for promoting a non-tree-shaped graph to
+// `Repr::Dense` (`_dev/DATA.md` S3 step 4 / S6: "provisionally ~0.3...
+// needs benchmarking" -- `_dev/petgraph_data_types.md` S5 says explicitly
+// not to silently firm up a number DATA.md itself flags as unmeasured, so
+// this stays exactly that provisional, a named constant with this comment
+// rather than a bare literal).
+const DENSE_THRESHOLD: f64 = 0.3;
+
+// Whether `from`/`to` contains a repeated edge -- a repeated `(from, to)`
+// ordered pair when directed, a repeated unordered pair when undirected
+// (`_dev/petgraph_data_types.md` S4 item 3: `MatrixGraph::add_edge()`
+// panics on exactly this, so `Repr::Dense` physically cannot hold such a
+// graph). Checked with a canonicalised-pair `HashSet` in O(M).
+fn has_duplicate_edges(from: &[i32], to: &[i32], directed: bool) -> bool {
+    let mut seen: HashSet<(i32, i32)> = HashSet::with_capacity(from.len());
+    for (&f, &t) in from.iter().zip(to.iter()) {
+        let key = if directed || f <= t { (f, t) } else { (t, f) };
+        if !seen.insert(key) {
+            return true;
+        }
+    }
+    false
+}
+
+// Build one `MatrixGraph` instantiation from `from`/`to`, generic over
+// `Ty: EdgeType` so the directed/undirected cases share one construction
+// path (`detect_dense()` below picks which `Ty` to instantiate).
+fn build_dense_matrix<Ty: EdgeType>(n: usize, from: &[i32], to: &[i32]) -> DenseMatrixOf<Ty> {
+    let mut g = DenseMatrixOf::<Ty>::with_capacity(n);
+    for _ in 0..n {
+        g.add_node(());
+    }
+    for (&f, &t) in from.iter().zip(to.iter()) {
+        let fi = MatrixNodeIndex::new((f - 1) as usize);
+        let ti = MatrixNodeIndex::new((t - 1) as usize);
+        g.add_edge(fi, ti, ());
+    }
+    g
+}
+
+/// `_dev/DATA.md` S3 step 4: past `DENSE_THRESHOLD` density (`M / (N choose
+/// 2)`, the same formula regardless of `directed` -- ported verbatim, not
+/// redesigned per-directedness, per `_dev/petgraph_data_types.md` S5's
+/// "port... don't redesign") and with no duplicate edges (S4 item 3 --
+/// `Repr::Dense` physically cannot hold a multigraph), promote to
+/// `Repr::Dense`. `n < 2` guards `N choose 2 == 0` (no possible edges at
+/// all -- skip Dense promotion rather than dividing by zero). Only called
+/// for graphs `detect_tree()` already rejected, matching S3's order
+/// (tree/forest check, then density check, then otherwise general).
+fn detect_dense(n: usize, from: &[i32], to: &[i32], directed: bool) -> Option<DenseData> {
+    if n < 2 {
+        return None;
+    }
+    let pairs = (n as f64) * ((n - 1) as f64) / 2.0;
+    let density = (from.len() as f64) / pairs;
+    if density <= DENSE_THRESHOLD {
+        return None;
+    }
+    if has_duplicate_edges(from, to, directed) {
+        return None;
+    }
+
+    let mut out_degree = vec![0i32; n];
+    let mut in_degree = vec![0i32; n];
+    for (&f, &t) in from.iter().zip(to.iter()) {
+        out_degree[(f - 1) as usize] += 1;
+        in_degree[(t - 1) as usize] += 1;
+    }
+
+    let matrix = if directed {
+        DenseMatrix::Directed(build_dense_matrix::<Directed>(n, from, to))
+    } else {
+        DenseMatrix::Undirected(build_dense_matrix::<Undirected>(n, from, to))
+    };
+
+    Some(DenseData {
+        matrix,
+        from: from.to_vec(),
+        to: to.to_vec(),
+        out_degree,
+        in_degree,
+    })
+}
+
 /// Which physical representation a `GraphBackend` picked for one graph
 /// (`_dev/petgraph_data_types.md` S3). Private -- never `#[extendr]` itself,
 /// matched inside every `GraphBackend` method so the R-visible class and
@@ -86,6 +274,7 @@ impl TreeData {
 enum Repr {
     General(GeneralData),
     Tree(TreeData),
+    Dense(DenseData),
 }
 
 /// Directed, out-degree <= 1 for every node, no cycle -- accepts a *forest*
@@ -232,6 +421,13 @@ impl GraphBackend {
             };
         }
 
+        if let Some(dense) = detect_dense(n, &from, &to, directed) {
+            return GraphBackend {
+                repr: Repr::Dense(dense),
+                directed,
+            };
+        }
+
         let mut graph = DiGraph::<(), ()>::with_capacity(n, from.len());
         for _ in 0..n {
             graph.add_node(());
@@ -259,6 +455,7 @@ impl GraphBackend {
         match &self.repr {
             Repr::General(g) => g.graph.node_count() as i32,
             Repr::Tree(t) => t.parent.len() as i32,
+            Repr::Dense(d) => d.out_degree.len() as i32,
         }
     }
 
@@ -266,6 +463,7 @@ impl GraphBackend {
         match &self.repr {
             Repr::General(g) => g.graph.edge_count() as i32,
             Repr::Tree(t) => t.order.len() as i32,
+            Repr::Dense(d) => d.from.len() as i32,
         }
     }
 
@@ -281,6 +479,16 @@ impl GraphBackend {
         matches!(self.repr, Repr::Tree(_))
     }
 
+    /// Whether this backend is dense-matrix-shaped (`Repr::Dense`) -- a
+    /// test/diagnostic accessor mirroring `is_tree()`'s pattern (same
+    /// reasoning: one predicate per variant, not a different method surface
+    /// per shape). Not currently required by any `R/*.R` call site, added
+    /// for the same reason `is_tree()` was: this file's tests need a way to
+    /// confirm which `Repr` a given `new()` call picked.
+    fn is_dense(&self) -> bool {
+        matches!(self.repr, Repr::Dense(_))
+    }
+
     /// The 1-based parent position of `node` (1-based); `0` means `node` is
     /// a root. Only defined when `is_tree()` is true -- `0` already means
     /// "root" for a real tree, so a non-tree variant returning `0` would be
@@ -294,7 +502,7 @@ impl GraphBackend {
     fn parent(&self, node: i32) -> i32 {
         match &self.repr {
             Repr::Tree(t) => t.parent[(node - 1) as usize],
-            Repr::General(_) => {
+            Repr::General(_) | Repr::Dense(_) => {
                 panic!("`parent()` is only defined when `is_tree()` is TRUE")
             }
         }
@@ -357,6 +565,21 @@ impl GraphBackend {
                 // most one outgoing edge (to its parent) full stop.
                 let fi = (from - 1) as usize;
                 t.parent[fi] == to
+            }
+            Repr::Dense(d) => {
+                // No "check both orientations" branch needed here either:
+                // an `Undirected`-typed `MatrixGraph` stores one bit per
+                // unordered pair (see `to_linearized_matrix_position()` in
+                // petgraph's own source), so `has_edge(a, b)` and
+                // `has_edge(b, a)` already agree for it -- unlike
+                // `Repr::General`, whose internal storage is always
+                // `Directed` regardless of `self.directed`.
+                let fi = MatrixNodeIndex::new((from - 1) as usize);
+                let ti = MatrixNodeIndex::new((to - 1) as usize);
+                match &d.matrix {
+                    DenseMatrix::Directed(m) => m.has_edge(fi, ti),
+                    DenseMatrix::Undirected(m) => m.has_edge(fi, ti),
+                }
             }
         }
     }
@@ -460,6 +683,7 @@ impl GraphBackend {
                     .collect();
                 (t.order.clone(), to)
             }
+            Repr::Dense(d) => (d.from.clone(), d.to.clone()),
         }
     }
 
@@ -488,6 +712,7 @@ impl GraphBackend {
         match &self.repr {
             Repr::General(g) => Self::directed_neighbors(g, NodeIndex::new(idx), Direction::Outgoing),
             Repr::Tree(t) => t.out_neighbors(idx),
+            Repr::Dense(d) => d.out_neighbors(idx),
         }
     }
 
@@ -495,6 +720,7 @@ impl GraphBackend {
         match &self.repr {
             Repr::General(g) => Self::directed_neighbors(g, NodeIndex::new(idx), Direction::Incoming),
             Repr::Tree(t) => t.in_neighbors(idx),
+            Repr::Dense(d) => d.in_neighbors(idx),
         }
     }
 
@@ -502,6 +728,7 @@ impl GraphBackend {
         match &self.repr {
             Repr::General(g) => g.out_degree[idx],
             Repr::Tree(t) => t.out_degree(idx),
+            Repr::Dense(d) => d.out_degree[idx],
         }
     }
 
@@ -509,6 +736,7 @@ impl GraphBackend {
         match &self.repr {
             Repr::General(g) => g.in_degree[idx],
             Repr::Tree(t) => t.in_degree(idx),
+            Repr::Dense(d) => d.in_degree[idx],
         }
     }
 
@@ -625,7 +853,9 @@ mod tests {
             // Triangle 1-2-3 (edges 1->2, 2->3, 3->1); new nodes <- old 1, 1, 2
             // (node 1 replicated, node 3 dropped): edge 1->2 clones once per
             // replica of 1, edges touching 3 vanish. Also a cycle, so this is
-            // General, not Tree -- confirmed below.
+            // never Tree-shaped -- confirmed below (density selection then
+            // picks General or Dense, immaterial here: induced_subgraph() is
+            // representation-independent, see its doc comment).
             let g = GraphBackend::new(3, vec![1, 2, 3], vec![2, 3, 1], true);
             assert!(!g.is_tree());
             let remap = g.induced_subgraph(vec![1, 1, 2]);
@@ -863,17 +1093,21 @@ mod tests {
     }
 
     #[test]
-    fn node_with_out_degree_two_picks_general_repr() {
+    fn node_with_out_degree_two_picks_non_tree_repr() {
         test! {
             // Node 1 has two outgoing edges (1->2, 1->3): not tree-shaped.
+            // (Density selection then decides General vs Dense -- immaterial
+            // to this test, which only checks the tree disqualification.)
             let g = GraphBackend::new(3, vec![1, 1], vec![2, 3], true);
             assert!(!g.is_tree());
         }
     }
 
     #[test]
-    fn a_cycle_picks_general_repr() {
+    fn a_cycle_picks_non_tree_repr() {
         test! {
+            // A cycle disqualifies tree detection regardless of which
+            // non-tree variant density selection then picks.
             let g = GraphBackend::new(3, vec![1, 2, 3], vec![2, 3, 1], true);
             assert!(!g.is_tree());
         }
@@ -890,14 +1124,260 @@ mod tests {
 
     // `parent()` on a non-tree backend: explicit panic, not a silent
     // sentinel (see `GraphBackend::parent()`'s doc comment for why 0 would
-    // be the wrong choice here).
+    // be the wrong choice here). Same panic for General and Dense alike
+    // (see `GraphBackend::parent()`'s `Repr::General(_) | Repr::Dense(_)`
+    // arm), so this doesn't need to pin down which of the two a cycle picks.
     #[test]
     #[should_panic(expected = "`parent()` is only defined when `is_tree()` is TRUE")]
-    fn parent_panics_on_general_repr() {
+    fn parent_panics_on_non_tree_repr() {
         test! {
             let g = GraphBackend::new(3, vec![1, 2, 3], vec![2, 3, 1], true); // a cycle
             assert!(!g.is_tree());
             g.parent(1);
+        }
+    }
+
+    // -- Repr::Dense -----------------------------------------------------
+    //
+    // Every S4 contract item (`_dev/petgraph_data_types.md`), covered for
+    // Repr::Dense specifically -- none of it is inherited by assumption from
+    // Repr::General's or Repr::Tree's tests above.
+
+    // Node identity: dense 1..N, stable, representation-independent -- holds
+    // trivially here too (same reasoning as
+    // `tree_node_identity_is_dense_and_stable`), stated plainly per S4's own
+    // instruction rather than skipped. A 4-node complete undirected graph:
+    // density = 6 / (4 choose 2) = 6/6 = 1.0, comfortably past
+    // DENSE_THRESHOLD, no duplicate edges -- picks Dense.
+    #[test]
+    fn dense_node_identity_is_dense_and_stable() {
+        test! {
+            let from = vec![1, 1, 1, 2, 2, 3];
+            let to = vec![2, 3, 4, 3, 4, 4];
+            let g = GraphBackend::new(4, from, to, false);
+            assert!(g.is_dense());
+            assert_eq!(g.n_nodes(), 4);
+            for node in 1..=4 {
+                // every position answers queries independently of the others
+                let _ = g.degree(node, "all");
+                let _ = g.neighbors(node, "all");
+            }
+        }
+    }
+
+    // Edge identity / enumeration order -- the one real risk per S4.
+    // `MatrixGraph` has no insertion-order edge enumeration of its own at
+    // all (presence is keyed purely by the (node, node) pair -- see
+    // `DenseData`'s doc comment), unlike Repr::General's insertion-ordered
+    // `EdgeIndex` or Repr::Tree's `order` vector. `DenseData::from`/`to`
+    // exist specifically to answer this. Mirrors
+    // `edge_endpoints_preserve_construction_order`/
+    // `tree_edge_endpoints_preserve_construction_order`, deliberately
+    // scrambled (not sorted by either endpoint, and not node-order either)
+    // so an accidental reordering would be caught. n=4 undirected (never
+    // tree-shaped), 3 edges: density = 3 / (4 choose 2) = 3/6 = 0.5 > 0.3,
+    // no duplicate unordered pairs -- picks Dense.
+    #[test]
+    fn dense_edge_endpoints_preserve_construction_order() {
+        test! {
+            let from = vec![3, 1, 4];
+            let to = vec![1, 4, 2];
+            let g = GraphBackend::new(4, from.clone(), to.clone(), false);
+            assert!(g.is_dense());
+            let ends = g.edge_endpoints();
+            let got_from: Vec<i32> = ends.dollar("from").unwrap().as_integer_vector().unwrap();
+            let got_to: Vec<i32> = ends.dollar("to").unwrap().as_integer_vector().unwrap();
+            assert_eq!(got_from, from);
+            assert_eq!(got_to, to);
+        }
+    }
+
+    // Self-loop/undirected-degree convention: S4 explicitly warns not to
+    // assume `MatrixGraph` agrees with `Graph`'s "a loop counts twice"
+    // convention (established for Repr::General by
+    // `self_loop_counts_twice_in_undirected_degree`), in either direction.
+    // `Repr::Dense` doesn't inherit the convention from `MatrixGraph`'s own
+    // neighbour iteration at all -- `DenseData::out_neighbors`/`in_neighbors`
+    // compute it from the retained `from`/`to` vectors instead, the same way
+    // `GeneralData` does over its always-directed storage (see `DenseData`'s
+    // doc comment for why: an `Undirected`-typed `MatrixGraph` has no
+    // separate out/in adjacency to double-count through in the first place).
+    // This test confirms/establishes the result of that deliberate choice:
+    // n=2 undirected, self-loop on node 1 plus an ordinary edge to node 2 --
+    // density = 2 / (2 choose 2) = 2/1 = 2.0 > 0.3, no duplicate pairs
+    // ((1,1) and (1,2) are distinct canonical keys) -- picks Dense.
+    #[test]
+    fn dense_self_loop_counts_twice_in_undirected_degree() {
+        test! {
+            let g = GraphBackend::new(2, vec![1, 1], vec![1, 2], false);
+            assert!(g.is_dense());
+            assert_eq!(g.degree(1, "all"), 3); // loop (2) + edge to 2 (1)
+            assert_eq!(g.degree(2, "all"), 1);
+            let mut ns = g.neighbors(1, "all");
+            ns.sort();
+            assert_eq!(ns, vec![1, 1, 2]); // order isn't a contract, only the multiset is
+        }
+    }
+
+    // `mode` semantics must match Repr::General/Repr::Tree exactly:
+    // "out"/"in"/"all" for directed, invalid values panic identically.
+    // n=3 directed, edges 1->2, 1->3, 2->3: node 1 has out-degree 2 (not
+    // tree-shaped); density = 3 / (3 choose 2) = 3/3 = 1.0 > 0.3, no
+    // duplicate ordered pairs -- picks Dense.
+    #[test]
+    fn dense_mode_semantics_match_other_variants() {
+        test! {
+            let g = GraphBackend::new(3, vec![1, 1, 2], vec![2, 3, 3], true);
+            assert!(g.is_dense());
+            assert_eq!(g.degree(1, "out"), 2);
+            assert_eq!(g.degree(1, "in"), 0);
+            assert_eq!(g.degree(1, "all"), 2);
+            assert_eq!(g.degree(2, "out"), 1);
+            assert_eq!(g.degree(2, "in"), 1);
+            assert_eq!(g.degree(2, "all"), 2);
+            assert_eq!(g.degree(3, "out"), 0);
+            assert_eq!(g.degree(3, "in"), 2);
+            assert_eq!(g.degree(3, "all"), 2);
+            for node in 1..=3 {
+                for mode in ["out", "in", "all"] {
+                    assert_eq!(
+                        g.degree(node, mode),
+                        g.neighbors(node, mode).len() as i32
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "`mode` must be one of \"out\", \"in\", \"all\", not \"sideways\"")]
+    fn dense_neighbors_invalid_mode_panics_like_other_variants() {
+        test! {
+            let g = GraphBackend::new(3, vec![1, 1, 2], vec![2, 3, 3], true);
+            assert!(g.is_dense());
+            g.neighbors(1, "sideways");
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "`mode` must be one of \"out\", \"in\", \"all\", not \"sideways\"")]
+    fn dense_degree_invalid_mode_panics_like_other_variants() {
+        test! {
+            let g = GraphBackend::new(3, vec![1, 1, 2], vec![2, 3, 3], true);
+            assert!(g.is_dense());
+            g.degree(1, "sideways");
+        }
+    }
+
+    // induced_subgraph()'s replication/drop logic, mirroring
+    // `induced_subgraph_drops_dangling_and_clones_replicated` /
+    // `induced_subgraph_treats_zero_as_no_source` above, for a Dense-shaped
+    // input, and confirming (as those tests' own comments already establish
+    // for General/Tree) that induced_subgraph() never constructs a
+    // GraphBackend itself -- it returns plain lists, representation-
+    // independent (see `induced_subgraph()`'s doc comment and `edge_list()`,
+    // which `Repr::Dense` participates in like every other variant).
+    #[test]
+    fn dense_induced_subgraph_drops_dangling_and_clones_replicated() {
+        test! {
+            // Triangle 1->2->3->1 (directed cycle, so never Tree-shaped);
+            // density = 3 / (3 choose 2) = 3/3 = 1.0 > 0.3, no duplicates --
+            // picks Dense.
+            let g = GraphBackend::new(3, vec![1, 2, 3], vec![2, 3, 1], true);
+            assert!(g.is_dense());
+            // New nodes <- old 1, 1, 2 (node 1 replicated, node 3 dropped):
+            // edge 1->2 clones once per replica of 1, edges touching 3 vanish.
+            let remap = g.induced_subgraph(vec![1, 1, 2]);
+            let from: Vec<i32> = remap.dollar("from").unwrap().as_integer_vector().unwrap();
+            let to: Vec<i32> = remap.dollar("to").unwrap().as_integer_vector().unwrap();
+            let source_edge: Vec<i32> = remap
+                .dollar("source_edge")
+                .unwrap()
+                .as_integer_vector()
+                .unwrap();
+            assert_eq!(from, vec![1, 2]);
+            assert_eq!(to, vec![3, 3]);
+            assert_eq!(source_edge, vec![1, 1]);
+        }
+    }
+
+    #[test]
+    fn dense_induced_subgraph_treats_zero_as_no_source() {
+        test! {
+            // n=2 undirected (never tree-shaped); density = 1/(2 choose 2)
+            // = 1/1 = 1.0 > 0.3, no duplicates -- picks Dense.
+            let g = GraphBackend::new(2, vec![1], vec![2], false);
+            assert!(g.is_dense());
+            // New node 1 has no source (sentinel 0); new node 2 <- old node 2.
+            let remap = g.induced_subgraph(vec![0, 2]);
+            let from: Vec<i32> = remap.dollar("from").unwrap().as_integer_vector().unwrap();
+            assert!(from.is_empty());
+        }
+    }
+
+    // -- Dense selection logic --------------------------------------------
+
+    #[test]
+    fn dense_enough_duplicate_free_graph_picks_dense_repr() {
+        test! {
+            // Complete undirected triangle: density = 3/(3 choose 2) = 1.0.
+            let g = GraphBackend::new(3, vec![1, 1, 2], vec![2, 3, 3], false);
+            assert!(!g.is_tree());
+            assert!(g.is_dense());
+        }
+    }
+
+    // Below DENSE_THRESHOLD (0.3): a 10-node directed cycle has out-degree
+    // exactly 1 everywhere, which looks tree-like, but it never reaches a
+    // root (`detect_tree()` rejects it as a cycle -- see its own doc
+    // comment), so it falls through to the density check same as any other
+    // non-tree graph. M=10, N choose 2 = 45, density = 10/45 ~= 0.222, below
+    // threshold -- picks General, not Dense.
+    #[test]
+    fn below_density_threshold_picks_general_repr() {
+        test! {
+            let from: Vec<i32> = (1..=10).collect();
+            let to: Vec<i32> = (2..=10).chain(std::iter::once(1)).collect();
+            let g = GraphBackend::new(10, from, to, true);
+            assert!(!g.is_tree());
+            assert!(!g.is_dense());
+        }
+    }
+
+    // A duplicate edge despite being dense: falls back to Repr::General
+    // regardless of density, since Repr::Dense physically cannot hold a
+    // multigraph (`MatrixGraph::add_edge()` panics on a repeated pair --
+    // `_dev/petgraph_data_types.md` S4 item 3). n=3 undirected, edge (1,2)
+    // supplied twice plus (2,3): density = 3/(3 choose 2) = 1.0 > 0.3 --
+    // would otherwise qualify for Dense, but the duplicate gate forces
+    // General instead. Compare `dense_enough_duplicate_free_graph_picks_dense_repr`
+    // above, same shape minus the duplicate, which does pick Dense.
+    #[test]
+    fn duplicate_edge_despite_density_falls_back_to_general_repr() {
+        test! {
+            let g = GraphBackend::new(3, vec![1, 1, 2], vec![2, 2, 3], false);
+            assert!(!g.is_tree());
+            assert!(!g.is_dense());
+            // Still a perfectly ordinary graph otherwise -- General answers
+            // has_edge()/degree() for it exactly as it would for any input.
+            assert!(g.has_edge(1, 2));
+            assert_eq!(g.degree(1, "all"), 2); // two (1,2) edges, both counted
+        }
+    }
+
+    // Tree/forest check happens strictly before the density check (S3's
+    // order: tree/forest validator, then density, then otherwise general --
+    // `_dev/petgraph_data_types.md` S5 "port... don't redesign"). This graph
+    // is tree-shaped AND would also clear DENSE_THRESHOLD if the density
+    // check ran on it (density = 1/(2 choose 2) = 1.0 > 0.3) -- proving the
+    // tree check really does short-circuit before density is ever
+    // evaluated, not just that both checks happen to agree.
+    #[test]
+    fn tree_shaped_graph_never_reaches_density_check() {
+        test! {
+            let g = GraphBackend::new(2, vec![2], vec![1], true);
+            assert!(g.is_tree());
+            assert!(!g.is_dense());
         }
     }
 }
