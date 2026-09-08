@@ -330,8 +330,9 @@ struct DenseData {
     in_degree: Vec<i32>,
 }
 
-// Provisional density threshold for promoting a non-tree-shaped graph to
-// `Repr::Dense` (`_dev/DATA.md` S3 step 4 / S6: "provisionally ~0.3...
+// Provisional density threshold, above which `detect_dense()` below
+// promotes a graph to `Repr::Dense` provided it is also duplicate-free
+// (`_dev/DATA.md` S3 step 4 / S6: "provisionally ~0.3...
 // needs benchmarking" -- `_dev/petgraph_data_types.md` S5 says explicitly
 // not to silently firm up a number DATA.md itself flags as unmeasured, so
 // this stays exactly that provisional, a named constant with this comment
@@ -1012,11 +1013,15 @@ impl GraphBackend {
     /// The result is a plain from/to/source_edge list either way -- it does
     /// not construct a new `GraphBackend` itself (R reconstructs one from
     /// these lists via `new()`, confirmed by grepping `R/node_vec.R`'s
-    /// `[.node_vec`), so the *new* backend's shape (which needn't match the
-    /// old one -- an induced subgraph of a tree is not generally a tree,
-    /// e.g. dropping a root splits it into a forest, or replication can
-    /// reintroduce a cycle) is re-decided by `new()`'s own detection from
-    /// scratch, same as it would be for any other from/to/directed input.
+    /// `[.node_vec`), so the *new* backend's shape (which needn't match
+    /// the old one -- both terms of the density ratio move here, `N`
+    /// becoming `idx.len()` and `M` however many edges survived or were
+    /// cloned, so e.g. dropping the centre of a `Repr::Dense` star strips
+    /// every edge at once and leaves something far below
+    /// `DENSE_THRESHOLD`, while dropping the isolated nodes that were
+    /// holding a `Repr::Csr` graph under that threshold pushes what's left
+    /// above it) is re-decided by `new()`'s own detection from scratch,
+    /// same as it would be for any other from/to/directed input.
     fn induced_subgraph(&self, idx: Vec<i32>) -> List {
         let n_old = self.n_nodes() as usize;
         let (efrom, eto) = self.edge_list();
@@ -1791,7 +1796,7 @@ mod tests {
     #[test]
     fn csr_induced_subgraph_treats_zero_as_no_source() {
         test! {
-            // n=6 undirected (never tree-shaped); density = 1/(6 choose 2)
+            // n=6 undirected; density = 1/(6 choose 2)
             // = 1/15 ~= 0.067 < 0.3, no duplicates -- picks Csr.
             let g = GraphBackend::new(6, vec![1], vec![2], false);
             assert!(g.is_csr());
