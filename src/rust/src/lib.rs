@@ -1,6 +1,6 @@
 use extendr_api::prelude::*;
 use rustworkx_core::petgraph::csr::{Csr, NodeIndex as CsrNodeIndex};
-use rustworkx_core::petgraph::graph::{DiGraph, EdgeIndex, NodeIndex};
+use rustworkx_core::petgraph::graph::{EdgeIndex, Graph, NodeIndex};
 use rustworkx_core::petgraph::matrix_graph::{MatrixGraph, NodeIndex as MatrixNodeIndex};
 use rustworkx_core::petgraph::visit::{
     GraphBase, GraphProp, IntoNeighbors, IntoNeighborsDirected, IntoNodeIdentifiers, NodeCount,
@@ -10,25 +10,195 @@ use rustworkx_core::petgraph::{Directed, Direction, EdgeType, Undirected};
 use std::collections::hash_map::RandomState;
 use std::collections::HashSet;
 
-/// The general-purpose representation: an adjacency-list `Graph` plus the
-/// per-node arc counts cached at construction so `degree()` is O(1) instead
-/// of consuming `neighbors()`'s O(d) walk (petgraph's `Graph` has no cached
-/// degree of its own -- confirmed against its API, see
-/// `_dev/petgraph_data_types.md` S1). Counted over the always-directed
-/// internal `graph` regardless of the owning `GraphBackend::directed`, so a
-/// self-loop contributes to both `out_degree[i]` and `in_degree[i]`.
+// One `Graph` instantiation, generic over `Ty: EdgeType`. `N`/`E` are both
+// `()` (no weights needed -- presence alone is the payload) and `Ix` stays
+// petgraph's own `graph::DefaultIx` (`u32`); the alias exists purely to
+// name the two monomorphisations below without repeating them.
+type GeneralGraphOf<Ty> = Graph<(), (), Ty>;
+
+/// The two possible concrete `Graph` monomorphisations `GeneralData` can
+/// hold -- `Directed` for a directed graph, `Undirected` for an undirected
+/// one, chosen once at construction to match `GraphBackend::directed`
+/// (`_dev/petgraph_data_types.md` S4's explicit "a real per-variant
+/// implementation choice, not a rule to copy" note). Deliberately the same
+/// wrapper-enum shape `DenseMatrix` below already uses for `MatrixGraph`,
+/// and for the same reason: Rust has no way to make one struct field
+/// "either of two concrete generic instantiations, decided at runtime"
+/// without it, and `GeneralData` itself must stay a single, non-generic
+/// type so `Repr::General` can hold it directly.
+///
+/// **Why an `Undirected` monomorphisation, rather than the always-`Directed`
+/// storage `_dev/RUST_BACKEND.md` S1.1 originally specified.** petgraph and
+/// rustworkx-core algorithms are generic over the `visit` traits and read a
+/// graph's directedness off its *type*, through
+/// `GraphProp::EdgeType`/`is_directed()` -- `degree_centrality()` branches
+/// on exactly that (rustworkx-core 0.18.1 `centrality.rs:368`, read
+/// directly). An undirected graph stored as `Graph<_, _, Directed>` would
+/// therefore be walked as if its edges were one-way: on a `Directed` graph
+/// `neighbors_directed(a, Outgoing)` follows only the outgoing adjacency
+/// list, whereas on an `Undirected` one petgraph ignores the direction
+/// argument entirely and returns every incident neighbour (petgraph 0.8.3
+/// `graph_impl/mod.rs:930-938` -- `neighbors_directed()` narrows
+/// `neighbors_undirected()`'s iterator only `if self.is_directed()`).
+/// Storing the type the backend actually means is what makes a
+/// trait-generic algorithm see the same graph this file's own
+/// `neighbors()`/`degree()` already report -- `Repr::Dense` has worked this
+/// way since it landed; this brings `Repr::General` into line.
+enum GeneralGraph {
+    Directed(GeneralGraphOf<Directed>),
+    Undirected(GeneralGraphOf<Undirected>),
+}
+
+// All edges of one `Graph` monomorphisation as 1-based `(from, to)` pairs,
+// in construction/edge-id order. `Graph` never renumbers an `EdgeIndex` for
+// a graph that only ever appends (`_dev/petgraph_data_types.md` S4's
+// edge-identity item, pinned by
+// `edge_endpoints_preserve_construction_order`), and that is a property of
+// `Graph`'s append-only edge array, not of `Ty` -- so the `Undirected`
+// monomorphisation inherits it unchanged, `edge_endpoints()` returning the
+// two endpoints in the order they were passed to `add_edge()`.
+fn general_edge_list<Ty: EdgeType>(g: &GeneralGraphOf<Ty>) -> (Vec<i32>, Vec<i32>) {
+    let m = g.edge_count();
+    let mut from: Vec<i32> = Vec::with_capacity(m);
+    let mut to: Vec<i32> = Vec::with_capacity(m);
+    for i in 0..m {
+        let (a, b) = g
+            .edge_endpoints(EdgeIndex::new(i))
+            .expect("edge index in range");
+        from.push(a.index() as i32 + 1);
+        to.push(b.index() as i32 + 1);
+    }
+    (from, to)
+}
+
+// Build one `Graph` instantiation from `from`/`to` (1-based), generic over
+// `Ty: EdgeType` so the directed and undirected cases share one
+// construction path -- the same shape `build_dense_matrix()` below has.
+// Exactly one arc per supplied edge, never mirrored: an `Undirected`
+// `Graph` stores an edge once and reports it from both endpoints itself
+// (unlike `Csr`, whose bulk constructor does not -- `CsrData`'s doc
+// comment).
+fn build_general_graph<Ty: EdgeType>(n: usize, from: &[i32], to: &[i32]) -> GeneralGraphOf<Ty> {
+    let mut g = GeneralGraphOf::<Ty>::with_capacity(n, from.len());
+    for _ in 0..n {
+        g.add_node(());
+    }
+    for (&f, &t) in from.iter().zip(to.iter()) {
+        let fi = NodeIndex::new((f - 1) as usize);
+        let ti = NodeIndex::new((t - 1) as usize);
+        g.add_edge(fi, ti, ());
+    }
+    g
+}
+
+impl GeneralGraph {
+    fn node_count(&self) -> usize {
+        match self {
+            GeneralGraph::Directed(g) => g.node_count(),
+            GeneralGraph::Undirected(g) => g.node_count(),
+        }
+    }
+
+    fn edge_count(&self) -> usize {
+        match self {
+            GeneralGraph::Directed(g) => g.edge_count(),
+            GeneralGraph::Undirected(g) => g.edge_count(),
+        }
+    }
+
+    fn edge_list(&self) -> (Vec<i32>, Vec<i32>) {
+        match self {
+            GeneralGraph::Directed(g) => general_edge_list(g),
+            GeneralGraph::Undirected(g) => general_edge_list(g),
+        }
+    }
+
+    // The undirected neighbour set: one entry per incident edge, a
+    // self-loop included exactly once. `neighbors_undirected()` walks both
+    // adjacency lists but skips a self-loop on the incoming pass -- the
+    // `edge.node[0] != self.skip_start` guard in `Neighbors::next()`
+    // (petgraph 0.8.3 `graph_impl/mod.rs:1893-1912`), whose own comment
+    // says so ("make sure we don't double count selfloops"). That guard is
+    // independent of `Ty`, so both monomorphisations agree here and neither
+    // needs a correction (unlike `CsrData::undirected_neighbors()`).
+    fn undirected_neighbors(&self, idx: usize) -> Vec<i32> {
+        let a = NodeIndex::new(idx);
+        match self {
+            GeneralGraph::Directed(g) => g
+                .neighbors_undirected(a)
+                .map(|n| n.index() as i32 + 1)
+                .collect(),
+            GeneralGraph::Undirected(g) => g
+                .neighbors_undirected(a)
+                .map(|n| n.index() as i32 + 1)
+                .collect(),
+        }
+    }
+
+    // Directed-mode "out"/"in" neighbours -- only ever called when
+    // `GraphBackend::directed` is true, which is exactly when this is the
+    // `Directed` arm (`GraphBackend::new()` chooses the two in lockstep,
+    // the way `detect_dense()` does for `DenseMatrix`). The `Undirected`
+    // arm is unreachable in practice; petgraph answers it as the full
+    // incident set anyway (`neighbors_directed()` narrows its iterator only
+    // `if self.is_directed()`, `graph_impl/mod.rs:930-938`), which is a
+    // sensible answer rather than a panic if that invariant is ever broken
+    // -- the same arrangement `DenseMatrix::directed_neighbors()` has.
+    fn directed_neighbors(&self, idx: usize, dir: Direction) -> Vec<i32> {
+        let a = NodeIndex::new(idx);
+        match self {
+            GeneralGraph::Directed(g) => g
+                .neighbors_directed(a, dir)
+                .map(|n| n.index() as i32 + 1)
+                .collect(),
+            GeneralGraph::Undirected(g) => g
+                .neighbors_directed(a, dir)
+                .map(|n| n.index() as i32 + 1)
+                .collect(),
+        }
+    }
+
+    // Adjacency test. No "check both orientations" branch is needed on the
+    // `Undirected` arm: `Graph::find_edge()` dispatches to
+    // `find_edge_undirected()` whenever `!self.is_directed()` (petgraph
+    // 0.8.3 `graph_impl/mod.rs:1062-1070`), so it already agrees both ways
+    // -- exactly why `Repr::Dense`'s arm needs no such branch either. That
+    // check used to live in `GraphBackend::has_edge()` as `!self.directed
+    // && find_edge(ti, fi)`, over always-`Directed` storage; the storage
+    // now carries it.
+    fn has_edge(&self, from: i32, to: i32) -> bool {
+        let fi = NodeIndex::new((from - 1) as usize);
+        let ti = NodeIndex::new((to - 1) as usize);
+        match self {
+            GeneralGraph::Directed(g) => g.find_edge(fi, ti).is_some(),
+            GeneralGraph::Undirected(g) => g.find_edge(fi, ti).is_some(),
+        }
+    }
+}
+
+/// The general-purpose representation: an adjacency-list `Graph` -- in
+/// whichever of `GeneralGraph`'s two monomorphisations matches the graph's
+/// own directedness -- plus the per-node arc counts cached at construction
+/// so `degree()` is O(1) instead of consuming `neighbors()`'s O(d) walk
+/// (petgraph's `Graph` has no cached degree of its own -- confirmed against
+/// its API, see `_dev/petgraph_data_types.md` S1).
+///
+/// The three caches are counted straight off the `from`/`to` arrays as
+/// supplied to `new()` -- one increment per supplied arc, identical for
+/// both monomorphisations -- so a self-loop contributes to both
+/// `out_degree[i]` and `in_degree[i]`.
 ///
 /// `self_loops[i]` additionally caches how many of those are self-loops
 /// (`f == t`) at node `i` -- needed to keep `undirected_degree_at()` O(1):
-/// `out_degree[i] + in_degree[i]` counts each self-loop *twice* (once via
-/// each adjacency list), but the undirected convention now wants it counted
-/// once per self-loop edge (matching `graph.neighbors_undirected()`'s own
-/// behaviour, see `GraphBackend::undirected_neighbors_at()`'s doc comment),
-/// so `out_degree[i] + in_degree[i] - self_loops[i]` is the O(1) formula for
-/// that -- confirmed against the `neighbors_undirected()`-based iterator
-/// count by this file's tests rather than assumed.
+/// `out_degree[i] + in_degree[i]` counts each self-loop *twice*, but the
+/// undirected convention wants it counted once per self-loop edge (matching
+/// `neighbors_undirected()`'s own behaviour, see
+/// `GeneralGraph::undirected_neighbors()`'s comment), so `out_degree[i] +
+/// in_degree[i] - self_loops[i]` is the O(1) formula for that -- confirmed
+/// against the `neighbors_undirected()`-based iterator count by this file's
+/// tests rather than assumed.
 struct GeneralData {
-    graph: DiGraph<(), ()>,
+    graph: GeneralGraph,
     out_degree: Vec<i32>,
     in_degree: Vec<i32>,
     self_loops: Vec<i32>,
@@ -674,17 +844,19 @@ impl GraphBackend {
             };
         }
 
-        let mut graph = DiGraph::<(), ()>::with_capacity(n, from.len());
-        for _ in 0..n {
-            graph.add_node(());
-        }
+        // `Directed`/`Undirected` picked in lockstep with `directed`, the
+        // same way `detect_dense()` picks a `DenseMatrix` arm -- see
+        // `GeneralGraph`'s doc comment for why the undirected case gets its
+        // own monomorphisation rather than reusing directed storage.
+        let graph = if directed {
+            GeneralGraph::Directed(build_general_graph::<Directed>(n, &from, &to))
+        } else {
+            GeneralGraph::Undirected(build_general_graph::<Undirected>(n, &from, &to))
+        };
         let mut out_degree = vec![0i32; n];
         let mut in_degree = vec![0i32; n];
         let mut self_loops = vec![0i32; n];
         for (f, t) in from.iter().zip(to.iter()) {
-            let fi = NodeIndex::new((*f - 1) as usize);
-            let ti = NodeIndex::new((*t - 1) as usize);
-            graph.add_edge(fi, ti, ());
             out_degree[(*f - 1) as usize] += 1;
             in_degree[(*t - 1) as usize] += 1;
             if f == t {
@@ -789,22 +961,16 @@ impl GraphBackend {
     /// Adjacency test. For an undirected graph, checks both orientations.
     fn has_edge(&self, from: i32, to: i32) -> bool {
         match &self.repr {
-            Repr::General(g) => {
-                let fi = NodeIndex::new((from - 1) as usize);
-                let ti = NodeIndex::new((to - 1) as usize);
-                if g.graph.find_edge(fi, ti).is_some() {
-                    return true;
-                }
-                !self.directed && g.graph.find_edge(ti, fi).is_some()
-            }
+            Repr::General(g) => g.graph.has_edge(from, to),
             Repr::Dense(d) => {
                 // No "check both orientations" branch needed here either:
                 // an `Undirected`-typed `MatrixGraph` stores one bit per
                 // unordered pair (see `to_linearized_matrix_position()` in
                 // petgraph's own source), so `has_edge(a, b)` and
-                // `has_edge(b, a)` already agree for it -- unlike
-                // `Repr::General`, whose internal storage is always
-                // `Directed` regardless of `self.directed`.
+                // `has_edge(b, a)` already agree for it. `Repr::General`
+                // reaches the same conclusion by a different route --
+                // `Graph::find_edge()`'s own undirected branch, see
+                // `GeneralGraph::has_edge()`.
                 let fi = MatrixNodeIndex::new((from - 1) as usize);
                 let ti = MatrixNodeIndex::new((to - 1) as usize);
                 match &d.matrix {
@@ -893,20 +1059,7 @@ impl GraphBackend {
     // S4's edge-identity item) rather than per call site.
     fn edge_list(&self) -> (Vec<i32>, Vec<i32>) {
         match &self.repr {
-            Repr::General(g) => {
-                let m = g.graph.edge_count();
-                let mut from: Vec<i32> = Vec::with_capacity(m);
-                let mut to: Vec<i32> = Vec::with_capacity(m);
-                for i in 0..m {
-                    let (a, b) = g
-                        .graph
-                        .edge_endpoints(EdgeIndex::new(i))
-                        .expect("edge index in range");
-                    from.push(a.index() as i32 + 1);
-                    to.push(b.index() as i32 + 1);
-                }
-                (from, to)
-            }
+            Repr::General(g) => g.graph.edge_list(),
             Repr::Dense(d) => (d.from.clone(), d.to.clone()),
             Repr::Csr(c) => (c.from.clone(), c.to.clone()),
         }
@@ -936,7 +1089,7 @@ impl GraphBackend {
     // directed graph's `"all"` mode. Per-variant because the native
     // primitive to delegate to differs: `Graph::neighbors_undirected()`
     // explicitly skips a self-loop on its incoming pass (confirmed from
-    // petgraph's own source, see `GeneralData`'s doc comment), an
+    // petgraph's own source, see `GeneralGraph::undirected_neighbors()`), an
     // `Undirected`-typed `MatrixGraph` never double-counts one in the first
     // place (one triangular bit, one appearance), and `Csr` -- always
     // `Directed`-typed internally, with no native undirected view at all
@@ -944,11 +1097,7 @@ impl GraphBackend {
     // three, in `CsrData::undirected_neighbors()`.
     fn undirected_neighbors_at(&self, idx: usize) -> Vec<i32> {
         match &self.repr {
-            Repr::General(g) => g
-                .graph
-                .neighbors_undirected(NodeIndex::new(idx))
-                .map(|n| n.index() as i32 + 1)
-                .collect(),
+            Repr::General(g) => g.graph.undirected_neighbors(idx),
             Repr::Dense(d) => d.matrix.undirected_neighbors(idx),
             Repr::Csr(c) => c.undirected_neighbors(idx),
         }
@@ -970,9 +1119,7 @@ impl GraphBackend {
 
     fn out_neighbors_at(&self, idx: usize) -> Vec<i32> {
         match &self.repr {
-            Repr::General(g) => {
-                Self::directed_neighbors(g, NodeIndex::new(idx), Direction::Outgoing)
-            }
+            Repr::General(g) => g.graph.directed_neighbors(idx, Direction::Outgoing),
             Repr::Dense(d) => d.matrix.directed_neighbors(idx, Direction::Outgoing),
             Repr::Csr(c) => c.out_neighbors(idx),
         }
@@ -980,9 +1127,7 @@ impl GraphBackend {
 
     fn in_neighbors_at(&self, idx: usize) -> Vec<i32> {
         match &self.repr {
-            Repr::General(g) => {
-                Self::directed_neighbors(g, NodeIndex::new(idx), Direction::Incoming)
-            }
+            Repr::General(g) => g.graph.directed_neighbors(idx, Direction::Incoming),
             Repr::Dense(d) => d.matrix.directed_neighbors(idx, Direction::Incoming),
             Repr::Csr(c) => c.in_neighbors(idx),
         }
@@ -1002,13 +1147,6 @@ impl GraphBackend {
             Repr::Dense(d) => d.in_degree[idx],
             Repr::Csr(c) => c.in_degree(idx),
         }
-    }
-
-    fn directed_neighbors(g: &GeneralData, idx: NodeIndex, dir: Direction) -> Vec<i32> {
-        g.graph
-            .neighbors_directed(idx, dir)
-            .map(|n| n.index() as i32 + 1)
-            .collect()
     }
 }
 
@@ -1166,6 +1304,83 @@ mod tests {
             let remap = g.induced_subgraph(vec![0, 2]);
             let from: Vec<i32> = remap.dollar("from").unwrap().as_integer_vector().unwrap();
             assert!(from.is_empty());
+        }
+    }
+
+    // -- Repr::General, undirected storage ---------------------------------
+    //
+    // `Repr::General` is only ever reached by a graph with a duplicate edge
+    // (`GraphBackend::new()`'s selection order: dense, then CSR, then this
+    // as the multigraph-capable fallback), so every input below supplies one
+    // deliberately. An undirected such graph is now stored as
+    // `Graph<(), (), Undirected>` rather than a `DiGraph` -- see
+    // `GeneralGraph`'s doc comment -- and these pin the R-visible semantics
+    // that must survive the swap unchanged.
+
+    // The self-loop convention `d11dfe9` established, over the undirected
+    // monomorphisation specifically: `neighbors_undirected()`'s self-loop
+    // skip is `Ty`-independent (`Neighbors::next()`, petgraph 0.8.3
+    // `graph_impl/mod.rs:1893-1912`), and `undirected_degree_at()`'s
+    // `out + in - self_loops` cache formula must still agree with it. n=3
+    // undirected: a self-loop on node 1 plus the edge (1,2) supplied twice.
+    // Density = 3/(3 choose 2) = 1.0 > 0.3, but the duplicate rules out both
+    // Dense and Csr -- picks General.
+    #[test]
+    fn general_undirected_self_loop_counts_once_in_undirected_degree() {
+        test! {
+            let g = GraphBackend::new(3, vec![1, 1, 1], vec![1, 2, 2], false);
+            assert!(!g.is_dense());
+            assert!(!g.is_csr());
+            // loop (1) + two parallel edges to node 2 (2)
+            assert_eq!(g.degree(1, "all"), 3);
+            assert_eq!(g.degree(2, "all"), 2);
+            assert_eq!(g.degree(3, "all"), 0);
+            let mut ns = g.neighbors(1, "all");
+            ns.sort();
+            assert_eq!(ns, vec![1, 2, 2]); // order isn't a contract, the multiset is
+            for node in 1..=3 {
+                assert_eq!(g.degree(node, "all"), g.neighbors(node, "all").len() as i32);
+            }
+        }
+    }
+
+    // `has_edge()` used to try the reverse arc itself for an undirected
+    // `Repr::General`; the `Undirected` storage now answers both ways
+    // natively via `Graph::find_edge()`'s own undirected branch
+    // (`graph_impl/mod.rs:1062-1070`). Same observable behaviour either way
+    // -- which is the point of this test.
+    #[test]
+    fn general_undirected_has_edge_checks_both_orientations() {
+        test! {
+            let g = GraphBackend::new(3, vec![1, 1, 2], vec![2, 2, 3], false);
+            assert!(!g.is_dense());
+            assert!(!g.is_csr());
+            assert!(g.has_edge(1, 2));
+            assert!(g.has_edge(2, 1));
+            assert!(g.has_edge(3, 2));
+            assert!(!g.has_edge(1, 3));
+        }
+    }
+
+    // Edge identity over the `Undirected` monomorphisation: `EdgeIndex` is
+    // still append-only insertion order, and `edge_endpoints()` still
+    // reports each edge's endpoints in the order they were supplied (not
+    // canonicalised into some (min, max) form, which an undirected store
+    // could plausibly have done). Deliberately scrambled, with a duplicate
+    // to force General.
+    #[test]
+    fn general_undirected_edge_endpoints_preserve_construction_order() {
+        test! {
+            let from = vec![3, 1, 2, 1, 3];
+            let to = vec![1, 2, 3, 2, 1];
+            let g = GraphBackend::new(3, from.clone(), to.clone(), false);
+            assert!(!g.is_dense());
+            assert!(!g.is_csr());
+            let ends = g.edge_endpoints();
+            let got_from: Vec<i32> = ends.dollar("from").unwrap().as_integer_vector().unwrap();
+            let got_to: Vec<i32> = ends.dollar("to").unwrap().as_integer_vector().unwrap();
+            assert_eq!(got_from, from);
+            assert_eq!(got_to, to);
         }
     }
 
