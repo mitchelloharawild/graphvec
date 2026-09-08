@@ -41,6 +41,24 @@ reference:
   contents:
   - as.igraph
 
+- title: Graph operations
+  desc: >
+    Measure, traverse, and test the structure of a graph vector. Every
+    operation accepts either orientation and returns a shape fixed by its
+    name: `n_*`/`graph_*` scalars, `node_*` node-aligned results, `edge_*`
+    edge-aligned results.
+  contents:
+  - n_nodes
+  - node_degree
+  - graph_density
+  - node_neighbors
+  - edge_incident
+  - node_incident
+  - edge_heads
+  - node_is_isolated
+  - edge_is_loop
+  - graph_is_directed
+
 - title: Developer tools
   desc: Low-level constructors for extending graphvec's classes.
   contents:

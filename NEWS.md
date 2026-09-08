@@ -82,3 +82,15 @@ Initial CRAN submission.
   smaller data.
 * Added `as.igraph()` methods for `node_vec`, `edge_vec`, `agg_vec`, and
   `agg_df`, converting them to `igraph::igraph()` objects.
+* Added a first set of graph operations, computed directly from the shared
+  graph backend that a `node_vec`/`edge_vec` carries. Each accepts either
+  orientation, and its return shape is fixed by its name rather than by an
+  argument:
+  * scalars: `n_nodes()`, `n_edges()`, `graph_density()`,
+    `graph_is_directed()`, `graph_has_loops()`.
+  * node-aligned: `node_degree()`, `node_is_isolated()`, `node_is_root()`,
+    `node_is_leaf()`.
+  * edge-aligned: `edge_heads()`, `edge_tails()`, `edge_is_loop()`,
+    `edge_multiplicity()`, `edge_is_multi()`.
+  * selections: `node_neighbors()`, `node_parents()`, `node_children()`,
+    `edge_incident()`, `node_incident()`.
