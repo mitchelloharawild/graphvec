@@ -3,8 +3,8 @@ use rustworkx_core::petgraph::csr::{Csr, NodeIndex as CsrNodeIndex};
 use rustworkx_core::petgraph::graph::{EdgeIndex, Graph, NodeIndex};
 use rustworkx_core::petgraph::matrix_graph::{MatrixGraph, NodeIndex as MatrixNodeIndex};
 use rustworkx_core::petgraph::visit::{
-    GraphBase, GraphProp, IntoNeighbors, IntoNeighborsDirected, IntoNodeIdentifiers, NodeCount,
-    NodeIndexable, Visitable,
+    GraphBase, GraphProp, GraphRef, IntoNeighbors, IntoNeighborsDirected, IntoNodeIdentifiers,
+    NodeCount, NodeIndexable, Visitable,
 };
 use rustworkx_core::petgraph::{Directed, Direction, EdgeType, Undirected};
 use std::collections::hash_map::RandomState;
@@ -269,6 +269,106 @@ impl DenseMatrix {
                 .map(|n| n.index() as i32 + 1)
                 .collect(),
         }
+    }
+}
+
+/// A borrowed, `Copy` view over `DenseData`'s `Undirected` `MatrixGraph`,
+/// existing for exactly one reason: petgraph implements
+/// `IntoNeighborsDirected` for `&MatrixGraph` **only** when `Ty = Directed`
+/// (petgraph 0.8.3 `matrix_graph.rs:1381-1389` -- the impl names `Directed`
+/// literally, unlike its `IntoNeighbors`/`IntoNodeIdentifiers`/`GraphProp`/
+/// `Visitable`/`NodeIndexable`/`NodeCount` neighbours, which are all
+/// `Ty: EdgeType`-generic). `MatrixGraph::neighbors_directed()` is likewise
+/// an inherent method on the `Directed` instantiation alone. So an
+/// undirected `Repr::Dense` graph satisfies every visit trait a
+/// direction-aware rustworkx-core algorithm needs *except* that one, and
+/// `core_number`/`degree_centrality` will not compile against it -- despite
+/// `Repr::Dense` having stored the correct `Undirected` monomorphisation
+/// since `08741ac`.
+///
+/// The gap is closed the way petgraph's own `Graph` closes it: for an
+/// undirected graph `neighbors_directed()` ignores the direction argument
+/// and returns every incident neighbour (`graph_impl/mod.rs:930-938`, where
+/// `neighbors_directed()` narrows `neighbors_undirected()`'s iterator only
+/// `if self.is_directed()`). Everything else forwards straight to the
+/// wrapped `MatrixGraph`, `GraphProp::EdgeType` included -- it stays
+/// `Undirected`, which is what makes `is_directed()` report the truth to a
+/// trait-generic caller.
+// `#[allow(dead_code)]`: constructed only by `with_graph_view!`, which no
+// non-test caller has yet -- this is groundwork for delegating operations to
+// rustworkx-core, exactly as `4d0799f`'s `CsrData` visit impls were, and the
+// tests at the bottom of this file are what prove it works. Remove the
+// attribute when the first operation is ported.
+#[allow(dead_code)]
+#[derive(Clone, Copy)]
+struct UndirectedMatrix<'a>(&'a DenseMatrixOf<Undirected>);
+
+impl GraphBase for UndirectedMatrix<'_> {
+    type NodeId = <DenseMatrixOf<Undirected> as GraphBase>::NodeId;
+    type EdgeId = <DenseMatrixOf<Undirected> as GraphBase>::EdgeId;
+}
+
+// `GraphRef: Copy + GraphBase` is a marker with no methods, but it is *not*
+// blanket-implemented for every `Copy + GraphBase` type -- petgraph only has
+// `impl<G> GraphRef for &G where G: GraphBase` plus one impl per adaptor
+// (visit/mod.rs:106-108). `IntoNeighbors: GraphRef`, so a by-value view like
+// this one has to say so itself.
+impl GraphRef for UndirectedMatrix<'_> {}
+
+impl NodeCount for UndirectedMatrix<'_> {
+    fn node_count(&self) -> usize {
+        NodeCount::node_count(self.0)
+    }
+}
+
+impl GraphProp for UndirectedMatrix<'_> {
+    type EdgeType = Undirected;
+}
+
+impl Visitable for UndirectedMatrix<'_> {
+    type Map = <DenseMatrixOf<Undirected> as Visitable>::Map;
+    fn visit_map(&self) -> Self::Map {
+        self.0.visit_map()
+    }
+    fn reset_map(&self, map: &mut Self::Map) {
+        self.0.reset_map(map)
+    }
+}
+
+impl NodeIndexable for UndirectedMatrix<'_> {
+    fn node_bound(&self) -> usize {
+        self.0.node_bound()
+    }
+    fn to_index(&self, a: Self::NodeId) -> usize {
+        self.0.to_index(a)
+    }
+    fn from_index(&self, i: usize) -> Self::NodeId {
+        self.0.from_index(i)
+    }
+}
+
+impl<'a> IntoNeighbors for UndirectedMatrix<'a> {
+    type Neighbors = <&'a DenseMatrixOf<Undirected> as IntoNeighbors>::Neighbors;
+    fn neighbors(self, a: Self::NodeId) -> Self::Neighbors {
+        IntoNeighbors::neighbors(self.0, a)
+    }
+}
+
+impl<'a> IntoNodeIdentifiers for UndirectedMatrix<'a> {
+    type NodeIdentifiers = <&'a DenseMatrixOf<Undirected> as IntoNodeIdentifiers>::NodeIdentifiers;
+    fn node_identifiers(self) -> Self::NodeIdentifiers {
+        IntoNodeIdentifiers::node_identifiers(self.0)
+    }
+}
+
+impl<'a> IntoNeighborsDirected for UndirectedMatrix<'a> {
+    type NeighborsDirected = <&'a DenseMatrixOf<Undirected> as IntoNeighbors>::Neighbors;
+    // `_d` is deliberately ignored -- see this type's doc comment: that is
+    // precisely what petgraph's `Graph` does for an undirected graph, and
+    // what `MatrixGraph<Undirected>` has no `neighbors_directed()` of its
+    // own to do.
+    fn neighbors_directed(self, a: Self::NodeId, _d: Direction) -> Self::NeighborsDirected {
+        IntoNeighbors::neighbors(self.0, a)
     }
 }
 
@@ -577,6 +677,22 @@ impl CsrData {
         self.out_degree(idx) + self.in_degree(idx) - self_loop
     }
 
+    // `undirected_neighbors()`'s iterator form, in petgraph's own `NodeId`
+    // currency rather than 1-based `i32` -- what `SymmetricCsr` below hands
+    // to a trait-generic algorithm. Same multiset, same self-loop-once
+    // convention; see `CsrSymmetricNeighbors`.
+    #[allow(dead_code)] // see `UndirectedMatrix`'s note on this attribute
+    fn symmetric_neighbors(&self, a: CsrNodeIndex) -> CsrSymmetricNeighbors<'_> {
+        let idx = a as usize;
+        let start = self.in_ptr[idx] as usize;
+        let end = self.in_ptr[idx + 1] as usize;
+        CsrSymmetricNeighbors {
+            node: a,
+            out: IntoNeighbors::neighbors(&self.csr, a),
+            incoming: self.in_idx[start..end].iter(),
+        }
+    }
+
     fn has_edge(&self, from: i32, to: i32, directed: bool) -> bool {
         let fi = (from - 1) as CsrNodeIndex;
         let ti = (to - 1) as CsrNodeIndex;
@@ -633,6 +749,12 @@ impl NodeCount for CsrData {
     }
 }
 
+// The *directed* view. `CsrData::csr` is always `Directed`-typed storage,
+// so this is the honest answer for a directed graph and a wrong one for an
+// undirected graph -- `&CsrData` must therefore only be handed to a
+// trait-generic algorithm when `GraphBackend::directed` is true. Use
+// `SymmetricCsr` below for the undirected case; `with_graph_view!` picks
+// between the two so no caller has to remember.
 impl GraphProp for CsrData {
     type EdgeType = Directed;
 }
@@ -722,6 +844,164 @@ impl<'a> IntoNeighborsDirected for &'a CsrData {
     }
 }
 
+// The symmetric-view iterator: every outgoing neighbour, then every
+// incoming one except the self-loop. That skip is not an invention -- it is
+// exactly what petgraph's own `Neighbors::next()` does for
+// `Graph::neighbors_undirected()`, guarding its incoming pass with
+// `edge.node[0] != self.skip_start` (petgraph 0.8.3
+// `graph_impl/mod.rs:1893-1912`), and it is what makes a self-loop count
+// once here as it does everywhere else in this file since `d11dfe9`.
+// Skipping *every* matching entry rather than just the first is equivalent:
+// `Csr` cannot hold a multigraph (`detect_csr()`'s `has_duplicate_edges()`
+// gate), so at most one such arc exists.
+// See `UndirectedMatrix`'s note on `#[allow(dead_code)]`.
+#[allow(dead_code)]
+struct CsrSymmetricNeighbors<'a> {
+    node: CsrNodeIndex,
+    out: <&'a Csr<(), (), Directed> as IntoNeighbors>::Neighbors,
+    incoming: std::slice::Iter<'a, i32>,
+}
+
+impl Iterator for CsrSymmetricNeighbors<'_> {
+    type Item = CsrNodeIndex;
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(n) = self.out.next() {
+            return Some(n);
+        }
+        for &s in self.incoming.by_ref() {
+            // `in_idx` holds 1-based external node ids; petgraph's `NodeId`
+            // is 0-based (see `in_idx_to_node_id()` above).
+            let n = (s - 1) as CsrNodeIndex;
+            if n != self.node {
+                return Some(n);
+            }
+        }
+        None
+    }
+}
+
+/// A borrowed, `Copy`, **`Undirected`-typed** view over a `CsrData`.
+///
+/// **This is `Repr::Csr`'s deviation from the "store the directedness the
+/// backend means" rule the other two variants now follow** (`GeneralGraph`,
+/// `DenseMatrix`): `CsrData::csr` stays `Csr<(), (), Directed>` for an
+/// undirected graph too, and this view supplies the symmetric adjacency a
+/// trait-generic algorithm needs on top. Three things about petgraph 0.8.3's
+/// `csr.rs`, all read directly rather than taken from `CsrData`'s older
+/// summary of them, are why:
+///
+/// 1. `Csr::from_sorted_edges()`'s own doc comment (`csr.rs:176-178`): "When
+///    constructing an **undirected** graph, edges have to be present in both
+///    directions, i.e. `(u, v)` requires the sequence to also contain
+///    `(v, u)`." It does no mirroring of its own -- it just pushes what it is
+///    given into `column`. This project stores one arc per undirected edge,
+///    so handing that list to an `Undirected`-typed `Csr` would silently
+///    build a *half* graph, adjacency visible from one endpoint only.
+/// 2. Pre-doubling the list to satisfy (1) fixes adjacency but breaks the
+///    edge count: `from_sorted_edges()` does `self_.edge_count += 1` once per
+///    *arc* pushed (`csr.rs:251`), while `edge_count()` returns that field
+///    verbatim when `Ty = Undirected` (`csr.rs:271-277`). A bulk-built
+///    undirected `Csr` therefore reports `2M` edges where the incremental
+///    constructor reports `M` -- `try_add_edge()` increments once per logical
+///    edge (`csr.rs:340-342`). Two constructors, two different answers for
+///    the same graph; anything generic over `EdgeCount` sees the wrong one.
+/// 3. The constructor that gets (1) and (2) right on its own is
+///    `add_edge()`/`try_add_edge()`, which mirrors non-loop edges itself
+///    (its `a != b` guard at `csr.rs:343` correctly leaves a self-loop
+///    unmirrored). But petgraph's own doc puts building a whole graph that
+///    way at **O(|V|·|E|)** -- each `add_edge_()` does a `column.insert()`
+///    plus a walk over `row[a+1..]` (`csr.rs:351-372`). That is quadratic,
+///    and cheap bulk construction is the entire reason `Repr::Csr` exists as
+///    a separate variant from `Repr::General`.
+///
+/// **And not petgraph's own `visit::UndirectedAdaptor`**, which looks like
+/// exactly this type. Two reasons, both from `visit/undirected_adaptor.rs`:
+/// its `IntoNeighbors` is a bare
+/// `neighbors_directed(Incoming).chain(neighbors_directed(Outgoing))` with
+/// no self-loop guard (lines 14-24), so a loop would come back *twice* --
+/// the doubled convention `d11dfe9` deliberately dropped; and it does not
+/// implement `IntoNeighborsDirected` at all, so `core_number` and any other
+/// algorithm bounded on it still would not compile. (It is also unusable for
+/// the `MatrixGraph<Undirected>` gap above for a third reason: it *requires*
+/// `G: IntoNeighborsDirected`, which is the very impl that is missing.)
+///
+/// So: directed arcs plus this view, rather than a representation that would
+/// have to be either wrong or quadratic. The view reports
+/// `GraphProp::EdgeType = Undirected`, so `is_directed()` still tells a
+/// trait-generic caller the truth about the graph even though the storage
+/// underneath it is `Directed` -- which is the property that actually
+/// matters, and the one `_dev/petgraph_data_types.md` S4 asks for ("whichever
+/// way a given variant takes it, the observable... semantics must still
+/// match exactly").
+// See `UndirectedMatrix`'s note on `#[allow(dead_code)]`.
+#[allow(dead_code)]
+#[derive(Clone, Copy)]
+struct SymmetricCsr<'a>(&'a CsrData);
+
+impl GraphBase for SymmetricCsr<'_> {
+    type NodeId = <CsrData as GraphBase>::NodeId;
+    type EdgeId = <CsrData as GraphBase>::EdgeId;
+}
+
+// See `UndirectedMatrix`'s `GraphRef` impl for why this is not automatic.
+impl GraphRef for SymmetricCsr<'_> {}
+
+impl NodeCount for SymmetricCsr<'_> {
+    fn node_count(&self) -> usize {
+        NodeCount::node_count(self.0)
+    }
+}
+
+impl GraphProp for SymmetricCsr<'_> {
+    type EdgeType = Undirected;
+}
+
+impl Visitable for SymmetricCsr<'_> {
+    type Map = <CsrData as Visitable>::Map;
+    fn visit_map(&self) -> Self::Map {
+        self.0.visit_map()
+    }
+    fn reset_map(&self, map: &mut Self::Map) {
+        self.0.reset_map(map)
+    }
+}
+
+impl NodeIndexable for SymmetricCsr<'_> {
+    fn node_bound(&self) -> usize {
+        self.0.node_bound()
+    }
+    fn to_index(&self, a: Self::NodeId) -> usize {
+        self.0.to_index(a)
+    }
+    fn from_index(&self, i: usize) -> Self::NodeId {
+        self.0.from_index(i)
+    }
+}
+
+impl<'a> IntoNodeIdentifiers for SymmetricCsr<'a> {
+    type NodeIdentifiers = <&'a CsrData as IntoNodeIdentifiers>::NodeIdentifiers;
+    fn node_identifiers(self) -> Self::NodeIdentifiers {
+        IntoNodeIdentifiers::node_identifiers(self.0)
+    }
+}
+
+impl<'a> IntoNeighbors for SymmetricCsr<'a> {
+    type Neighbors = CsrSymmetricNeighbors<'a>;
+    fn neighbors(self, a: Self::NodeId) -> Self::Neighbors {
+        self.0.symmetric_neighbors(a)
+    }
+}
+
+impl<'a> IntoNeighborsDirected for SymmetricCsr<'a> {
+    type NeighborsDirected = CsrSymmetricNeighbors<'a>;
+    // Direction ignored, matching what petgraph's `Graph` does for an
+    // undirected graph (`graph_impl/mod.rs:930-938`) and what
+    // `UndirectedMatrix` above does for `MatrixGraph<Undirected>`.
+    fn neighbors_directed(self, a: Self::NodeId, _d: Direction) -> Self::NeighborsDirected {
+        self.0.symmetric_neighbors(a)
+    }
+}
+
 // Build a `Csr<(), (), Directed>` from `from`/`to` (original, 1-based,
 // arbitrary order): sorts a *separate clone* of the 0-based pairs, since
 // `Csr::from_sorted_edges()` wants source-then-target sorted, strictly
@@ -791,6 +1071,76 @@ enum Repr {
     General(GeneralData),
     Dense(DenseData),
     Csr(CsrData),
+}
+
+// Run one expression against whichever concrete, correctly-directed
+// petgraph view backs a `GraphBackend`, binding it to the named identifier:
+//
+// ```ignore
+// let centrality = with_graph_view!(self, |g| {
+//     rustworkx_core::centrality::degree_centrality(g, None)
+// });
+// ```
+//
+// This is the single place a rustworkx-core-backed operation has to touch
+// per-representation code: write one function generic over petgraph's
+// `visit` traits, call it here, done -- no hand-port per `Repr` variant,
+// which is the whole point of every trait impl above.
+//
+// It has to be a macro rather than a method taking a closure: the arms bind
+// `$g` to *different concrete types* (`&Graph<_, _, Directed>`,
+// `&Graph<_, _, Undirected>`, `&MatrixGraph<..., Directed, ...>`,
+// `UndirectedMatrix`, `&CsrData`, `SymmetricCsr`), so `$body` must be
+// monomorphised once per arm. Rust closures are not generic over their
+// argument type, so a `fn with_view<R>(&self, f: impl Fn(?) -> R)` cannot
+// express this; a macro (or a trait with a generic method, which is the
+// same thing with more ceremony) is the only way.
+//
+// Six arms, not three, because `GraphProp::EdgeType` is an associated type
+// -- fixed at compile time -- while `directed` is a runtime flag, so each
+// variant needs one arm per directedness. Two of the six exist only because
+// petgraph leaves a gap: `UndirectedMatrix` (no `IntoNeighborsDirected` for
+// `MatrixGraph<Undirected>`) and `SymmetricCsr` (no undirected `Csr` this
+// project can build without either corrupting the graph or going
+// quadratic). Both have doc comments giving the source citations.
+// `#[allow(unused_macros)]`: nothing outside this file's tests calls it yet
+// -- see `UndirectedMatrix`'s note on the matching `#[allow(dead_code)]`.
+#[allow(unused_macros)]
+macro_rules! with_graph_view {
+    ($backend:expr, |$g:ident| $body:expr) => {{
+        let backend: &GraphBackend = $backend;
+        match &backend.repr {
+            Repr::General(d) => match &d.graph {
+                GeneralGraph::Directed(inner) => {
+                    let $g = inner;
+                    $body
+                }
+                GeneralGraph::Undirected(inner) => {
+                    let $g = inner;
+                    $body
+                }
+            },
+            Repr::Dense(d) => match &d.matrix {
+                DenseMatrix::Directed(inner) => {
+                    let $g = inner;
+                    $body
+                }
+                DenseMatrix::Undirected(inner) => {
+                    let $g = UndirectedMatrix(inner);
+                    $body
+                }
+            },
+            Repr::Csr(d) => {
+                if backend.directed {
+                    let $g = d;
+                    $body
+                } else {
+                    let $g = SymmetricCsr(d);
+                    $body
+                }
+            }
+        }
+    }};
 }
 
 /// The shared topology backing a `node_vec`/`edge_vec` pair (non-hyperedge
@@ -1865,47 +2215,230 @@ mod tests {
 
     // -- rustworkx-core algorithm interop ----------------------------------
     //
-    // The actual point of `CsrData`'s `IntoNeighborsDirected` impl above:
-    // proof that a real rustworkx-core algorithm runs directly against
-    // `&CsrData`, not just that the trait impls happen to compile. Not a
-    // `#[extendr]`-exposed capability yet (no R method calls this) -- this
-    // is Rust-internal evidence the new trait coverage is real, ahead of
-    // any graphvec operation actually being ported to delegate to it.
+    // The actual point of every `visit`-trait impl above: proof that real
+    // rustworkx-core algorithms run directly against each `Repr` variant,
+    // not just that the trait impls happen to compile. Not a
+    // `#[extendr]`-exposed capability yet (no R method calls any of this) --
+    // this is Rust-internal evidence the trait coverage is real, ahead of any
+    // graphvec operation actually being ported to delegate to it.
+    //
+    // Two algorithms, chosen because they exercise direction differently:
+    //
+    // - `centrality::degree_centrality(g, Some(dir))` reads
+    //   `GraphProp::is_directed()` first and only honours `dir` when it is
+    //   true, otherwise counting `neighbors()` (rustworkx-core 0.18.1
+    //   `centrality.rs:368-390`). That makes it the sharpest available probe
+    //   for "is this graph stored with the directedness it actually has": on
+    //   an undirected graph the answer must be the *full* degree even though
+    //   `Incoming` was asked for, and directed-typed storage would silently
+    //   return in-degrees instead. Every undirected case below asserts the
+    //   right one and names the wrong one.
+    // - `connectivity::core_number(g)` needs `IntoNeighborsDirected` on
+    //   `&G` in both directions no matter the graph's own directedness. It
+    //   is what would not even compile for an undirected `Repr::Dense`
+    //   without `UndirectedMatrix`, or for `Repr::Csr` without the impls
+    //   from `4d0799f`/`SymmetricCsr`.
+    //
+    // Every case goes through `with_graph_view!`, so these also stand as the
+    // worked examples of how a ported operation is meant to call in.
+
+    // Small helper: `core_number()` returns a `DictMap` keyed by the graph's
+    // own `NodeId` type, which differs per variant (`NodeIndex` for
+    // `Graph`/`MatrixGraph`, a bare `u32` for `Csr`). Reduce it to a plain
+    // per-position `Vec` via `NodeIndexable::to_index()` so the expectations
+    // below can be written once, in graphvec's own 0-based node order.
+    fn core_numbers(g: &GraphBackend) -> Vec<usize> {
+        with_graph_view!(g, |view| {
+            let cores = rustworkx_core::connectivity::core_number(view);
+            let mut out = vec![0usize; g.n_nodes() as usize];
+            for (node, k) in cores.iter() {
+                out[view.to_index(*node)] = *k;
+            }
+            out
+        })
+    }
+
+    // `degree_centrality(_, Some(dir))`, same reduction to node order.
+    fn directed_degree_centrality(g: &GraphBackend, dir: Direction) -> Vec<f64> {
+        with_graph_view!(g, |view| {
+            rustworkx_core::centrality::degree_centrality(view, Some(dir))
+        })
+    }
+
+    // -- Repr::General -----------------------------------------------------
+
+    // n=4 directed, edges 1->2, 2->3, 3->4, 1->2 (again), 1->3. The repeated
+    // (1,2) forces General past the density gate (5/(4 choose 2) = 0.83).
     #[test]
-    fn csr_supports_rustworkx_core_directed_degree_centrality() {
+    fn general_directed_supports_rustworkx_core_algorithms() {
         test! {
-            // Same shape as `csr_node_identity_is_dense_and_stable`: n=8
-            // directed path 1->2->3->4->5->6 plus 1->3; density = 6/28 ~=
-            // 0.214 < 0.3, duplicate-free -- picks Csr.
-            let from = vec![1, 2, 3, 4, 5, 1];
-            let to = vec![2, 3, 4, 5, 6, 3];
-            let g = GraphBackend::new(8, from, to, true);
-            let c = match &g.repr {
-                Repr::Csr(c) => c,
-                _ => panic!("expected Repr::Csr"),
-            };
+            let g = GraphBackend::new(4, vec![1, 2, 3, 1, 1], vec![2, 3, 4, 2, 3], true);
+            assert!(!g.is_dense());
+            assert!(!g.is_csr());
+
+            // In-degrees, parallel edges counted separately (node 2 has two
+            // incoming 1->2 arcs), over node_count - 1 = 3.
+            let inc = directed_degree_centrality(&g, Direction::Incoming);
+            for (node, &want) in [0.0, 2.0, 2.0, 1.0].iter().enumerate() {
+                assert_eq!(inc[node], want / 3.0, "in-centrality of node {}", node + 1);
+            }
+            let out = directed_degree_centrality(&g, Direction::Outgoing);
+            for (node, &want) in [3.0, 1.0, 1.0, 0.0].iter().enumerate() {
+                assert_eq!(out[node], want / 3.0, "out-centrality of node {}", node + 1);
+            }
+
+            // core_number collects neighbours into a HashSet, so it sees the
+            // simple graph 1-2, 2-3, 3-4, 1-3: node 4 (degree 1) peels off
+            // as a 1-core, leaving the triangle 1-2-3 as a 2-core.
+            assert_eq!(core_numbers(&g), vec![2, 2, 2, 1]);
+        }
+    }
+
+    // The same five edges, undirected. This is the case that would be
+    // silently wrong if `Repr::General` still stored an undirected graph as
+    // a `DiGraph`: `degree_centrality(_, Some(Incoming))` would report
+    // in-degrees [0, 2, 2, 1]/3, where the correct undirected answer counts
+    // every incident edge.
+    #[test]
+    fn general_undirected_supports_rustworkx_core_algorithms() {
+        test! {
+            let g = GraphBackend::new(4, vec![1, 2, 3, 1, 1], vec![2, 3, 4, 2, 3], false);
+            assert!(!g.is_dense());
+            assert!(!g.is_csr());
+
+            let inc = directed_degree_centrality(&g, Direction::Incoming);
+            // Node 1's answer is 3, not the 0 a `DiGraph` would have given.
+            for (node, &want) in [3.0, 3.0, 3.0, 1.0].iter().enumerate() {
+                assert_eq!(inc[node], want / 3.0, "centrality of node {}", node + 1);
+            }
+            // Direction is ignored entirely, so both agree ...
+            assert_eq!(inc, directed_degree_centrality(&g, Direction::Outgoing));
+            // ... and each is exactly this file's own `degree()`, which is
+            // the property the whole exercise is about: the algorithm and
+            // the R-visible primitive see one graph, not two.
+            for node in 1..=4 {
+                assert_eq!(inc[(node - 1) as usize], f64::from(g.degree(node, "all")) / 3.0);
+            }
+
+            assert_eq!(core_numbers(&g), vec![2, 2, 2, 1]);
+        }
+    }
+
+    // -- Repr::Dense -------------------------------------------------------
+
+    // n=4 directed, edges 1->2, 1->3, 2->3, 3->4: density = 4/(4 choose 2)
+    // = 0.67 > 0.3, no duplicate ordered pairs -- picks Dense.
+    #[test]
+    fn dense_directed_supports_rustworkx_core_algorithms() {
+        test! {
+            let g = GraphBackend::new(4, vec![1, 1, 2, 3], vec![2, 3, 3, 4], true);
+            assert!(g.is_dense());
+
+            let inc = directed_degree_centrality(&g, Direction::Incoming);
+            for (node, &want) in [0.0, 1.0, 2.0, 1.0].iter().enumerate() {
+                assert_eq!(inc[node], want / 3.0, "in-centrality of node {}", node + 1);
+            }
+            let out = directed_degree_centrality(&g, Direction::Outgoing);
+            for (node, &want) in [2.0, 1.0, 1.0, 0.0].iter().enumerate() {
+                assert_eq!(out[node], want / 3.0, "out-centrality of node {}", node + 1);
+            }
+
+            assert_eq!(core_numbers(&g), vec![2, 2, 2, 1]);
+        }
+    }
+
+    // The same four edges, undirected -- `MatrixGraph<(), (), _, Undirected,
+    // ...>` storage. Neither algorithm compiles for this variant without
+    // `UndirectedMatrix`: petgraph implements `IntoNeighborsDirected` for
+    // `&MatrixGraph` only when `Ty = Directed` (`matrix_graph.rs:1381-1389`).
+    // A directed-typed dense store would answer the `Incoming` query with
+    // [0, 1, 2, 1]/3 instead of the full degrees below.
+    #[test]
+    fn dense_undirected_supports_rustworkx_core_algorithms() {
+        test! {
+            let g = GraphBackend::new(4, vec![1, 1, 2, 3], vec![2, 3, 3, 4], false);
+            assert!(g.is_dense());
+
+            let inc = directed_degree_centrality(&g, Direction::Incoming);
+            // Node 1's answer is 2, not the 0 directed storage would give.
+            for (node, &want) in [2.0, 2.0, 3.0, 1.0].iter().enumerate() {
+                assert_eq!(inc[node], want / 3.0, "centrality of node {}", node + 1);
+            }
+            assert_eq!(inc, directed_degree_centrality(&g, Direction::Outgoing));
+            for node in 1..=4 {
+                assert_eq!(inc[(node - 1) as usize], f64::from(g.degree(node, "all")) / 3.0);
+            }
+
+            assert_eq!(core_numbers(&g), vec![2, 2, 2, 1]);
+        }
+    }
+
+    // -- Repr::Csr ---------------------------------------------------------
+
+    // n=8 directed path 1->2->3->4->5->6 plus 1->3; density = 6/28 ~= 0.214
+    // < 0.3, duplicate-free -- picks Csr. Same shape as
+    // `csr_node_identity_is_dense_and_stable`.
+    //
+    // Extends what `4d0799f` proved (`degree_centrality` against a bare
+    // `&CsrData`) by routing through `with_graph_view!` and adding
+    // `core_number`.
+    #[test]
+    fn csr_directed_supports_rustworkx_core_algorithms() {
+        test! {
+            let g = GraphBackend::new(8, vec![1, 2, 3, 4, 5, 1], vec![2, 3, 4, 5, 6, 3], true);
+            assert!(g.is_csr());
 
             // `Some(direction)` divides by `node_count - 1` regardless of
             // whether that matches the "complete graph" case (see
             // `degree_centrality`'s own source) -- node_count is 8 here, so
             // the expected denominator is 7 throughout.
-            let out = rustworkx_core::centrality::degree_centrality(
-                c,
-                Some(rustworkx_core::petgraph::Direction::Outgoing),
-            );
-            let expected_out = [2.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0];
-            for (node, &want) in expected_out.iter().enumerate() {
+            let out = directed_degree_centrality(&g, Direction::Outgoing);
+            for (node, &want) in [2.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0].iter().enumerate() {
                 assert_eq!(out[node], want / 7.0, "out-centrality of node {}", node + 1);
             }
-
-            let inc = rustworkx_core::centrality::degree_centrality(
-                c,
-                Some(rustworkx_core::petgraph::Direction::Incoming),
-            );
-            let expected_in = [0.0, 1.0, 2.0, 1.0, 1.0, 1.0, 0.0, 0.0];
-            for (node, &want) in expected_in.iter().enumerate() {
+            let inc = directed_degree_centrality(&g, Direction::Incoming);
+            for (node, &want) in [0.0, 1.0, 2.0, 1.0, 1.0, 1.0, 0.0, 0.0].iter().enumerate() {
                 assert_eq!(inc[node], want / 7.0, "in-centrality of node {}", node + 1);
             }
+
+            // Triangle 1-2-3 with a tail 3-4-5-6 hanging off it, plus two
+            // isolated nodes: the tail peels off as a 1-core, the isolated
+            // pair never enters even the 1-core.
+            assert_eq!(core_numbers(&g), vec![2, 2, 2, 1, 1, 1, 0, 0]);
+        }
+    }
+
+    // n=8 undirected: path 1-2-3-4-5-6 plus a self-loop on node 1 (nodes 7
+    // and 8 isolated, keeping density at 6/28 ~= 0.214 < 0.3; (1,1) and
+    // (1,2) are distinct canonical keys, so it stays duplicate-free and
+    // picks Csr).
+    //
+    // This is the case `SymmetricCsr` exists for, and it checks two things
+    // directed storage would get wrong at once: the direction-blind answer
+    // (`Incoming` on node 1 would be the single loop arc, not its full
+    // degree of 2), and the self-loop convention -- petgraph's own
+    // `UndirectedAdaptor` would count the loop twice here, giving node 1
+    // a degree of 3. Both are pinned against `degree(node, "all")`.
+    #[test]
+    fn csr_undirected_supports_rustworkx_core_algorithms() {
+        test! {
+            let g = GraphBackend::new(8, vec![1, 1, 2, 3, 4, 5], vec![1, 2, 3, 4, 5, 6], false);
+            assert!(g.is_csr());
+
+            let inc = directed_degree_centrality(&g, Direction::Incoming);
+            let expected = [2.0, 2.0, 2.0, 2.0, 2.0, 1.0, 0.0, 0.0];
+            for (node, &want) in expected.iter().enumerate() {
+                assert_eq!(inc[node], want / 7.0, "centrality of node {}", node + 1);
+            }
+            assert_eq!(inc, directed_degree_centrality(&g, Direction::Outgoing));
+            for node in 1..=8 {
+                assert_eq!(inc[(node - 1) as usize], f64::from(g.degree(node, "all")) / 7.0);
+            }
+
+            // core_number's HashSet of neighbours keeps node 1's self-loop
+            // as the entry `1` itself, so node 1's set is {1, 2} and the
+            // whole path is a 1-core; the isolated nodes stay at 0.
+            assert_eq!(core_numbers(&g), vec![1, 1, 1, 1, 1, 1, 0, 0]);
         }
     }
 }
