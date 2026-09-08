@@ -96,11 +96,15 @@ NULL
 #'The result is a plain from/to/source_edge list either way -- it does
 #'not construct a new `GraphBackend` itself (R reconstructs one from
 #'these lists via `new()`, confirmed by grepping `R/node_vec.R`'s
-#'`[.node_vec`), so the *new* backend's shape (which needn't match the
-#'old one -- an induced subgraph of a tree is not generally a tree,
-#'e.g. dropping a root splits it into a forest, or replication can
-#'reintroduce a cycle) is re-decided by `new()`'s own detection from
-#'scratch, same as it would be for any other from/to/directed input.
+#'`[.node_vec`), so the *new* backend's shape (which needn't match
+#'the old one -- both terms of the density ratio move here, `N`
+#'becoming `idx.len()` and `M` however many edges survived or were
+#'cloned, so e.g. dropping the centre of a `Repr::Dense` star strips
+#'every edge at once and leaves something far below
+#'`DENSE_THRESHOLD`, while dropping the isolated nodes that were
+#'holding a `Repr::Csr` graph under that threshold pushes what's left
+#'above it) is re-decided by `new()`'s own detection from scratch,
+#'same as it would be for any other from/to/directed input.
 #'}
 #'
 GraphBackend <- new.env(parent = emptyenv())

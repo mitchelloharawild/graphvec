@@ -105,11 +105,15 @@ never \code{self.repr} directly, so it needs no per-variant duplicate.
 The result is a plain from/to/source_edge list either way -- it does
 not construct a new \code{GraphBackend} itself (R reconstructs one from
 these lists via \code{new()}, confirmed by grepping \code{R/node_vec.R}'s
-\verb{[.node_vec}), so the \emph{new} backend's shape (which needn't match the
-old one -- an induced subgraph of a tree is not generally a tree,
-e.g. dropping a root splits it into a forest, or replication can
-reintroduce a cycle) is re-decided by \code{new()}'s own detection from
-scratch, same as it would be for any other from/to/directed input.
+\verb{[.node_vec}), so the \emph{new} backend's shape (which needn't match
+the old one -- both terms of the density ratio move here, \code{N}
+becoming \code{idx.len()} and \code{M} however many edges survived or were
+cloned, so e.g. dropping the centre of a \code{Repr::Dense} star strips
+every edge at once and leaves something far below
+\code{DENSE_THRESHOLD}, while dropping the isolated nodes that were
+holding a \code{Repr::Csr} graph under that threshold pushes what's left
+above it) is re-decided by \code{new()}'s own detection from scratch,
+same as it would be for any other from/to/directed input.
 }
 }
 
