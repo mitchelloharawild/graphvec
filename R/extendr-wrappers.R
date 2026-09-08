@@ -10,10 +10,9 @@ NULL
 #' `Repr` variants, auto-selected at construction from graph shape
 #' (`_dev/petgraph_data_types.md` S3/S5); `directed` is metadata every
 #' variant's query methods interpret, not itself part of the shape
-#' decision beyond gating which variants are eligible (only a directed
-#' graph can be tree-shaped, see `detect_tree()`). This keeps the object
-#' immutable and shareable: a `node_vec`, its `edges()` reorientation, and
-#' any `edge_vec` sliced from it can all hold the same pointer.
+#' decision. This keeps the object immutable and shareable: a `node_vec`,
+#' its `edges()` reorientation, and any `edge_vec` sliced from it can all
+#' hold the same pointer.
 #'
 #' @export
 #'
@@ -23,58 +22,44 @@ NULL
 #'Automatically picks the cheapest `Repr` the graph's shape qualifies
 #'for (`_dev/petgraph_data_types.md` S3/S5 -- this decision belongs
 #'here, not in R, so there is exactly one place shape detection can
-#'drift out of sync with the representation it feeds). For the
-#'general representation, edges are added in input order and never
-#'removed afterwards, so edge ids (0-based internally, 1-based at the
-#'R boundary) stay stable and match the row order of the R-side edge
-#'attribute table; for the tree representation, the same external
-#'contract is upheld via `TreeData::order` (see its doc comment).
+#'drift out of sync with the representation it feeds). Edges are added
+#'in input order and never removed afterwards, so edge ids (0-based
+#'internally, 1-based at the R boundary) stay stable and match the row
+#'order of the R-side edge attribute table, for every representation.
 #'}
 #'
 #'\subsection{Method `repr_name`}{
 #'Which physical representation this backend picked, as a stable name
-#'(`"general"`, `"tree"`, `"dense"`, `"csr"`) -- the one diagnostic
-#'entry point for "which `Repr` is this", replacing what used to be a
-#'separate `is_tree()`/`is_dense()`/`is_csr()` boolean per variant.
-#'That pattern grew one new `#[extendr]` method -- permanent, exported
-#'R API the moment it's added, per this file's own "the method set is
-#'the contract" principle -- for every future `Repr` addition; this
-#'single method's match arm count grows with `Repr` instead, so the
-#'R-visible surface stays fixed no matter how many representations
-#'`GraphBackend` eventually holds. An R call site that needs to gate a
-#'shape-specific method (e.g. `parent()`, only defined for `"tree"`)
-#'compares against this rather than calling a dedicated predicate.
-#'}
-#'
-#'\subsection{Method `parent`}{
-#'The 1-based parent position of `node` (1-based); `0` means `node` is
-#'a root. Only defined when `repr_name()` is `"tree"` -- `0` already
-#'means "root" for a real tree, so a non-tree variant returning `0`
-#'would be silently indistinguishable from a real answer rather than
-#'"not applicable"; `_dev/petgraph_data_types.md` S3 flags exactly this
-#'and suggests `panic!`/`NA_INTEGER` instead, which is what this does --
-#'mirroring this project's existing idiom for an operation an input
-#'shape doesn't support (e.g. `check_no_hyperedges()`'s
-#'`cli::cli_abort()`) rather than returning a value that looks valid
-#'but means something else per variant.
+#'(`"general"`, `"dense"`, `"csr"`) -- the one diagnostic entry point
+#'for "which `Repr` is this", replacing what used to be a separate
+#'`is_tree()`/`is_dense()`/`is_csr()` boolean per variant. That pattern
+#'grew one new `#[extendr]` method -- permanent, exported R API the
+#'moment it's added, per this file's own "the method set is the
+#'contract" principle -- for every future `Repr` addition; this single
+#'method's match arm count grows with `Repr` instead, so the R-visible
+#'surface stays fixed no matter how many representations `GraphBackend`
+#'eventually holds.
 #'}
 #'
 #'\subsection{Method `neighbors`}{
 #'1-based neighbour positions of `node` (1-based). For an undirected
-#'graph `mode` is ignored and the symmetric neighbour set is always
-#'returned (a self-loop appears twice, once via each of the node's
-#'outgoing/incoming adjacency lists -- see the crate's tests). For a
-#'directed graph, `mode` is `"out"`, `"in"`, or `"all"` (both,
-#'concatenated). One entry per incident edge, not deduplicated, so
+#'graph `mode` is ignored and the undirected neighbour set is always
+#'returned: one entry per incident edge, a self-loop included exactly
+#'once (see `undirected_neighbors_at()`'s doc comment for why, and this
+#'file's tests). For a directed graph, `mode` is `"out"`, `"in"`, or
+#'`"all"` (both, concatenated -- a directed self-loop counts once per
+#'direction, so twice under `"all"`, unaffected by the undirected
+#'convention above). One entry per incident edge, not deduplicated, so
 #'`degree()` can just be `neighbors().len()`.
 #'}
 #'
 #'\subsection{Method `degree`}{
-#'O(1): a `ptr`-difference-style lookup, not a `neighbors().len()`
-#'walk, for either variant (the general representation's construction-
-#'time cache, or the tree representation's `parent`/reverse-CSR
-#'arrays). Must stay in exact agreement with `neighbors()`'s semantics
-#'above (mode handling, panic on an invalid mode, doubled self-loop)
+#'O(1) for `"out"`/`"in"`, and for `"all"` on a *directed* graph (the
+#'construction-time caches sum directly); O(d) for the undirected case
+#'(see `undirected_degree_at()`'s doc comment for why that one can't
+#'stay O(1) everywhere the way the old doubled-self-loop convention
+#'let it). Must stay in exact agreement with `neighbors()`'s semantics
+#'above (mode handling, panic on an invalid mode, self-loop counting)
 #'-- see this file's tests.
 #'}
 #'
@@ -129,8 +114,6 @@ GraphBackend$n_edges <- function() .Call(wrap__GraphBackend__n_edges, self)
 GraphBackend$is_directed <- function() .Call(wrap__GraphBackend__is_directed, self)
 
 GraphBackend$repr_name <- function() .Call(wrap__GraphBackend__repr_name, self)
-
-GraphBackend$parent <- function(node) .Call(wrap__GraphBackend__parent, self, node)
 
 GraphBackend$neighbors <- function(node, mode) .Call(wrap__GraphBackend__neighbors, self, node, mode)
 

@@ -8,10 +8,9 @@ case only -- see \verb{_dev/RUST_BACKEND.md}). Wraps one of several physical
 \code{Repr} variants, auto-selected at construction from graph shape
 (\verb{_dev/petgraph_data_types.md} S3/S5); \code{directed} is metadata every
 variant's query methods interpret, not itself part of the shape
-decision beyond gating which variants are eligible (only a directed
-graph can be tree-shaped, see \code{detect_tree()}). This keeps the object
-immutable and shareable: a \code{node_vec}, its \code{edges()} reorientation, and
-any \code{edge_vec} sliced from it can all hold the same pointer.}
+decision. This keeps the object immutable and shareable: a \code{node_vec},
+its \code{edges()} reorientation, and any \code{edge_vec} sliced from it can all
+hold the same pointer.}
 \usage{
 GraphBackend
 }
@@ -21,10 +20,9 @@ case only -- see \verb{_dev/RUST_BACKEND.md}). Wraps one of several physical
 \code{Repr} variants, auto-selected at construction from graph shape
 (\verb{_dev/petgraph_data_types.md} S3/S5); \code{directed} is metadata every
 variant's query methods interpret, not itself part of the shape
-decision beyond gating which variants are eligible (only a directed
-graph can be tree-shaped, see \code{detect_tree()}). This keeps the object
-immutable and shareable: a \code{node_vec}, its \code{edges()} reorientation, and
-any \code{edge_vec} sliced from it can all hold the same pointer.
+decision. This keeps the object immutable and shareable: a \code{node_vec},
+its \code{edges()} reorientation, and any \code{edge_vec} sliced from it can all
+hold the same pointer.
 }
 \section{Methods}{
 
@@ -33,58 +31,44 @@ Build a graph on \code{n} nodes from 1-based \code{from}/\code{to} positions.
 Automatically picks the cheapest \code{Repr} the graph's shape qualifies
 for (\verb{_dev/petgraph_data_types.md} S3/S5 -- this decision belongs
 here, not in R, so there is exactly one place shape detection can
-drift out of sync with the representation it feeds). For the
-general representation, edges are added in input order and never
-removed afterwards, so edge ids (0-based internally, 1-based at the
-R boundary) stay stable and match the row order of the R-side edge
-attribute table; for the tree representation, the same external
-contract is upheld via \code{TreeData::order} (see its doc comment).
+drift out of sync with the representation it feeds). Edges are added
+in input order and never removed afterwards, so edge ids (0-based
+internally, 1-based at the R boundary) stay stable and match the row
+order of the R-side edge attribute table, for every representation.
 }
 
 \subsection{Method \code{repr_name}}{
 Which physical representation this backend picked, as a stable name
-(\code{"general"}, \code{"tree"}, \code{"dense"}, \code{"csr"}) -- the one diagnostic
-entry point for "which \code{Repr} is this", replacing what used to be a
-separate \code{is_tree()}/\code{is_dense()}/\code{is_csr()} boolean per variant.
-That pattern grew one new \verb{#[extendr]} method -- permanent, exported
-R API the moment it's added, per this file's own "the method set is
-the contract" principle -- for every future \code{Repr} addition; this
-single method's match arm count grows with \code{Repr} instead, so the
-R-visible surface stays fixed no matter how many representations
-\code{GraphBackend} eventually holds. An R call site that needs to gate a
-shape-specific method (e.g. \code{parent()}, only defined for \code{"tree"})
-compares against this rather than calling a dedicated predicate.
-}
-
-\subsection{Method \code{parent}}{
-The 1-based parent position of \code{node} (1-based); \code{0} means \code{node} is
-a root. Only defined when \code{repr_name()} is \code{"tree"} -- \code{0} already
-means "root" for a real tree, so a non-tree variant returning \code{0}
-would be silently indistinguishable from a real answer rather than
-"not applicable"; \verb{_dev/petgraph_data_types.md} S3 flags exactly this
-and suggests \verb{panic!}/\code{NA_INTEGER} instead, which is what this does --
-mirroring this project's existing idiom for an operation an input
-shape doesn't support (e.g. \code{check_no_hyperedges()}'s
-\code{cli::cli_abort()}) rather than returning a value that looks valid
-but means something else per variant.
+(\code{"general"}, \code{"dense"}, \code{"csr"}) -- the one diagnostic entry point
+for "which \code{Repr} is this", replacing what used to be a separate
+\code{is_tree()}/\code{is_dense()}/\code{is_csr()} boolean per variant. That pattern
+grew one new \verb{#[extendr]} method -- permanent, exported R API the
+moment it's added, per this file's own "the method set is the
+contract" principle -- for every future \code{Repr} addition; this single
+method's match arm count grows with \code{Repr} instead, so the R-visible
+surface stays fixed no matter how many representations \code{GraphBackend}
+eventually holds.
 }
 
 \subsection{Method \code{neighbors}}{
 1-based neighbour positions of \code{node} (1-based). For an undirected
-graph \code{mode} is ignored and the symmetric neighbour set is always
-returned (a self-loop appears twice, once via each of the node's
-outgoing/incoming adjacency lists -- see the crate's tests). For a
-directed graph, \code{mode} is \code{"out"}, \code{"in"}, or \code{"all"} (both,
-concatenated). One entry per incident edge, not deduplicated, so
+graph \code{mode} is ignored and the undirected neighbour set is always
+returned: one entry per incident edge, a self-loop included exactly
+once (see \code{undirected_neighbors_at()}'s doc comment for why, and this
+file's tests). For a directed graph, \code{mode} is \code{"out"}, \code{"in"}, or
+\code{"all"} (both, concatenated -- a directed self-loop counts once per
+direction, so twice under \code{"all"}, unaffected by the undirected
+convention above). One entry per incident edge, not deduplicated, so
 \code{degree()} can just be \verb{neighbors().len()}.
 }
 
 \subsection{Method \code{degree}}{
-O(1): a \code{ptr}-difference-style lookup, not a \verb{neighbors().len()}
-walk, for either variant (the general representation's construction-
-time cache, or the tree representation's \code{parent}/reverse-CSR
-arrays). Must stay in exact agreement with \code{neighbors()}'s semantics
-above (mode handling, panic on an invalid mode, doubled self-loop)
+O(1) for \code{"out"}/\code{"in"}, and for \code{"all"} on a \emph{directed} graph (the
+construction-time caches sum directly); O(d) for the undirected case
+(see \code{undirected_degree_at()}'s doc comment for why that one can't
+stay O(1) everywhere the way the old doubled-self-loop convention
+let it). Must stay in exact agreement with \code{neighbors()}'s semantics
+above (mode handling, panic on an invalid mode, self-loop counting)
 -- see this file's tests.
 }
 
