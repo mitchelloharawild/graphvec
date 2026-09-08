@@ -2,6 +2,10 @@ use extendr_api::prelude::*;
 use rustworkx_core::petgraph::csr::{Csr, NodeIndex as CsrNodeIndex};
 use rustworkx_core::petgraph::graph::{DiGraph, EdgeIndex, NodeIndex};
 use rustworkx_core::petgraph::matrix_graph::{MatrixGraph, NodeIndex as MatrixNodeIndex};
+use rustworkx_core::petgraph::visit::{
+    GraphBase, GraphProp, IntoNeighbors, IntoNeighborsDirected, IntoNodeIdentifiers, NodeCount,
+    NodeIndexable, Visitable,
+};
 use rustworkx_core::petgraph::{Directed, Direction, EdgeType, Undirected};
 use std::collections::hash_map::RandomState;
 use std::collections::HashSet;
@@ -416,6 +420,134 @@ impl CsrData {
         // must explicitly try the reverse arc too, the same fallback
         // `Repr::General` uses over its own always-directed `DiGraph`.
         !directed && self.csr.contains_edge(ti, fi)
+    }
+}
+
+// `rustworkx_core`/petgraph `visit`-trait coverage for `&CsrData`, so
+// rustworkx-core algorithms can be called directly against a `Repr::Csr`
+// graph instead of graphvec hand-porting them one at a time. petgraph's own
+// `Csr` already implements `GraphBase`/`NodeCount`/`GraphProp`/`Visitable`/
+// `NodeIndexable` (value-typed, `&self` methods) and `IntoNeighbors`/
+// `IntoNodeIdentifiers` (reference-typed, `&'a Csr` -- `IntoNeighbors:
+// GraphRef: Copy`, which `Csr` itself isn't) -- confirmed from petgraph
+// 0.8.3's source, not assumed. What it does NOT implement, for any `Ty`,
+// is `IntoNeighborsDirected`/`IntoEdgesDirected`: `Csr` has no reverse/
+// incoming adjacency of its own at all (exactly why `CsrData` builds
+// `in_ptr`/`in_idx` by hand above), so no directed rustworkx-core algorithm
+// (`core_number`, direction-aware `degree_centrality`, DAG/topological
+// algorithms, ...) can run against a bare `petgraph::csr::Csr`. The impls
+// below close that gap for `CsrData` specifically, backed by the reverse
+// index it already has. `IntoEdges`/`IntoEdgesDirected` (edge-*reference*
+// access, not just neighbour node ids) are deliberately not implemented
+// here -- they need `Data`/`EdgeRef` plumbing this crate's node/neighbour-
+// based algorithms (the ones actually proven below) don't need, since
+// `CsrData` carries no edge weights (`E = ()`) for a reference to expose
+// beyond what `IntoNeighbors` already gives; add them if/when an
+// edge-weighted algorithm needs them.
+//
+// Value-typed impls (`&self` methods) on `CsrData` itself, each forwarded
+// straight to `self.csr`'s own impl of the same trait. petgraph's
+// `delegate_impl` macro (confirmed from `visit/macros.rs`) automatically
+// extends each of these to `&CsrData`/`&mut CsrData` too, so algorithms
+// called with a `&CsrData` (the natural way to invoke one without moving
+// the `Repr::Csr` it lives in) see them without a second impl block.
+impl GraphBase for CsrData {
+    type NodeId = CsrNodeIndex;
+    type EdgeId = usize;
+}
+
+impl NodeCount for CsrData {
+    fn node_count(&self) -> usize {
+        self.csr.node_count()
+    }
+}
+
+impl GraphProp for CsrData {
+    type EdgeType = Directed;
+}
+
+impl Visitable for CsrData {
+    type Map = <Csr<(), (), Directed> as Visitable>::Map;
+    fn visit_map(&self) -> Self::Map {
+        self.csr.visit_map()
+    }
+    fn reset_map(&self, map: &mut Self::Map) {
+        self.csr.reset_map(map)
+    }
+}
+
+impl NodeIndexable for CsrData {
+    fn node_bound(&self) -> usize {
+        self.csr.node_bound()
+    }
+    fn to_index(&self, a: Self::NodeId) -> usize {
+        self.csr.to_index(a)
+    }
+    fn from_index(&self, i: usize) -> Self::NodeId {
+        self.csr.from_index(i)
+    }
+}
+
+// Reference-typed impls (`self` by value, over `&'a CsrData` -- a shared
+// reference is `Copy`, satisfying `IntoNeighbors: GraphRef: Copy`, which
+// `CsrData` itself isn't and shouldn't be). `IntoNeighbors`/
+// `IntoNodeIdentifiers` forward to `&self.csr`'s own impls, unchanged;
+// `IntoNeighborsDirected` is the new capability, `Outgoing` forwarded the
+// same way and `Incoming` answered from `in_ptr`/`in_idx` -- the same
+// arrays `CsrData::in_neighbors()` above already uses.
+impl<'a> IntoNeighbors for &'a CsrData {
+    type Neighbors = <&'a Csr<(), (), Directed> as IntoNeighbors>::Neighbors;
+    fn neighbors(self, a: Self::NodeId) -> Self::Neighbors {
+        (&self.csr).neighbors(a)
+    }
+}
+
+impl<'a> IntoNodeIdentifiers for &'a CsrData {
+    type NodeIdentifiers = <&'a Csr<(), (), Directed> as IntoNodeIdentifiers>::NodeIdentifiers;
+    fn node_identifiers(self) -> Self::NodeIdentifiers {
+        (&self.csr).node_identifiers()
+    }
+}
+
+// A plain `fn` item (not a closure) so it coerces to a function pointer
+// unconditionally, for `CsrDirectedNeighbors::In`'s iterator type below --
+// `in_idx` holds 1-based external node ids (the same convention every other
+// `Vec<i32>` in this file uses), petgraph's `NodeId` is 0-based.
+fn in_idx_to_node_id(s: &i32) -> CsrNodeIndex {
+    (*s - 1) as CsrNodeIndex
+}
+
+// The incoming-side iterator: a plain slice walk over `in_idx`'s 1-based
+// external ids, converted to petgraph's 0-based `NodeId` -- distinct from
+// the outgoing side's `Csr`-native iterator type, so `IntoNeighborsDirected`
+// below wraps both in a small enum rather than trying to unify them.
+enum CsrDirectedNeighbors<'a> {
+    Out(<&'a Csr<(), (), Directed> as IntoNeighbors>::Neighbors),
+    In(std::iter::Map<std::slice::Iter<'a, i32>, fn(&i32) -> CsrNodeIndex>),
+}
+
+impl Iterator for CsrDirectedNeighbors<'_> {
+    type Item = CsrNodeIndex;
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            CsrDirectedNeighbors::Out(it) => it.next(),
+            CsrDirectedNeighbors::In(it) => it.next(),
+        }
+    }
+}
+
+impl<'a> IntoNeighborsDirected for &'a CsrData {
+    type NeighborsDirected = CsrDirectedNeighbors<'a>;
+    fn neighbors_directed(self, n: Self::NodeId, d: Direction) -> Self::NeighborsDirected {
+        match d {
+            Direction::Outgoing => CsrDirectedNeighbors::Out((&self.csr).neighbors(n)),
+            Direction::Incoming => {
+                let idx = n as usize;
+                let start = self.in_ptr[idx] as usize;
+                let end = self.in_ptr[idx + 1] as usize;
+                CsrDirectedNeighbors::In(self.in_idx[start..end].iter().map(in_idx_to_node_id))
+            }
+        }
     }
 }
 
@@ -1511,4 +1643,49 @@ mod tests {
         }
     }
 
+    // -- rustworkx-core algorithm interop ----------------------------------
+    //
+    // The actual point of `CsrData`'s `IntoNeighborsDirected` impl above:
+    // proof that a real rustworkx-core algorithm runs directly against
+    // `&CsrData`, not just that the trait impls happen to compile. Not a
+    // `#[extendr]`-exposed capability yet (no R method calls this) -- this
+    // is Rust-internal evidence the new trait coverage is real, ahead of
+    // any graphvec operation actually being ported to delegate to it.
+    #[test]
+    fn csr_supports_rustworkx_core_directed_degree_centrality() {
+        test! {
+            // Same shape as `csr_node_identity_is_dense_and_stable`: n=8
+            // directed path 1->2->3->4->5->6 plus 1->3; density = 6/28 ~=
+            // 0.214 < 0.3, duplicate-free -- picks Csr.
+            let from = vec![1, 2, 3, 4, 5, 1];
+            let to = vec![2, 3, 4, 5, 6, 3];
+            let g = GraphBackend::new(8, from, to, true);
+            let c = match &g.repr {
+                Repr::Csr(c) => c,
+                _ => panic!("expected Repr::Csr"),
+            };
+
+            // `Some(direction)` divides by `node_count - 1` regardless of
+            // whether that matches the "complete graph" case (see
+            // `degree_centrality`'s own source) -- node_count is 8 here, so
+            // the expected denominator is 7 throughout.
+            let out = rustworkx_core::centrality::degree_centrality(
+                c,
+                Some(rustworkx_core::petgraph::Direction::Outgoing),
+            );
+            let expected_out = [2.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0];
+            for (node, &want) in expected_out.iter().enumerate() {
+                assert_eq!(out[node], want / 7.0, "out-centrality of node {}", node + 1);
+            }
+
+            let inc = rustworkx_core::centrality::degree_centrality(
+                c,
+                Some(rustworkx_core::petgraph::Direction::Incoming),
+            );
+            let expected_in = [0.0, 1.0, 2.0, 1.0, 1.0, 1.0, 0.0, 0.0];
+            for (node, &want) in expected_in.iter().enumerate() {
+                assert_eq!(inc[node], want / 7.0, "in-centrality of node {}", node + 1);
+            }
+        }
+    }
 }
