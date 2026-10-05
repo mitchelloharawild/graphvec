@@ -10,6 +10,7 @@
   register_s3_method("igraph", "as.igraph", "agg_df")
   register_s3_method("igraph", "as.igraph", "node_vec")
   register_s3_method("igraph", "as.igraph", "edge_vec")
+  register_vctrs_methods()
   invisible()
 }
 

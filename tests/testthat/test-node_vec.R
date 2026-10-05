@@ -263,20 +263,19 @@ test_that("node_vec() excludes \"data.frame\" from a data-frame-backed x's layer
   expect_equal(format(g[2:3]), c("B:4", "C:7"))
 })
 
-test_that("a data-frame-backed node_vec can't be embedded as a tibble column (known limitation)", {
-  # Embedding used to work via vec_proxy.node_vec()/vec_restore.node_vec():
-  # without vctrs, tibble::tibble() requires each column to satisfy
-  # vctrs::obj_is_vector(), which only recognises a classed *list* (as
-  # opposed to a classed atomic vector, e.g. character- or factor-backed --
-  # see the dplyr-column test above, which still works) as vector-like if it
-  # implements vec_proxy(). A data-frame-backed node_vec is list-typed and no
-  # longer registers one, so it's rejected outright rather than mis-rendered.
+test_that("a data-frame-backed node_vec can be embedded as a tibble column", {
+  # A data-frame-backed node_vec is list-typed, so vctrs::obj_is_vector()
+  # (which tibble::tibble() requires) only accepts it through the
+  # dynamically registered vec_proxy.node_vec().
   skip_if_not_installed("tibble")
+  skip_if_not_installed("vctrs")
   g <- node_vec(
     x = data.frame(name = c("A", "B", "C"), size = c(10, 4, 7)),
     from = 1L, to = 2L
   )
-  expect_error(tibble::tibble(id = 1:3, g = g))
+  d <- tibble::tibble(id = 1:3, g = g)
+  expect_equal(format(d$g), c("A:10", "B:4", "C:7"))
+  expect_equal(node_vec_data(vctrs::vec_slice(d$g, 2:1)), data.frame(name = c("B", "A"), size = c(4, 10)))
 })
 
 test_that("sort(), rev(), head() route through `[` and inherit its induced-subgraph remap", {

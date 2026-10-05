@@ -257,6 +257,26 @@ type_sum.edge_vec <- function(x, ...) {
 
 #' @importFrom utils .DollarNames
 #' @export
+rep.edge_vec <- function(x, ...) {
+  x[rep(seq_along(x), ...)]
+}
+
+# Edges are unnamed. The underlying list's names are its fields, which
+# tibble/vctrs would otherwise erase with `names(x) <- NULL`.
+#' @export
+names.edge_vec <- function(x) {
+  NULL
+}
+
+#' @export
+`names<-.edge_vec` <- function(x, value) {
+  if (!is.null(value)) {
+    stop("`edge_vec` objects can't have names.", call. = FALSE)
+  }
+  x
+}
+
+#' @export
 .DollarNames.edge_vec <- function(x, pattern){
   utils::.DollarNames(edge_vec_data(x), pattern)
 }

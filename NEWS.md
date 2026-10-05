@@ -1,3 +1,32 @@
+# graphvec (development version)
+
+## New features
+
+* `agg_vec`, `node_vec` and `edge_vec` now work with vctrs, so they can be
+  used as tibble columns, as tsibble keys, and in dplyr verbs such as
+  `filter()`, `arrange()`, `group_by()` and `bind_rows()`. The vctrs
+  methods are registered when vctrs is loaded, so vctrs is not a hard
+  dependency.
+* `vec_c()` and `bind_rows()` combine `node_vec`s and `edge_vec`s as a
+  disjoint union of their graphs, the same as `c()`.
+* `agg_vec` combines with character (and other base vectors) in either
+  order with `vec_c()`. An all-`<aggregated>` `agg_vec` takes on the
+  other side's value type.
+* `agg_vec` sorts `<aggregated>` after every disaggregated value, with
+  `vec_order()`, `dplyr::arrange()`, `order()` and `sort()`.
+* Added `as.character()`, `unique()`, `duplicated()` and `rep()` methods for
+  `agg_vec`, and a `rep()` method for `edge_vec`.
+
+## Bug fixes
+
+* `bind_rows()` no longer drops all edges of a `node_vec` column.
+* A data-frame-backed `node_vec` can be a tibble column again.
+
+## Breaking changes
+
+* `agg_vec()` now errors when `aggregated` doesn't have the same length as
+  `x`, rather than recycling it.
+
 # graphvec 0.1.0
 
 Initial CRAN submission.
