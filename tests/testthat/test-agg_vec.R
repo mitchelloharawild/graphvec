@@ -110,3 +110,24 @@ test_that("`!=.agg_vec` is the negation of `==.agg_vec`", {
   expect_equal(va != vb, !(va == vb))
   expect_equal(va != vb, c(FALSE, FALSE, TRUE))
 })
+
+test_that("agg_vec() requires `aggregated` to match the length of `x`", {
+  expect_error(agg_vec(c("A", "B"), TRUE), "same length")
+  expect_error(agg_vec("A", "yes"), "same length")
+})
+
+test_that("as.character.agg_vec() returns the trimmed format", {
+  v <- agg_vec(c(NA, "A", "BB"), c(TRUE, FALSE, FALSE))
+  expect_equal(as.character(v), c("<aggregated>", "A", "BB"))
+})
+
+test_that("unique.agg_vec() returns an agg_vec", {
+  v <- agg_vec(c(NA, "A", NA, "A", "B"), c(TRUE, FALSE, TRUE, FALSE, FALSE))
+  expect_equal(duplicated(v), c(FALSE, FALSE, TRUE, TRUE, FALSE))
+  expect_equal(unique(v), agg_vec(c(NA, "A", "B"), c(TRUE, FALSE, FALSE)))
+})
+
+test_that("rep.agg_vec() keeps <aggregated> values", {
+  v <- agg_vec(c(NA, "A"), c(TRUE, FALSE))
+  expect_equal(format(rep(v, 2)), c("<aggregated>", "A", "<aggregated>", "A"))
+})

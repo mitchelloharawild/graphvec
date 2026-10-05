@@ -44,7 +44,8 @@
 #' Data Cubes Efficiently. *SIGMOD*.
 #'
 #' @param x The vector of values.
-#' @param aggregated A logical vector to identify which values are `<aggregated>`.
+#' @param aggregated A logical vector, the same length as `x`, to identify
+#'   which values are `<aggregated>`.
 #'
 #' @return An `agg_vec` object.
 #'
@@ -58,7 +59,9 @@
 agg_vec <- function(x = character(), aggregated = logical(NROW(x))){
   is_agg <- is_aggregated(x)
   if (inherits(x, "agg_vec")) x <- agg_vec_expand(x)
-  stopifnot(is.logical(aggregated))
+  if (!is.logical(aggregated) || length(aggregated) != NROW(x)) {
+    stop("`aggregated` must be a logical vector the same length as `x`.", call. = FALSE)
+  }
   is_agg <- is_agg | aggregated
   new_agg_vec(x[!is_agg], which(is_agg))
 }
@@ -174,6 +177,43 @@ c.agg_vec <- function(...) {
 #' @export
 is.na.agg_vec <- function(x) {
   is.na(agg_vec_expand(x)) & !agg_vec_is_agg(x)
+}
+
+#' @export
+rep.agg_vec <- function(x, ...) {
+  x[rep(seq_along(x), ...)]
+}
+
+#' @export
+as.character.agg_vec <- function(x, ...) {
+  trimws(format(x, ...))
+}
+
+#' @export
+duplicated.agg_vec <- function(x, incomparables = FALSE, ...) {
+  is_agg <- agg_vec_is_agg(x)
+  vals <- agg_vec_expand(x)
+  # Disaggregated duplicates match on value; `<aggregated>` ones on the flag alone.
+  dup <- logical(length(is_agg))
+  dup[is_agg] <- duplicated(is_agg[is_agg])
+  dup[!is_agg] <- duplicated(vals[!is_agg], incomparables = incomparables, ...)
+  dup
+}
+
+#' @export
+unique.agg_vec <- function(x, incomparables = FALSE, ...) {
+  x[!duplicated(x, incomparables = incomparables, ...)]
+}
+
+# Ranks for order()/sort(): disaggregated values by their own order, with
+# `<aggregated>` after all of them.
+#' @export
+xtfrm.agg_vec <- function(x) {
+  is_agg <- agg_vec_is_agg(x)
+  out <- numeric(length(is_agg))
+  out[!is_agg] <- rank(xtfrm(agg_vec_values(x)), na.last = "keep", ties.method = "min")
+  out[is_agg] <- sum(!is_agg) + 1
+  out
 }
 
 # 1-column special case: every aggregated position is a parent of every
