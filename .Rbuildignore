@@ -9,3 +9,5 @@
 ^\.github$
 ^hex$
 ^CRAN-SUBMISSION$
+^\.claude$
+^_dev$
