@@ -143,7 +143,8 @@ new_edge_vec <- function(from = integer(), to = integer(), ..., nodes = data.fra
 new_edge_vec_fields <- function(fields, nodes = data.frame(), directed = TRUE) {
   # No node data (a zero-column data frame) still has a node count: every
   # position the edges reference. This is what c() offsets by, so combining
-  # edge_vecs without node data is a disjoint union like any other.
+  # edge_vecs of different graphs without node data is a disjoint union like
+  # any other.
   if (is.data.frame(nodes) && ncol(nodes) == 0L) {
     n_nodes <- max(NROW(nodes), unlist(fields[c("from", "to")], use.names = FALSE), 0L, na.rm = TRUE)
     nodes <- data.frame(row.names = seq_len(n_nodes))
@@ -308,9 +309,10 @@ pillar_shaft.edge_vec <- function(x, ...) {
   x[element_position(x, i)]
 }
 
-# Assigning edges from another edge_vec is a disjoint union, like c() and
-# vctrs::vec_assign(): `value`'s nodes are appended to `x`'s and its edges
-# keep pointing at them, even if both have the same nodes.
+# Assigning edges from another edge_vec combines them like c() and
+# vctrs::vec_assign(): edges of `x`'s own graph (such as `x[2] <- x[3]`)
+# keep pointing at `x`'s nodes, while edges of another graph bring their
+# nodes along as a disjoint union, appended to `x`'s.
 #' @export
 `[<-.edge_vec` <- function(x, i, value) {
   if (!inherits(value, "edge_vec")) {
@@ -322,7 +324,13 @@ pillar_shaft.edge_vec <- function(x, ...) {
   } else {
     pos[i] <- length(x) + seq_along(value)
   }
-  c(x, value)[pos]
+  n <- length(x)
+  from_value <- !is.na(pos) & pos > n
+  edge_vec_assemble(
+    list(x, value),
+    src = ifelse(from_value, 2L, 1L),
+    row = ifelse(from_value, pos - n, pos)
+  )
 }
 
 #' @export
@@ -347,6 +355,24 @@ length.edge_vec <- function(x) {
   }
 }
 
+# Combining edge_vecs groups the inputs by graph:
+#
+# - Inputs with the same backing graph (the same `graph` external pointer,
+#   compared with identical(), and the same `nodes`) share it: their edges
+#   keep pointing at the same nodes, with no offset and one node table. So
+#   `c(e, e)`, `c(e[2], e)`, a no-op rows_patch() or `x[2] <- x[2]` never
+#   copy the nodes, and positions stay comparable, which is what edge
+#   equality (graph + positions) and joins rely on.
+# - Different graphs are a disjoint union: one copy of each graph's nodes,
+#   in order of first appearance, and each input's positions offset to its
+#   graph's copy. Rows always stay in input order.
+# - An input with only missing edges belongs to no graph, and joins the
+#   first graph of whatever else is combined. (An input with no edges at
+#   all still brings its graph's nodes, which may be isolated nodes.)
+# - Hyperedge edge_vecs have no graph identity: each is its own copy.
+#
+# Unlike node_vecs, repeats never split a graph: the elements are edges, and
+# two copies of an edge are still edges between the same nodes.
 #' @export
 c.edge_vec <- function(...) {
   xs <- Filter(Negate(is.null), list(...))
@@ -359,17 +385,67 @@ c.edge_vec <- function(...) {
     stop("Can't combine `edge_vec` objects with different `directed`.", call. = FALSE)
   }
 
-  # Disjoint union: concatenate the node vectors, then offset each source's
-  # from/to positions by the number of nodes already placed ahead of it.
-  node_sizes <- vapply(xs, function(x) NROW(attr(x, "nodes")), integer(1))
+  # Group the inputs by graph; `reps` holds the first input of each group.
+  graphs <- lapply(xs, attr, "graph")
+  group <- rep(NA_integer_, length(xs))
+  reps <- integer()
+  agnostic <- integer()
+  for (j in seq_along(xs)) {
+    g <- graphs[[j]]
+    if (!is.null(g) && length(xs[[j]]) > 0L && all(is.na(attr(xs[[j]], "edge_id")))) {
+      agnostic <- c(agnostic, j)
+      next
+    }
+    hit <- NA_integer_
+    if (!is.null(g)) {
+      for (r in seq_along(reps)) {
+        x_r <- xs[[reps[[r]]]]
+        if (identical(graphs[[reps[[r]]]], g) && identical(attr(x_r, "nodes"), attr(xs[[j]], "nodes"))) {
+          hit <- r
+          break
+        }
+      }
+    }
+    if (is.na(hit)) {
+      reps <- c(reps, j)
+      hit <- length(reps)
+    }
+    group[j] <- hit
+  }
+  if (length(agnostic) > 0L) {
+    has_graph <- !vapply(reps, function(r) is.null(graphs[[r]]), logical(1))
+    if (!any(has_graph)) {
+      reps <- c(reps, agnostic[[1L]])
+      has_graph <- c(has_graph, TRUE)
+    }
+    group[agnostic] <- which(has_graph)[[1L]]
+  }
+
+  if (length(reps) == 1L && !is.null(graphs[[reps]])) {
+    # One graph: share it. Only the attribute table and edge ids combine.
+    edge_id <- unlist(lapply(xs, attr, "edge_id"), use.names = FALSE)
+    if (is.null(edge_id)) edge_id <- integer()
+    return(new_edge_vec_backend(
+      bind_edge_attrs(lapply(xs, edge_vec_attrs_df), length(edge_id)),
+      nodes = attr(xs[[reps]], "nodes"),
+      directed = directed,
+      graph = graphs[[reps]],
+      edge_id = edge_id
+    ))
+  }
+
+  # Disjoint union of the groups: one copy of each group's nodes, and every
+  # input's from/to positions offset to its group's copy.
+  node_sizes <- vapply(reps, function(r) NROW(attr(xs[[r]], "nodes")), integer(1))
   offsets <- cumsum(c(0L, utils::head(node_sizes, -1L)))
 
-  fields <- Map(function(x, offset) {
-    f <- edge_vec_fields_df(x)
+  fields <- lapply(seq_along(xs), function(j) {
+    f <- edge_vec_fields_df(xs[[j]])
+    offset <- offsets[[group[j]]]
     f[["from"]] <- offset_incidence(f[["from"]], offset)
     f[["to"]] <- offset_incidence(f[["to"]], offset)
     f
-  }, xs, offsets)
+  })
 
   # Up-cast to a hyperedge column if any source uses one for this role, so an
   # ordinary and a hyperedge edge_vec can still be combined.
@@ -387,15 +463,40 @@ c.edge_vec <- function(...) {
   # justify a dedicated Rust union primitive yet.
   new_edge_vec_fields(
     fields = as.list(rbind_fill(fields)),
-    nodes = combine_values(lapply(xs, function(x) attr(x, "nodes"))),
+    nodes = combine_values(lapply(reps, function(r) attr(xs[[r]], "nodes"))),
     directed = directed
   )
 }
 
+# An edge_vec's attribute columns (everything but from/to) as a genuine data
+# frame with one row per edge, even with no columns at all.
+edge_vec_attrs_df <- function(x) {
+  body <- edge_vec_data(x)
+  if (is.null(attr(x, "graph"))) {
+    body <- unclass(body)
+    return(attrs_frame(body[setdiff(names(body), c("from", "to"))], length(x)))
+  }
+  attr(body, "row.names") <- .set_row_names(length(x))
+  class(body) <- "data.frame"
+  body
+}
+
+# Row-binds attribute tables, padding missing columns with NA, keeping the
+# row count `n` when none of them has any column.
+bind_edge_attrs <- function(dfs, n) {
+  if (all(vapply(dfs, length, integer(1)) == 0L)) {
+    return(attrs_frame(list(), n))
+  }
+  out <- rbind_fill(dfs)
+  rownames(out) <- NULL
+  out
+}
+
 # Rebuilds an edge_vec whose element `r` is element `row[r]` of input
 # `srcs[[src[r]]]` (`row[r]` NA for a missing edge): each input's rows are
-# sliced, combined with c() in order of each input's first row, then
-# scattered back into row order. Used by vctrs' vec_restore().
+# sliced, combined with c() (which shares a graph between same-graph inputs,
+# see above) in order of each input's first row, then scattered back into
+# row order. Used by `[<-` and vctrs' vec_restore().
 edge_vec_assemble <- function(srcs, src, row) {
   if (length(srcs) == 1L) {
     return(srcs[[1L]][row])

@@ -279,14 +279,16 @@ test_that("unique() and duplicated() compare edges by node values", {
   expect_equal(format(unique(c(ed, ed))), c("[1:A]->[2:B]", "[2:B]->[3:C]"))
 })
 
-test_that("[<- assigns edges as a disjoint union", {
+test_that("[<- assigns edges of another graph as a disjoint union", {
   e <- edge_vec(1:2, 2:3, w = c(5, 6), nodes = c("A", "B", "C"))
   g <- edge_vec(1L, 2L, w = 9, nodes = c("X", "Y"))
   x <- e
   x[1] <- g
   expect_equal(format(x), c("[X]->[Y]", "[B]->[C]"))
   expect_equal(x$w, c(9, 6))
-  expect_equal(attr(x, "nodes"), c("A", "B", "C", "X", "Y"))
+  # Changed from A B C X Y: each graph's nodes now come in order of its
+  # first row, the same as vctrs::vec_assign().
+  expect_equal(attr(x, "nodes"), c("X", "Y", "A", "B", "C"))
   x[[2]] <- e[[1]]
   expect_equal(format(x), c("[X]->[Y]", "[A]->[B]"))
   expect_error(x[1] <- 1L, "Can only assign")
@@ -424,4 +426,31 @@ test_that("edge_vecs sort by node values, then attributes, with base and dplyr",
 
   skip_if_not_installed("dplyr")
   expect_equal(order(dplyr::desc(e)), c(4L, 1L, 2L, 3L, 5L))
+})
+
+# -- graph identity (_dev/graph-identity.md) -------------------------------
+
+test_that("c() of edge_vecs of the same graph shares its nodes", {
+  e <- edge_vec(c(1L, 2L, 3L), c(2L, 3L, 1L), nodes = c("A", "B", "C"))
+  u <- c(e, e)
+  expect_identical(attr(u, "graph"), attr(e, "graph"))
+  expect_equal(attr(u, "nodes"), c("A", "B", "C"))
+  expect_equal(format(u), rep(format(e), 2))
+  expect_equal(node_degree(c(e[1], e[2:3])), node_degree(e))
+  x <- e
+  x[2] <- e[2]
+  expect_equal(x, e)
+  expect_identical(attr(x, "graph"), attr(e, "graph"))
+
+  # Different graphs are still a disjoint union, rows in order.
+  f <- edge_vec(1L, 2L, nodes = c("X", "Y"))
+  v <- c(e, f, e)
+  expect_equal(attr(v, "nodes"), c("A", "B", "C", "X", "Y"))
+  expect_equal(format(v), c(format(e), "[X]->[Y]", format(e)))
+  expect_equal(n_nodes(nodes(v)), 5L)
+
+  # Without node data too.
+  e0 <- edge_vec(c(1L, 2L, 3L), c(2L, 3L, 1L))
+  expect_equal(nrow(attr(c(e0, e0[2]), "nodes")), 3L)
+  expect_equal(format(c(e0[2], e0)), c("[2]->[3]", "[1]->[2]", "[2]->[3]", "[3]->[1]"))
 })

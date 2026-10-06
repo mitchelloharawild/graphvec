@@ -326,6 +326,20 @@ vec_ptype2.edge_vec.edge_vec <- function(x, y, ...) {
 
 vec_cast.edge_vec.edge_vec <- function(x, to, ...) {
   check_same_directed_cast(x, to, ...)
+  graph <- attr(x, "graph")
+  if (!is.null(graph)) {
+    # Only the node values' type changes, never the graph, so a cast edge_vec
+    # still shares its graph with the rest of it when combined (vctrs casts
+    # every input to the common type first; same-graph inputs get identical
+    # node tables back, which c.edge_vec() requires to share).
+    nodes <- attr(x, "nodes")
+    cast <- vctrs::vec_cast(nodes, vctrs::vec_ptype(attr(to, "nodes")), ...)
+    if (identical(cast, nodes)) {
+      return(x)
+    }
+    attr(x, "nodes") <- cast
+    return(x)
+  }
   new_edge_vec_fields(
     fields = as.list(edge_vec_fields_df(x)),
     nodes = vctrs::vec_cast(attr(x, "nodes"), vctrs::vec_ptype(attr(to, "nodes")), ...),

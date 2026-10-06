@@ -386,3 +386,45 @@ test_that("lag(), drop_na() and fill() treat missing hyperedges as missing", {
   filled <- tidyr::fill(df, l, .direction = "up")
   expect_equal(format(filled$l), c("[{A,B}]->[C]", "[{A,B}]->[C]", "[C]->[A]"))
 })
+
+# -- graph identity (_dev/graph-identity.md) -------------------------------
+
+test_that("vec_c() of edge_vecs shares a graph and keeps others disjoint", {
+  e <- edge_vec(c(1L, 2L, 3L), c(2L, 3L, 1L), nodes = c("A", "B", "C"))
+  f <- edge_vec(1L, 2L, nodes = c("X", "Y"))
+  ee <- vctrs::vec_c(e, e)
+  expect_equal(attr(ee, "nodes"), c("A", "B", "C"))
+  expect_identical(attr(ee, "graph"), attr(e, "graph"))
+  ef <- vctrs::vec_c(e, f)
+  expect_equal(attr(ef, "nodes"), c("A", "B", "C", "X", "Y"))
+  expect_equal(format(ef), c(format(e), "[X]->[Y]"))
+  # Row order is kept across graphs.
+  efe <- vctrs::vec_c(e[2], f, e[1])
+  expect_equal(format(efe), c("[B]->[C]", "[X]->[Y]", "[A]->[B]"))
+
+  skip_if_not_installed("dplyr")
+  b <- dplyr::bind_rows(tibble::tibble(e = e[2]), tibble::tibble(e = f), tibble::tibble(e = e[1]))$e
+  expect_equal(b, efe)
+})
+
+test_that("no-op rows_patch()/rows_update() leave an edge_vec unchanged", {
+  skip_if_not_installed("dplyr")
+  e <- edge_vec(c(1L, 2L, 3L), c(2L, 3L, 1L), w = 1:3, nodes = c("A", "B", "C"))
+  df <- tibble::tibble(y = 1:3, e = e)
+  expect_identical(dplyr::rows_patch(df, tibble::tibble(y = 2L, e = e[2]), by = "y")$e, e)
+  expect_equal(dplyr::rows_update(df, tibble::tibble(y = 2L, e = e[2]), by = "y")$e, e)
+  for (k in 1:3) df <- dplyr::rows_patch(df, tibble::tibble(y = 2L, e = e[2]), by = "y")
+  expect_equal(NROW(attr(df$e, "nodes")), 3L)
+  expect_identical(attr(df$e, "graph"), attr(e, "graph"))
+  expect_equal(dplyr::if_else(c(TRUE, FALSE, TRUE), e, e), e)
+})
+
+test_that("drop_na() and fill() keep an edge_vec's graph", {
+  skip_if_not_installed("tidyr")
+  e <- edge_vec(c(1L, 2L, 3L), c(2L, 3L, 1L), nodes = c("A", "B", "C"))
+  x <- vctrs::vec_c(e[2], vctrs::vec_init(e, 1))
+  expect_equal(tidyr::drop_na(tibble::tibble(e = x))$e, e[2])
+  filled <- tidyr::fill(tibble::tibble(e = x), e)$e
+  expect_equal(filled, e[c(2, 2)])
+  expect_equal(NROW(attr(filled, "nodes")), 3L)
+})
