@@ -70,3 +70,21 @@ check_scalar_index <- function(i) {
     stop("Can't select more or less than one element with `[[`.", call. = FALSE)
   }
 }
+
+# Extracting with `[[` also needs an existing element, as for base vectors,
+# rather than `[`'s missing value or empty result. Returns the element's
+# position, matching a name to its first position as base `[[` does.
+element_position <- function(x, i) {
+  check_scalar_index(i)
+  pos <- if (is.character(i)) {
+    match(i, names(x))
+  } else if (is.numeric(i) && i >= 1 && i < length(x) + 1) {
+    as.integer(i)
+  } else {
+    NA_integer_
+  }
+  if (is.na(pos)) {
+    stop("Can't extract element ", format(i), " with `[[`: subscript out of bounds.", call. = FALSE)
+  }
+  pos
+}

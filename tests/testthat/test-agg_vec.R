@@ -156,6 +156,7 @@ test_that("[[ and as.list() give single-element agg_vecs", {
   v <- agg_vec(c(NA, "A", "B"), c(TRUE, FALSE, FALSE))
   expect_equal(v[[1]], v[1])
   expect_error(v[[1:2]], "one element")
+  expect_error(v[[4]], "out of bounds")
   expect_equal(as.list(v), list(v[1], v[2], v[3]))
   expect_equal(vapply(v, format, character(1)), c("<aggregated>", "A", "B"))
 })

@@ -51,10 +51,8 @@
   edges reference, so `c()`, `vec_c()` and `bind_rows()` combine them as a
   disjoint union instead of overlapping their positions, `as.igraph()`
   counts every node, and `nodes()` labels nodes by position.
-* `[[`, `as.list()`, `duplicated()` and `anyDuplicated()` on a
-  data-frame-backed `node_vec` now work on its nodes (1-row data frames)
-  rather than its columns, so `purrr::map()` and `lapply()` work
-  element-wise.
+* `duplicated()` and `anyDuplicated()` on a data-frame-backed `node_vec`
+  now work on its nodes (rows) rather than its columns.
 * vctrs no longer treats `<aggregated>` as incomplete, so
   `tidyr::drop_na()` keeps `<aggregated>` rows, and `vec_equal()` gives
   `FALSE` rather than `NA` when comparing `<aggregated>` with a value.
@@ -67,6 +65,16 @@
 
 * `agg_vec()` now errors when `aggregated` doesn't have the same length as
   `x`, rather than recycling it.
+* `[[` on a `node_vec` now returns a length-1 `node_vec` (the same as
+  `x[i]`), like `[[` on `agg_vec` and `edge_vec`, rather than the node's
+  plain value. `as.list()` gives a list of length-1 `node_vec`s, so
+  `purrr::map()` and `lapply()` work element-wise, and `purrr::map_vec()`
+  and `purrr::modify()` return a `node_vec`. A data-frame-backed `node_vec`
+  works on its nodes, not its columns. Use `format()` to get node labels
+  as plain strings. Added a matching `[[<-` method.
+* `[[` on an `agg_vec`, `node_vec` or `edge_vec` now errors for an
+  out-of-bounds index, as for base vectors, rather than returning a missing
+  or empty element.
 
 # graphvec 0.1.0
 

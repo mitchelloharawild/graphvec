@@ -331,22 +331,31 @@ is_df_node_vec <- function(x) {
   "data.frame" %in% attr(x, "value_class")
 }
 
-# A node's value: the bare value for an atomic node_vec (base `[[`), or the
-# node's 1-row data frame for a data-frame-backed one, not a column.
+# A single node, as a length-1 node_vec (like `[[` on agg_vec, edge_vec and
+# base S3 vectors such as Date and factor), never its bare value or, for a
+# data-frame-backed node_vec, one of its columns.
 #' @export
 `[[.node_vec` <- function(x, i, ...) {
-  if (!is_df_node_vec(x)) {
-    return(NextMethod())
+  x[element_position(x, i)]
+}
+
+# The same as `[<-` on a single position. `value` is one node: a length-1
+# node_vec, a single plain value, or a 1-row data frame.
+#' @export
+`[[<-.node_vec` <- function(x, i, value) {
+  check_scalar_index(i)
+  if (NROW(value) != 1L) {
+    stop("`value` must be a single node.", call. = FALSE)
   }
-  slice_rows(node_vec_data(x), seq_along(x)[[i]])
+  x[i] <- value
+  x
 }
 
 #' @export
 as.list.node_vec <- function(x, ...) {
-  if (!is_df_node_vec(x)) {
-    return(as.list(node_vec_data(x), ...))
-  }
-  lapply(seq_along(x), function(i) x[[i]])
+  out <- lapply(seq_along(x), function(i) x[i])
+  names(out) <- names(x)
+  out
 }
 
 # A single column, as for as.data.frame.agg_vec(), whatever the node values.

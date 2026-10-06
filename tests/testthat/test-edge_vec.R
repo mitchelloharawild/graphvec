@@ -301,6 +301,8 @@ test_that("[[ and as.list() give single-edge edge_vecs", {
   e <- edge_vec(1:2, 2:3, nodes = c("A", "B", "C"))
   expect_equal(e[[2]], e[2])
   expect_equal(as.list(e), list(e[1], e[2]))
+  expect_error(e[[1:2]], "one element")
+  expect_error(e[[3]], "out of bounds")
 })
 
 test_that("edge_vecs without node data combine as a disjoint union", {

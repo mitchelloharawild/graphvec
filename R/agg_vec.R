@@ -151,8 +151,7 @@ length.agg_vec <- function(x) {
 
 #' @export
 `[[.agg_vec` <- function(x, i, ...) {
-  check_scalar_index(i)
-  x[i]
+  x[element_position(x, i)]
 }
 
 # Element-wise assignment, as for the full-length vector: `value` may be an

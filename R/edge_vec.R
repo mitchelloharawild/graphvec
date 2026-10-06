@@ -305,8 +305,7 @@ pillar_shaft.edge_vec <- function(x, ...) {
 
 #' @export
 `[[.edge_vec` <- function(x, i, ...) {
-  check_scalar_index(i)
-  x[i]
+  x[element_position(x, i)]
 }
 
 # Assigning edges from another edge_vec is a disjoint union, like c() and

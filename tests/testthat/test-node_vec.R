@@ -435,24 +435,33 @@ test_that("[<- with a node_vec swaps in its nodes and their edges", {
 
 test_that("element access on a data-frame node_vec works on nodes, not columns", {
   nd <- node_vec(data.frame(id = c(1L, 1L, 2L), lab = c("A", "A", "B")), 1:2, 2:3)
-  expect_equal(nd[[3]], data.frame(id = 2L, lab = "B"))
-  expect_error(nd[[4]])
-  expect_length(as.list(nd), 3L)
-  expect_equal(as.list(nd)[[2]], data.frame(id = 1L, lab = "A"))
-  expect_equal(vapply(nd, function(v) v$lab, character(1)), c("A", "A", "B"))
+  expect_equal(nd[[3]], nd[3])
+  expect_equal(node_vec_data(nd[[3]]), data.frame(id = 2L, lab = "B"))
+  expect_error(nd[[4]], "out of bounds")
+  expect_equal(as.list(nd), list(nd[1], nd[2], nd[3]))
+  expect_equal(vapply(nd, format, character(1)), c("1:A", "1:A", "2:B"))
   expect_equal(duplicated(nd), c(FALSE, TRUE, FALSE))
   expect_equal(anyDuplicated(nd), 2L)
   expect_equal(format(unique(nd)), c("1:A", "2:B"))
 
   n1 <- node_vec(data.frame(id = c(5L, 6L, 5L)), 1L, 2L)
-  expect_equal(n1[[3]], data.frame(id = 5L))
+  expect_equal(format(n1[[3]]), "5")
   expect_equal(duplicated(n1), c(FALSE, FALSE, TRUE))
 })
 
-test_that("element access on an atomic node_vec returns bare values", {
+test_that("[[ and as.list() give single-node node_vecs", {
   n <- node_vec(c(a = "A", b = "B", c = "A"), 1:2, 2:3)
-  expect_identical(n[[2]], "B")
-  expect_identical(as.list(n), list(a = "A", b = "B", c = "A"))
+  expect_equal(n[[2]], n[2])
+  expect_s3_class(n[[2]], "node_vec")
+  expect_true(n[[2]] == "B")
+  expect_equal(n[["b"]], n[2])
+  expect_equal(as.list(n), list(a = n[1], b = n[2], c = n[3]))
+  expect_equal(vapply(n, format, character(1)), c(a = "A", b = "B", c = "A"))
+  expect_error(n[[1:2]], "one element")
+  expect_error(n[[NA]], "one element")
+  expect_error(n[[4]], "out of bounds")
+  expect_error(n[[0]], "out of bounds")
+  expect_error(n[["z"]], "out of bounds")
   expect_equal(duplicated(n), c(FALSE, FALSE, TRUE))
   expect_equal(anyDuplicated(n), 3L)
 })
@@ -460,8 +469,36 @@ test_that("element access on an atomic node_vec returns bare values", {
 test_that("purrr::map() works element-wise on node_vecs", {
   skip_if_not_installed("purrr")
   nd <- node_vec(data.frame(id = 1:2, lab = c("A", "B")), 1L, 2L)
-  expect_equal(purrr::map_chr(nd, ~ .x$lab), c("A", "B"))
-  expect_equal(purrr::map_chr(node_vec(c("A", "B")), identity), c("A", "B"))
+  expect_equal(purrr::map_chr(nd, format), c("1:A", "2:B"))
+  expect_equal(format(purrr::map_vec(nd, identity)), c("1:A", "2:B"))
+  n <- node_vec(c("A", "B", "C"), 1:2, 2:3)
+  expect_equal(purrr::map_chr(n, format), c("A", "B", "C"))
+  # Each element brings its own (edgeless) graph, so the edges are a
+  # disjoint union of singletons.
+  m <- purrr::map_vec(n, identity)
+  expect_s3_class(m, "node_vec")
+  expect_equal(format(m), c("A", "B", "C"))
+  expect_length(edges(m), 0L)
+  expect_equal(format(purrr::modify(n, identity)), c("A", "B", "C"))
+})
+
+test_that("[[<- assigns a single node, like [<-", {
+  n <- node_vec(c("A", "B", "C"), 1:2, 2:3)
+  x <- n
+  x[[2]] <- "Z"
+  expect_equal(x, {y <- n; y[2] <- "Z"; y})
+  expect_equal(edge_pairs(x), edge_pairs(n))
+  x <- n
+  x[[2]] <- n[[3]]
+  expect_equal(x, {y <- n; y[2] <- n[3]; y})
+  expect_error(x[[2]] <- c("a", "b"), "single node")
+  expect_error(x[[1:2]] <- "a", "one element")
+
+  nd <- node_vec(data.frame(id = 1:3, lab = c("a", "b", "c")), 1:2, 2:3)
+  x <- nd
+  x[[2]] <- data.frame(id = 9L, lab = "z")
+  expect_equal(format(x), c("1:a", "9:z", "3:c"))
+  expect_equal(edge_pairs(x), edge_pairs(nd))
 })
 
 test_that("atomic node_vecs plot with the scale of their values", {
