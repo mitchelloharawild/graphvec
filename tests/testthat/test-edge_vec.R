@@ -463,3 +463,16 @@ test_that("edge_vec duplicates are by graph and positions, not labels", {
   f <- edge_vec(c(1L, 2L, 1L), c(2L, 1L, 2L), nodes = c("A", "A"))
   expect_equal(duplicated(c(e, f)), c(FALSE, FALSE, TRUE, FALSE, FALSE, TRUE))
 })
+
+test_that("an edge_vec with a missing edge works with nodes() and topology", {
+  skip_if_not_installed("vctrs")
+  e <- edge_vec(c(1L, 2L), c(2L, 3L), w = 1:2, nodes = c("A", "B", "C"))
+  x <- vctrs::vec_c(e, vctrs::vec_init(e, 1))
+  expect_equal(is.na(x), c(FALSE, FALSE, TRUE))
+  expect_identical(attr(x, "graph"), attr(e, "graph"))
+  expect_equal(format(nodes(x)), c("A", "B", "C"))
+  expect_equal(format(edges(nodes(x))), format(e))
+  expect_equal(node_degree(x), c(1L, 2L, 1L))
+  expect_equal(node_neighbors(x, 2, mode = "all"), c(1L, 3L))
+  expect_equal(edge_is_loop(x), c(FALSE, FALSE, NA))
+})

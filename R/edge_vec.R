@@ -537,6 +537,11 @@ nodes.edge_vec <- function(x, ...) {
   # so attributes reorient with the topology; new_node_vec() builds a fresh
   # graph from exactly the edges present.
   edge_table <- tibble::as_tibble(edge_vec_fields_df(x))
+  if (!is.null(graph)) {
+    # A missing edge (no endpoints, e.g. from vctrs::vec_init()) joins no
+    # nodes, so it has no place among the node_vec's edges.
+    edge_table <- edge_table[!is.na(attr(x, "edge_id")), , drop = FALSE]
+  }
 
   new_node_vec(
     x = attr(x, "nodes"),

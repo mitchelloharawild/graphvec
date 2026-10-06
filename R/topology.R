@@ -85,6 +85,9 @@ op_graph <- function(x) {
   if (identical(edge_id, seq_len(graph$n_edges()))) {
     return(graph)
   }
+  # A missing edge (NA edge_id, e.g. from vctrs::vec_init()) joins no
+  # nodes, so it isn't an edge of the graph the operation sees.
+  edge_id <- edge_id[!is.na(edge_id)]
   ends <- graph$edge_endpoints()
   graphvec_backend_new(
     graph$n_nodes(),
