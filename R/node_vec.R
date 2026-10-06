@@ -128,8 +128,9 @@ new_node_vec <- function(x = list(), edges = data.frame(from = integer(), to = i
 # `edges` and only subsets `x` and `node_id`, the same way an edge_vec slice
 # keeps `graph` and subsets `edge_id` (see `[.node_vec`). Used by
 # new_node_vec() and by nodes.edge_vec()'s free (no-Rust-call)
-# reorientation.
-new_node_vec_backend <- function(x, graph, edges, directed, node_id = seq_len(NROW(x))) {
+# reorientation. `origin` is each node's identity when it differs from its
+# position in `graph` (see node_vec_origin()); NULL otherwise.
+new_node_vec_backend <- function(x, graph, edges, directed, node_id = seq_len(NROW(x)), origin = NULL) {
   value_class <- class(x)
   structure(
     x,
@@ -138,8 +139,70 @@ new_node_vec_backend <- function(x, graph, edges, directed, node_id = seq_len(NR
     graph = graph,
     edges = edges,
     directed = directed,
-    node_id = node_id
+    node_id = node_id,
+    origin = origin
   )
+}
+
+# Each node's identity: the graph it was first a node of (that graph's
+# uid()) and its position there, as `list(graph, node_id)` with one entry
+# per element (NA for a missing node). Usually just `graph`'s uid() and
+# `node_id`; but c() of the same nodes from two inputs (vec_c(x, x), and so
+# also vctrs combining join keys) makes disjoint-union copies in a new
+# graph, and those copies keep the identity of the nodes they copy in the
+# `origin` attribute, so that a node and its copies stay equal. NULL for a
+# hyperedge node_vec, which has no graph identity.
+node_vec_origin <- function(x) {
+  origin <- attr(x, "origin")
+  if (!is.null(origin)) {
+    return(origin)
+  }
+  graph <- attr(x, "graph")
+  if (is.null(graph)) {
+    return(NULL)
+  }
+  pos <- attr(x, "node_id")
+  uid <- rep(graph$uid(), length(pos))
+  uid[is.na(pos)] <- NA
+  list(graph = uid, node_id = pos)
+}
+
+# `x` with its nodes' identities set to `origin`, which is only kept as an
+# attribute when it differs from `x`'s own graph and positions.
+node_vec_set_origin <- function(x, origin) {
+  attr(x, "origin") <- NULL
+  if (!is.null(origin) && !identical(origin, node_vec_origin(x))) {
+    attr(x, "origin") <- origin
+  }
+  x
+}
+
+slice_origin <- function(origin, idx) {
+  if (is.null(origin)) NULL else lapply(origin, `[`, idx)
+}
+
+# The per-node fields that make two nodes equal: the node's identity
+# (node_vec_origin()), then its value. So two nodes are equal exactly when
+# they are (copies of) the same node of the same graph with the same value,
+# whatever their labels say: nodes of different graphs never are, and a node
+# relabelled by `[<-` no longer equals the original. A hyperedge node_vec
+# has no graph identity and compares by value alone.
+node_vec_equal_fields <- function(x) {
+  origin <- node_vec_origin(x)
+  values <- list(.value = node_vec_data(x))
+  if (is.null(origin)) {
+    return(values)
+  }
+  c(list(.graph = origin$graph, .node = origin$node_id), values)
+}
+
+# The per-node fields to sort nodes by: their value, then their identity as
+# a tie-break, so that only equal nodes tie (the order proxy is also what
+# vctrs matches join keys with). Shared by xtfrm() and vctrs' order and
+# comparison proxies so they agree.
+node_vec_order_fields <- function(x) {
+  fields <- node_vec_equal_fields(x)
+  fields[c(".value", setdiff(names(fields), ".value"))]
 }
 
 # Whether a (Rust-backed) node_vec is exactly its graph's node set, in the
@@ -195,7 +258,8 @@ node_vec_with_values <- function(x, values) {
     graph = graph,
     edges = attr(x, "edges"),
     directed = attr(x, "directed"),
-    node_id = attr(x, "node_id")
+    node_id = attr(x, "node_id"),
+    origin = attr(x, "origin")
   )
 }
 
@@ -363,7 +427,8 @@ node_vec_reindex_edges <- function(n, idx, edges) {
       graph = graph,
       edges = attr(x, "edges"),
       directed = attr(x, "directed"),
-      node_id = attr(x, "node_id")[idx]
+      node_id = attr(x, "node_id")[idx],
+      origin = slice_origin(attr(x, "origin"), idx)
     )
   } else {
     new_node_vec(
@@ -472,27 +537,32 @@ as.data.frame.node_vec <- function(x, row.names = NULL, optional = FALSE, ...,
   as.data.frame.vector(x, row.names = row.names, optional = optional, ..., nm = nm)
 }
 
-# Value-based and row-wise for data frame values, the same duplicates that
+# Nodes are equal when they are (copies of) the same node of the same graph
+# with the same value (see node_vec_equal_fields()); the same duplicates that
 # unique.node_vec() drops.
 #' @export
 duplicated.node_vec <- function(x, incomparables = FALSE, ...) {
-  duplicated(node_vec_data(x), incomparables = incomparables, ...)
+  duplicated(node_vec_key_df(x), incomparables = incomparables, ...)
 }
 
-# Ranks for order()/sort()/dplyr::desc() by node value; data frame values
-# sort row-wise, column by column, as vctrs::vec_order() sorts them.
+# Ranks for order()/sort()/dplyr::desc() by node value (data frame values
+# row-wise, column by column), then by identity, as vctrs::vec_order() sorts
+# them.
 #' @export
 xtfrm.node_vec <- function(x) {
-  data <- node_vec_data(x)
-  if (is.data.frame(data)) {
-    return(rank_rows(list(data), length(x)))
-  }
-  xtfrm(data)
+  rank_rows(node_vec_order_fields(x), length(x))
 }
 
 #' @export
 anyDuplicated.node_vec <- function(x, incomparables = FALSE, ...) {
-  anyDuplicated(node_vec_data(x), incomparables = incomparables, ...)
+  anyDuplicated(node_vec_key_df(x), incomparables = incomparables, ...)
+}
+
+# node_vec_equal_fields() as one flat data frame, for base duplicated().
+node_vec_key_df <- function(x) {
+  keys <- flatten_keys(node_vec_equal_fields(x))
+  names(keys) <- paste0("k", seq_along(keys))
+  as.data.frame(keys)
 }
 
 # Registered dynamically for pillar via zzz.R; abbreviated type header, e.g. "N[chr]".
@@ -572,9 +642,10 @@ node_vec_full_edges <- function(x) {
 
 #' @export
 unique.node_vec <- function(x, incomparables = FALSE, ...) {
-  # Value-based: drops duplicate-valued nodes by first occurrence, via
-  # [.node_vec's induced-subgraph rules, so edges incident to a dropped
-  # duplicate are dropped rather than redirected onto the kept node.
+  # Drops repeats of the same node (duplicated.node_vec()) by first
+  # occurrence, via [.node_vec's induced-subgraph rules, so edges incident
+  # to a dropped repeat are dropped rather than redirected onto the kept
+  # node.
   x[!duplicated(x, incomparables = incomparables, ...)]
 }
 
@@ -632,7 +703,9 @@ c.node_vec <- function(...) {
 # its `node_id` is just the rows' positions. Otherwise every copy is
 # compacted to its induced subgraph and the copies are laid out in row order
 # (each copy's local positions are mapped to the output rows they fill,
-# never offset in group order) into one new graph.
+# never offset in group order) into one new graph. Either way every node
+# keeps the identity it had in its input (node_vec_origin()), so a node and
+# its copies stay equal.
 node_vec_assemble <- function(srcs, src, row) {
   n <- length(src)
   k <- length(srcs)
@@ -656,6 +729,15 @@ node_vec_assemble <- function(srcs, src, row) {
   for (j in seq_len(k)) {
     if (!is.null(graphs[[j]]) && length(rows_of[[j]]) > 0L) {
       pos[rows_of[[j]]] <- attr(srcs[[j]], "node_id")[row[rows_of[[j]]]]
+    }
+  }
+
+  # Each row's identity in its input (NA if missing or hyperedge).
+  origin <- list(graph = rep(NA_real_, n), node_id = rep(NA_integer_, n))
+  for (j in seq_len(k)) {
+    org <- node_vec_origin(srcs[[j]])
+    if (!is.null(org) && length(rows_of[[j]]) > 0L) {
+      for (f in names(origin)) origin[[f]][rows_of[[j]]] <- org[[f]][row[rows_of[[j]]]]
     }
   }
 
@@ -716,13 +798,14 @@ node_vec_assemble <- function(srcs, src, row) {
     if (is.null(graphs[[r]])) {
       return(srcs[[r]][row])
     }
-    return(new_node_vec_backend(
+    out <- new_node_vec_backend(
       values,
       graph = graphs[[r]],
       edges = attr(srcs[[r]], "edges"),
       directed = directed,
       node_id = pos
-    ))
+    )
+    return(node_vec_set_origin(out, origin))
   }
 
   # Several copies: a disjoint union of each copy's induced subgraph, with
@@ -759,7 +842,12 @@ node_vec_assemble <- function(srcs, src, row) {
     }
   }
 
-  new_node_vec(x = values, edges = rbind_fill(tables), directed = directed)
+  out <- new_node_vec(x = values, edges = rbind_fill(tables), directed = directed)
+  if (is.null(attr(out, "graph"))) {
+    # A hyperedge result has no graph identity.
+    return(out)
+  }
+  node_vec_set_origin(out, origin)
 }
 
 #' @export

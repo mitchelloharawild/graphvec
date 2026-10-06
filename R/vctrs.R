@@ -24,6 +24,8 @@ register_vctrs_methods <- function() {
     register_s3_method("vctrs", "vec_cast", paste0(cls, ".", cls))
   }
   register_s3_method("vctrs", "vec_proxy_compare", "agg_vec")
+  register_s3_method("vctrs", "vec_proxy_compare", "node_vec")
+  register_s3_method("vctrs", "vec_proxy_order", "node_vec")
   register_s3_method("vctrs", "vec_proxy_compare", "edge_vec")
   register_s3_method("vctrs", "vec_proxy_order", "edge_vec")
 
@@ -248,10 +250,25 @@ vec_restore.node_vec <- function(x, to, ...) {
   vec_restore_graph_ref(x, to, node_vec_assemble)
 }
 
-# Value-based, like unique.node_vec(): the proxy's refs and positions would
-# make every row distinct.
+# Identity (graph + position, kept through copies) + value: two nodes are
+# equal exactly when they are (copies of) the same node of the same graph
+# with the same value (node_vec_equal_fields()). Nodes of different graphs
+# never match, whatever their labels; match those by label explicitly, e.g.
+# on format(n). Joins combine needles and haystack before comparing, which
+# makes disjoint-union copies of nodes on both sides; the copies keep their
+# origin, so they still match.
 vec_proxy_equal.node_vec <- function(x, ...) {
-  vctrs::vec_proxy_equal(node_vec_data(x))
+  vctrs::vec_proxy_equal(vctrs::new_data_frame(node_vec_equal_fields(x), n = length(x)))
+}
+
+# Ordered by value, then by identity as a tie-break, so only equal nodes tie.
+# Same fields as xtfrm.node_vec(), so base and vctrs sorting agree.
+vec_proxy_order.node_vec <- function(x, ...) {
+  vctrs::vec_proxy_order(vctrs::new_data_frame(node_vec_order_fields(x), n = length(x)))
+}
+
+vec_proxy_compare.node_vec <- function(x, ...) {
+  vctrs::vec_proxy_compare(vctrs::new_data_frame(node_vec_order_fields(x), n = length(x)))
 }
 
 vec_ptype_abbr.node_vec <- function(x, ...) {

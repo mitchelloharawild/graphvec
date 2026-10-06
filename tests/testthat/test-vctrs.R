@@ -147,10 +147,49 @@ test_that("bind_rows() keeps node_vec edges", {
   expect_length(edges(dplyr::filter(df, y != 2)$i), 0L)
 })
 
-test_that("node_vec equality is value-based", {
+test_that("node_vec equality is graph + position + value", {
   n <- new_node_vec(c("A", "B", "C"), edges = data.frame(from = 1:2, to = 2:3))
-  expect_equal(format(vctrs::vec_unique(vctrs::vec_c(n, n))), c("A", "B", "C"))
+  # vec_c(n, n) is a disjoint union of two copies, but each copy keeps the
+  # identity of the node it copies.
+  u <- vctrs::vec_c(n, n)
+  expect_equal(n_edges(u), 4L)
+  expect_equal(format(vctrs::vec_unique(u)), c("A", "B", "C"))
+  expect_equal(vctrs::vec_match(u, n), c(1:3, 1:3))
+  expect_equal(vctrs::vec_unique_count(c(u, u)), 3L)
   expect_equal(vctrs::vec_order(n[c(3, 1, 2)]), c(2L, 3L, 1L))
+
+  # Distinct nodes with the same label, sorted by value then position.
+  d <- node_vec(c("B", "A", "B"), 1:2, 2:3)
+  expect_equal(vctrs::vec_unique_count(d), 3L)
+  expect_equal(vctrs::vec_in(d, d[1]), c(TRUE, FALSE, FALSE))
+  expect_equal(vctrs::vec_order(d[c(3, 1, 2)]), c(3L, 2L, 1L))
+  expect_equal(order(d[c(3, 1, 2)]), c(3L, 2L, 1L))
+  expect_equal(vctrs::vec_compare(d[1], d[3]), -1L)
+
+  # Nodes of different graphs never match, whatever their labels.
+  same <- new_node_vec(c("A", "B", "C"), edges = data.frame(from = 1:2, to = 2:3))
+  expect_equal(vctrs::vec_in(same, n), c(FALSE, FALSE, FALSE))
+  expect_equal(vctrs::vec_in(format(same), format(n)), c(TRUE, TRUE, TRUE))
+
+  # Relabelling a node keeps its graph and position, but not its equality.
+  r <- n
+  r[2] <- "Z"
+  expect_equal(vctrs::vec_equal(r, n), c(TRUE, FALSE, TRUE))
+
+  # A missing node is missing in every field.
+  expect_equal(vctrs::vec_detect_missing(vctrs::vec_c(n[1], vctrs::vec_init(n, 1))), c(FALSE, TRUE))
+})
+
+test_that("node_vec columns can be join keys", {
+  skip_if_not_installed("dplyr")
+  n <- node_vec(c("A", "B", "A"), 1:2, 2:3)
+  df <- tibble::tibble(v = n, y = 1:3)
+  joined <- dplyr::left_join(df, tibble::tibble(v = n[3:1], z = 3:1), by = "v")
+  expect_equal(joined$z, 1:3)
+  expect_equal(dplyr::semi_join(df, tibble::tibble(v = n[3]), by = "v")$y, 3L)
+  expect_equal(nrow(dplyr::distinct(dplyr::bind_rows(df, df))), 3L)
+  other <- node_vec(c("A", "B", "A"), 1:2, 2:3)
+  expect_equal(nrow(dplyr::semi_join(df, tibble::tibble(v = other), by = "v")), 0L)
 })
 
 test_that("a data-frame-backed node_vec combines through vctrs", {

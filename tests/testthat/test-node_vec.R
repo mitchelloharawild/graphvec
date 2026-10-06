@@ -310,16 +310,18 @@ test_that("sort(), rev(), head() route through `[` and inherit its induced-subgr
   expect_equal(format(edges(h)), "[C]->[A]")
 })
 
-test_that("unique.node_vec() drops duplicate-valued nodes and their incident edges, via `[`", {
+test_that("unique.node_vec() drops repeats of a node and their incident edges, via `[`", {
   g <- node_vec(x = c("A", "A", "B"), from = c(1L, 2L), to = c(2L, 3L))
-  u <- unique(g)
-  expect_equal(format(u), c("A", "B"))
-  # The edge between the two "A" duplicates is dropped, not redirected onto
-  # the surviving node, since duplicate 2 (the endpoint) no longer exists.
-  # Rewritten (see above): attr(u, "edges")$to was always NULL for the
-  # ordinary case, making the original assertion pass vacuously -- check via
-  # edges() instead, which does exercise the drop.
-  expect_length(edges(u), 0L)
+  # Two nodes with the same label are still different nodes.
+  expect_equal(unique(g), g)
+  # Rewritten: was value-based ("A", "A" collapsed). Repeating node 1 clones
+  # its edge; dropping the repeat drops the clone too, rather than
+  # redirecting it onto the kept node.
+  r <- g[c(1, 2, 1, 3)]
+  expect_equal(n_edges(r), 3L)
+  u <- unique(r)
+  expect_equal(u, g)
+  expect_equal(n_edges(u), 2L)
 })
 
 test_that("c.node_vec() is a disjoint union: values concatenate, second graph's edges are offset", {
@@ -444,13 +446,16 @@ test_that("element access on a data-frame node_vec works on nodes, not columns",
   expect_error(nd[[4]], "out of bounds")
   expect_equal(as.list(nd), list(nd[1], nd[2], nd[3]))
   expect_equal(vapply(nd, format, character(1)), c("1:A", "1:A", "2:B"))
-  expect_equal(duplicated(nd), c(FALSE, TRUE, FALSE))
-  expect_equal(anyDuplicated(nd), 2L)
-  expect_equal(format(unique(nd)), c("1:A", "2:B"))
+  # Rows 1 and 2 have the same values but are different nodes.
+  expect_equal(duplicated(nd), c(FALSE, FALSE, FALSE))
+  expect_equal(duplicated(nd[c(1, 3, 1)]), c(FALSE, FALSE, TRUE))
+  expect_equal(anyDuplicated(nd[c(1, 1, 3)]), 2L)
+  expect_equal(format(unique(nd[c(1, 1, 3)])), c("1:A", "2:B"))
 
   n1 <- node_vec(data.frame(id = c(5L, 6L, 5L)), 1L, 2L)
   expect_equal(format(n1[[3]]), "5")
-  expect_equal(duplicated(n1), c(FALSE, FALSE, TRUE))
+  expect_equal(duplicated(n1), c(FALSE, FALSE, FALSE))
+  expect_equal(duplicated(n1[c(1, 2, 1)]), c(FALSE, FALSE, TRUE))
 })
 
 test_that("[[ and as.list() give single-node node_vecs", {
@@ -466,8 +471,9 @@ test_that("[[ and as.list() give single-node node_vecs", {
   expect_error(n[[4]], "out of bounds")
   expect_error(n[[0]], "out of bounds")
   expect_error(n[["z"]], "out of bounds")
-  expect_equal(duplicated(n), c(FALSE, FALSE, TRUE))
-  expect_equal(anyDuplicated(n), 3L)
+  expect_equal(duplicated(n), c(FALSE, FALSE, FALSE))
+  expect_equal(duplicated(n[c(1, 2, 1)]), c(FALSE, FALSE, TRUE))
+  expect_equal(anyDuplicated(n[c(1, 2, 1)]), 3L)
 })
 
 test_that("purrr::map() works element-wise on node_vecs", {
