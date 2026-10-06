@@ -366,6 +366,19 @@ test_that("as.character.node_vec() delegates to x's own value", {
   expect_equal(as.character(g), c("A", "B"))
 })
 
+test_that("as.character.node_vec() gives one label per node for data frame values", {
+  g <- node_vec(data.frame(id = 1:2, lab = c("a", "b")))
+  expect_equal(as.character(g), c("1:a", "2:b"))
+})
+
+test_that("a data-frame node_vec column writes one label per node with readr", {
+  skip_if_not_installed("readr")
+  f <- tempfile(fileext = ".csv")
+  on.exit(unlink(f))
+  readr::write_csv(tibble::tibble(n = node_vec(data.frame(id = 1:2, lab = c("a", "b")))), f)
+  expect_equal(readLines(f), c("n", "1:a", "2:b"))
+})
+
 test_that("order() sorts a node_vec by node value, not position", {
   g <- node_vec(x = c(3, 1, 2), from = 1L, to = 2L)
   expect_equal(order(g), c(2L, 3L, 1L))

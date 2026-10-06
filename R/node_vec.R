@@ -115,8 +115,14 @@ format.node_vec <- function(x, ...){
   node_label(node_vec_data(x), ...)
 }
 
+# One string per node: the values themselves, or a data-frame-backed
+# node_vec's formatted label (as.character() of the data frame itself would
+# give one string per column).
 #' @export
 as.character.node_vec <- function(x, ...) {
+  if (is_df_node_vec(x)) {
+    return(trimws(format(x, ...)))
+  }
   as.character(node_vec_data(x), ...)
 }
 

@@ -368,3 +368,35 @@ test_that("an NA index gives a missing hyperedge, not an empty one", {
   # A hyperedge with no nodes in a role isn't missing.
   expect_false(is.na(edge_vec(list(integer()), list(1L), nodes = "A")))
 })
+
+test_that("as.character.edge_vec() gives one label per edge", {
+  e <- edge_vec(c(1L, 2L, 3L, 1L), c(2L, 3L, 1L, 2L), w = c(1, 2, 3, 1), nodes = c("A", "B", "C"))
+  expect_equal(as.character(e), c("[A]->[B]", "[B]->[C]", "[C]->[A]", "[A]->[B]"))
+  expect_equal(as.character(edge_vec(1:2, 2:3)), c("[1]->[2]", "[2]->[3]"))
+})
+
+test_that("edge_vec labels are used by pivot_wider(), write_csv() and str_c()", {
+  e <- edge_vec(c(1L, 2L, 3L, 1L), c(2L, 3L, 1L, 2L), w = c(1, 2, 3, 1), nodes = c("A", "B", "C"))
+
+  skip_if_not_installed("tidyr")
+  wide <- tidyr::pivot_wider(
+    tibble::tibble(e = e, v = 1:4),
+    names_from = e, values_from = v, values_fn = sum
+  )
+  expect_named(wide, c("[A]->[B]", "[B]->[C]", "[C]->[A]"))
+  expect_equal(wide[["[A]->[B]"]], 5L)
+
+  skip_if_not_installed("readr")
+  f <- tempfile(fileext = ".csv")
+  on.exit(unlink(f))
+  readr::write_csv(tibble::tibble(e = e), f)
+  expect_equal(readLines(f), c("e", "[A]->[B]", "[B]->[C]", "[C]->[A]", "[A]->[B]"))
+
+  skip_if_not_installed("stringr")
+  # stringi warns about coercing any list-backed object before it calls
+  # as.character(), but the result is still the per-edge labels.
+  expect_equal(
+    suppressWarnings(stringr::str_c(e, "!")),
+    c("[A]->[B]!", "[B]->[C]!", "[C]->[A]!", "[A]->[B]!")
+  )
+})

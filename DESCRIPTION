@@ -32,6 +32,8 @@ Suggests:
     igraph,
     pillar,
     purrr,
+    readr,
+    stringr,
     testthat (>= 3.0.0),
     tidyr,
     tsibble,

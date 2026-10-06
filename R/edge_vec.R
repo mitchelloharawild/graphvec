@@ -214,6 +214,13 @@ format.edge_vec <- function(x, ...){
   )
 }
 
+# One string per edge, its formatted label; the underlying list would give
+# one per field.
+#' @export
+as.character.edge_vec <- function(x, ...) {
+  trimws(format(x, ...))
+}
+
 #' @export
 print.edge_vec <- function(x, ...) {
   cat(sprintf("<edge_vec[%d]>\n", length(x)))
