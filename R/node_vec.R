@@ -269,6 +269,36 @@ is_df_node_vec <- function(x) {
   "data.frame" %in% attr(x, "value_class")
 }
 
+# A node's value: the bare value for an atomic node_vec (base `[[`), or the
+# node's 1-row data frame for a data-frame-backed one, not a column.
+#' @export
+`[[.node_vec` <- function(x, i, ...) {
+  if (!is_df_node_vec(x)) {
+    return(NextMethod())
+  }
+  slice_rows(node_vec_data(x), seq_along(x)[[i]])
+}
+
+#' @export
+as.list.node_vec <- function(x, ...) {
+  if (!is_df_node_vec(x)) {
+    return(as.list(node_vec_data(x), ...))
+  }
+  lapply(seq_along(x), function(i) x[[i]])
+}
+
+# Value-based and row-wise for data frame values, the same duplicates that
+# unique.node_vec() drops.
+#' @export
+duplicated.node_vec <- function(x, incomparables = FALSE, ...) {
+  duplicated(node_vec_data(x), incomparables = incomparables, ...)
+}
+
+#' @export
+anyDuplicated.node_vec <- function(x, incomparables = FALSE, ...) {
+  anyDuplicated(node_vec_data(x), incomparables = incomparables, ...)
+}
+
 # Registered dynamically for pillar via zzz.R; abbreviated type header, e.g. "N[chr]".
 type_sum.node_vec <- function(x, ...) {
   paste0("N[", pillar::type_sum(node_vec_data(x), ...), "]")
@@ -302,7 +332,7 @@ unique.node_vec <- function(x, incomparables = FALSE, ...) {
   # Value-based: drops duplicate-valued nodes by first occurrence, via
   # [.node_vec's induced-subgraph rules, so edges incident to a dropped
   # duplicate are dropped rather than redirected onto the kept node.
-  x[!duplicated(node_vec_data(x), incomparables = incomparables, ...)]
+  x[!duplicated(x, incomparables = incomparables, ...)]
 }
 
 #' @export

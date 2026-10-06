@@ -41,6 +41,10 @@
 * `format()` and `print()` on an `edge_vec` with no node data now label
   each endpoint by its node position (e.g. `[1]->[2]`), rather than
   returning nothing.
+* `[[`, `as.list()`, `duplicated()` and `anyDuplicated()` on a
+  data-frame-backed `node_vec` now work on its nodes (1-row data frames)
+  rather than its columns, so `purrr::map()` and `lapply()` work
+  element-wise.
 * vctrs no longer treats `<aggregated>` as incomplete, so
   `tidyr::drop_na()` keeps `<aggregated>` rows, and `vec_equal()` gives
   `FALSE` rather than `NA` when comparing `<aggregated>` with a value.

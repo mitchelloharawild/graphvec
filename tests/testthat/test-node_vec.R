@@ -390,3 +390,34 @@ test_that("[<- with a node_vec swaps in its nodes and their edges", {
   df$x[2] <- nd[3]
   expect_equal(format(df$x), c("1", "3", "3"))
 })
+
+test_that("element access on a data-frame node_vec works on nodes, not columns", {
+  nd <- node_vec(data.frame(id = c(1L, 1L, 2L), lab = c("A", "A", "B")), 1:2, 2:3)
+  expect_equal(nd[[3]], data.frame(id = 2L, lab = "B"))
+  expect_error(nd[[4]])
+  expect_length(as.list(nd), 3L)
+  expect_equal(as.list(nd)[[2]], data.frame(id = 1L, lab = "A"))
+  expect_equal(vapply(nd, function(v) v$lab, character(1)), c("A", "A", "B"))
+  expect_equal(duplicated(nd), c(FALSE, TRUE, FALSE))
+  expect_equal(anyDuplicated(nd), 2L)
+  expect_equal(format(unique(nd)), c("1:A", "2:B"))
+
+  n1 <- node_vec(data.frame(id = c(5L, 6L, 5L)), 1L, 2L)
+  expect_equal(n1[[3]], data.frame(id = 5L))
+  expect_equal(duplicated(n1), c(FALSE, FALSE, TRUE))
+})
+
+test_that("element access on an atomic node_vec returns bare values", {
+  n <- node_vec(c(a = "A", b = "B", c = "A"), 1:2, 2:3)
+  expect_identical(n[[2]], "B")
+  expect_identical(as.list(n), list(a = "A", b = "B", c = "A"))
+  expect_equal(duplicated(n), c(FALSE, FALSE, TRUE))
+  expect_equal(anyDuplicated(n), 3L)
+})
+
+test_that("purrr::map() works element-wise on node_vecs", {
+  skip_if_not_installed("purrr")
+  nd <- node_vec(data.frame(id = 1:2, lab = c("A", "B")), 1L, 2L)
+  expect_equal(purrr::map_chr(nd, ~ .x$lab), c("A", "B"))
+  expect_equal(purrr::map_chr(node_vec(c("A", "B")), identity), c("A", "B"))
+})
