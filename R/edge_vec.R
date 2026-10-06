@@ -392,6 +392,22 @@ c.edge_vec <- function(...) {
   )
 }
 
+# Rebuilds an edge_vec whose element `r` is element `row[r]` of input
+# `srcs[[src[r]]]` (`row[r]` NA for a missing edge): each input's rows are
+# sliced, combined with c() in order of each input's first row, then
+# scattered back into row order. Used by vctrs' vec_restore().
+edge_vec_assemble <- function(srcs, src, row) {
+  if (length(srcs) == 1L) {
+    return(srcs[[1L]][row])
+  }
+  rows_of <- split(seq_along(src), factor(src, levels = seq_along(srcs)))
+  first_row <- vapply(rows_of, function(r) if (length(r)) r[[1L]] else NA_integer_, integer(1))
+  used <- order(first_row, na.last = NA)
+  parts <- lapply(used, function(j) srcs[[j]][row[rows_of[[j]]]])
+  out <- do.call(c, parts)
+  out[order(unlist(rows_of[used], use.names = FALSE))]
+}
+
 #' @rdname reorient
 #' @export
 edges.edge_vec <- function(x, ...) {

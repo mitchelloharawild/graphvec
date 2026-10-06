@@ -477,12 +477,13 @@ test_that("purrr::map() works element-wise on node_vecs", {
   expect_equal(format(purrr::map_vec(nd, identity)), c("1:A", "2:B"))
   n <- node_vec(c("A", "B", "C"), 1:2, 2:3)
   expect_equal(purrr::map_chr(n, format), c("A", "B", "C"))
-  # Each element brings its own (edgeless) graph, so the edges are a
-  # disjoint union of singletons.
+  # Each element is a slice of `n`'s graph at a different position, so
+  # putting them back together restores every edge (it used to be a
+  # disjoint union of edgeless singletons).
   m <- purrr::map_vec(n, identity)
   expect_s3_class(m, "node_vec")
   expect_equal(format(m), c("A", "B", "C"))
-  expect_length(edges(m), 0L)
+  expect_equal(edge_pairs(m), edge_pairs(n))
   expect_equal(format(purrr::modify(n, identity)), c("A", "B", "C"))
 })
 
@@ -558,4 +559,54 @@ test_that("a node_vec slice keeps its graph and only sees the induced edges", {
   expect_equal(n_nodes(n[2:3]), 2L)
   # A slice covering the whole graph in order reads the graph as is.
   expect_identical(backend_of(n[1:4]), attr(n, "graph"))
+})
+
+test_that("c() puts slices of the same graph back together", {
+  n <- node_vec(c("A", "B", "C", "A"), from = c(1L, 2L, 3L), to = c(2L, 3L, 1L))
+  # The B->C edge crossing between the two halves comes back.
+  expect_equal(c(n[1:2], n[3:4]), n)
+  expect_identical(attr(c(n[1:2], n[3:4]), "graph"), attr(n, "graph"))
+  expect_equal(c(n[3:4], n[1:2]), n[c(3, 4, 1, 2)])
+  expect_equal(do.call(c, as.list(n)), n)
+  # The same nodes from two inputs are a disjoint union.
+  u <- c(n, n)
+  expect_equal(length(u), 8L)
+  expect_equal(edge_pairs(u), c("1->2", "2->3", "3->1", "5->6", "6->7", "7->5"))
+  # Overlapping slices are separate copies, each with its own edges.
+  expect_equal(edge_pairs(c(n[1:2], n[2:3])), c("1->2", "3->4"))
+  # A repeat within one slice still replicates, cloning edges.
+  expect_equal(edge_pairs(c(n[c(1, 1)], n[2])), c("1->3", "2->3"))
+})
+
+test_that("[<- with nodes of the same graph keeps every edge", {
+  n <- node_vec(c("A", "B", "C", "A"), from = c(1L, 2L, 3L), to = c(2L, 3L, 1L))
+  x <- n
+  x[2] <- x[2]
+  expect_equal(x, n)
+  x <- n
+  x[[3]] <- n[[3]]
+  expect_equal(x, n)
+  # Swapping two nodes moves their edges with them.
+  x <- n
+  x[1:2] <- n[2:1]
+  expect_equal(format(x), c("B", "A", "C", "A"))
+  expect_equal(format(edges(x)), format(edges(n)))
+  # A node the vector still holds elsewhere is a disjoint copy.
+  x <- n
+  x[2] <- n[3]
+  expect_equal(format(x), c("A", "C", "C", "A"))
+  expect_equal(format(edges(x)), "[C]->[A]")
+  # Plain values relabel nodes and keep the graph.
+  x <- n
+  x[2] <- "Z"
+  expect_identical(attr(x, "graph"), attr(n, "graph"))
+  expect_equal(format(edges(x)), c("[A]->[Z]", "[Z]->[C]", "[C]->[A]"))
+})
+
+test_that("node_vecs of different graphs combine as a disjoint union in row order", {
+  n <- node_vec(c("A", "B", "C"), from = 1:2, to = 2:3)
+  m <- node_vec(c("X", "Y"), from = 2L, to = 1L)
+  x <- c(n[1:2], m, n[3])
+  expect_equal(format(x), c("A", "B", "X", "Y", "C"))
+  expect_equal(format(edges(x)), c("[A]->[B]", "[B]->[C]", "[Y]->[X]"))
 })

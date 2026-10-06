@@ -344,20 +344,25 @@ node_vec_reindex_edges <- function(n, idx, edges) {
 }
 
 # A plain `value` relabels the selected nodes, keeping the graph and every
-# edge. A
-# node_vec `value` brings its own graph: like c() and vctrs::vec_assign(),
-# the result is the disjoint union with the replaced nodes swapped out, so
-# `x`'s edges to them are dropped and `value`'s edges among the assigned
-# nodes are kept.
+# edge. A node_vec `value` brings its nodes from its own graph, combined
+# with `x`'s remaining nodes by the same rule as c() and vctrs::vec_assign()
+# (node_vec_assemble()): nodes of `x`'s own graph go back into it, so
+# `x[2] <- x[2]` changes nothing, while nodes of another graph (or nodes
+# `x` still holds elsewhere) are a disjoint union, dropping `x`'s edges to
+# the replaced nodes.
 #' @export
 `[<-.node_vec` <- function(x, i, value) {
   if (missing(i)) {
     i <- seq_along(x)
   }
   if (inherits(value, "node_vec")) {
+    n <- length(x)
     pos <- seq_along(x)
-    pos[i] <- length(x) + seq_along(value)
-    return(c(x, value)[pos])
+    pos[i] <- n + seq_along(value)
+    from_value <- !is.na(pos) & pos > n
+    src <- ifelse(from_value, 2L, 1L)
+    row <- ifelse(from_value, pos - n, pos)
+    return(node_vec_assemble(list(x, value), src, row))
   }
   data <- node_vec_data(x)
   if (is.data.frame(data)) {
@@ -554,34 +559,176 @@ c.node_vec <- function(...) {
     stop("Can't combine `node_vec` objects with different `directed`.", call. = FALSE)
   }
 
-  # Disjoint union: concatenate node values, then offset each graph's edge
-  # positions by the number of nodes already placed ahead of it.
   sizes <- vapply(xs, length, integer(1))
-  offsets <- cumsum(c(0L, utils::head(sizes, -1L)))
+  node_vec_assemble(xs, src = rep(seq_along(xs), sizes), row = sequence(sizes))
+}
 
-  edges <- Map(function(x, offset) {
-    e <- node_vec_full_edges(x)
-    e[["from"]] <- offset_incidence(e[["from"]], offset)
-    e[["to"]] <- offset_incidence(e[["to"]], offset)
+# -- Combining node_vecs ---------------------------------------------------
+#
+# Builds a node_vec whose element `r` is element `row[r]` of input
+# `srcs[[src[r]]]` (`row[r]` NA for a missing node). This is the one place
+# c(), `[<-` and vctrs' vec_restore() decide what happens to the graph when
+# nodes from several inputs end up in one vector. An "input" is one element
+# of `srcs`: an argument to c(), `x` or `value` in `[<-`, or the object
+# behind one vec_proxy() call (vctrs proxies each argument separately, even
+# when two are the same object).
+#
+# The rule:
+#
+# 1. Inputs are grouped by graph: the same `graph` external pointer
+#    (identical(), i.e. the same address) and the same `edges` attribute
+#    table. Different graphs are always a disjoint union.
+# 2. Within one graph, inputs are taken in order of their first row, and
+#    each joins the first copy of the graph that none of its positions are
+#    already used in, or else starts a new copy. A copy is one selection
+#    from the graph: all its nodes keep the edges between them, as for a
+#    single slice. So a position used by two *different* inputs (vec_c(x,
+#    x), c(x[1:2], x[2:3])) makes them separate copies (a disjoint union, as
+#    c() always was), while inputs that use disjoint positions of the same
+#    graph (`if_else(cond, x, x)`, `x[2] <- x[2]`, a no-op rows_patch(),
+#    c(x[1:2], x[3:4])) are put back into one graph with every edge between
+#    them, including edges crossing between the inputs.
+# 3. A position repeated *within* one input (x[c(1, 1)], vec_rep(x, 2),
+#    vctrs::vec_slice() with repeats) is that input's own replicating slice:
+#    it stays in one copy, and the replicated node's edges are cloned once
+#    per replica, exactly as `[` does. Only repeats *across* inputs split.
+# 4. Missing nodes (no position: vec_init(), an NA index) belong to no graph;
+#    an input with only missing nodes joins the first copy of whatever else
+#    is combined, so it never forces a disjoint union.
+# 5. Hyperedge node_vecs have no graph identity: each is its own copy.
+#
+# With exactly one copy, the result keeps that graph (and so its identity):
+# its `node_id` is just the rows' positions. Otherwise every copy is
+# compacted to its induced subgraph and the copies are laid out in row order
+# (each copy's local positions are mapped to the output rows they fill,
+# never offset in group order) into one new graph.
+node_vec_assemble <- function(srcs, src, row) {
+  n <- length(src)
+  k <- length(srcs)
+  directed <- attr(srcs[[1]], "directed")
+
+  # The common case of a single input (any slice by vctrs): just a slice.
+  if (k == 1L) {
+    return(srcs[[1L]][row])
+  }
+
+  rows_of <- split(seq_len(n), factor(src, levels = seq_len(k)))
+
+  # Node values: each input's selected values in turn, scattered back into
+  # row order.
+  parts <- lapply(seq_len(k), function(j) slice_rows(node_vec_data(srcs[[j]]), row[rows_of[[j]]]))
+  values <- slice_rows(combine_values(parts), order(unlist(rows_of, use.names = FALSE)))
+
+  # Each row's position in its input's graph (NA if missing or hyperedge).
+  graphs <- lapply(srcs, attr, "graph")
+  pos <- rep(NA_integer_, n)
+  for (j in seq_len(k)) {
+    if (!is.null(graphs[[j]]) && length(rows_of[[j]]) > 0L) {
+      pos[rows_of[[j]]] <- attr(srcs[[j]], "node_id")[row[rows_of[[j]]]]
+    }
+  }
+
+  # Assign every input with rows to a copy (rules 1-5 above).
+  copies <- list() # each: list(src = <representative input>, inputs, used)
+  bucket <- rep(NA_integer_, k)
+  deferred <- integer() # inputs with only missing nodes
+  first_row <- vapply(rows_of, function(r) if (length(r)) r[[1L]] else NA_integer_, integer(1))
+  for (j in order(first_row, na.last = NA)) {
+    if (is.null(graphs[[j]])) {
+      copies[[length(copies) + 1L]] <- list(src = j, used = NULL)
+      bucket[j] <- length(copies)
+      next
+    }
+    p <- pos[rows_of[[j]]]
+    p <- p[!is.na(p)]
+    if (length(p) == 0L) {
+      deferred <- c(deferred, j)
+      next
+    }
+    target <- NA_integer_
+    for (b in seq_along(copies)) {
+      r <- copies[[b]]$src
+      if (!is.null(copies[[b]]$used) &&
+          identical(graphs[[r]], graphs[[j]]) &&
+          identical(attr(srcs[[r]], "edges"), attr(srcs[[j]], "edges")) &&
+          !any(copies[[b]]$used[p])) {
+        target <- b
+        break
+      }
+    }
+    if (is.na(target)) {
+      copies[[length(copies) + 1L]] <- list(src = j, used = logical(graphs[[j]]$n_nodes()))
+      target <- length(copies)
+    }
+    copies[[target]]$used[p] <- TRUE
+    bucket[j] <- target
+  }
+  if (length(deferred) > 0L) {
+    is_graph_copy <- !vapply(copies, function(cp) is.null(cp$used), logical(1))
+    if (!any(is_graph_copy)) {
+      copies[[length(copies) + 1L]] <- list(src = deferred[[1L]], used = logical(0))
+      is_graph_copy <- c(is_graph_copy, TRUE)
+    }
+    bucket[deferred] <- which(is_graph_copy)[[1L]]
+  }
+
+  if (length(copies) == 0L) {
+    # Nothing to combine (every input is empty).
+    return(new_node_vec(values, directed = directed))
+  }
+
+  row_copy <- integer(n)
+  for (j in seq_len(k)) row_copy[rows_of[[j]]] <- bucket[j]
+
+  if (length(copies) == 1L) {
+    r <- copies[[1L]]$src
+    if (is.null(graphs[[r]])) {
+      return(srcs[[r]][row])
+    }
+    return(new_node_vec_backend(
+      values,
+      graph = graphs[[r]],
+      edges = attr(srcs[[r]], "edges"),
+      directed = directed,
+      node_id = pos
+    ))
+  }
+
+  # Several copies: a disjoint union of each copy's induced subgraph, with
+  # each copy's local positions mapped to the output rows it fills.
+  tables <- lapply(seq_along(copies), function(b) {
+    rows_b <- which(row_copy == b)
+    r <- copies[[b]]$src
+    if (is.null(graphs[[r]])) {
+      e <- node_vec_full_edges(srcs[[r]][row[rows_b]])
+    } else {
+      remap <- graphvec_backend_induced_subgraph(graphs[[r]], pos[rows_b])
+      attrs <- attr(srcs[[r]], "edges")[remap$source_edge, , drop = FALSE]
+      e <- cbind_edge_fields(remap$from, remap$to, attrs)
+    }
+    for (role in c("from", "to")) {
+      e[[role]] <- if (is.list(e[[role]])) {
+        I(lapply(e[[role]], function(v) rows_b[v]))
+      } else {
+        rows_b[e[[role]]]
+      }
+    }
+    rownames(e) <- NULL
     e
-  }, xs, offsets)
+  })
 
-  # Up-cast to a hyperedge column if any source uses one for this role, so an
+  # Up-cast to a hyperedge column if any copy uses one for this role, so an
   # ordinary and a hyperedge node_vec can still be combined.
   for (col in c("from", "to")) {
-    if (any(vapply(edges, function(e) is.list(e[[col]]), logical(1)))) {
-      edges <- lapply(edges, function(e) {
+    if (any(vapply(tables, function(e) is.list(e[[col]]), logical(1)))) {
+      tables <- lapply(tables, function(e) {
         e[[col]] <- as_incidence_list(e[[col]])
         e
       })
     }
   }
 
-  new_node_vec(
-    x = combine_values(lapply(xs, node_vec_data)),
-    edges = rbind_fill(edges),
-    directed = directed
-  )
+  new_node_vec(x = values, edges = rbind_fill(tables), directed = directed)
 }
 
 #' @export

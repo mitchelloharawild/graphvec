@@ -196,6 +196,46 @@ test_that("node_vecs with different `directed` can't be combined", {
   )
 })
 
+test_that("selecting between copies of a node_vec keeps its edges", {
+  n <- node_vec(c("A", "B", "C", "A"), from = c(1L, 2L, 3L), to = c(2L, 3L, 1L))
+  expect_equal(vctrs::vec_assign(n, 2L, n[2]), n)
+  expect_equal(vctrs::vec_slice(vctrs::vec_c(n[1:2], n[3:4]), 1:4), n)
+  expect_identical(attr(vctrs::vec_c(n[1:2], n[3:4]), "graph"), attr(n, "graph"))
+  # vec_c(n, n) stays a disjoint union: 6 edges on 8 nodes.
+  u <- vctrs::vec_c(n, n)
+  expect_equal(vctrs::vec_size(u), 8L)
+  expect_equal(n_edges(u), 6L)
+  # A slice with repeats still replicates edges, as `[` does.
+  expect_equal(vctrs::vec_rep(n[1:2], 2), n[1:2][c(1, 2, 1, 2)])
+
+  skip_if_not_installed("dplyr")
+  expect_equal(dplyr::if_else(c(TRUE, FALSE, TRUE, FALSE), n, n), n)
+  expect_equal(dplyr::coalesce(n, n), n)
+  expect_equal(replace(n, 2, n[2]), n)
+  df <- tibble::tibble(y = 1:4, v = n)
+  expect_equal(dplyr::mutate(df, v = dplyr::if_else(y > 2, v, v))$v, n)
+  expect_equal(dplyr::rows_patch(df, tibble::tibble(y = 2L, v = n[2]), by = "y")$v, n)
+  expect_equal(dplyr::rows_update(df, tibble::tibble(y = 2L, v = n[2]), by = "y")$v, n)
+  expect_identical(
+    attr(dplyr::rows_update(df, tibble::tibble(y = 2L, v = n[2]), by = "y")$v, "graph"),
+    attr(n, "graph")
+  )
+  # Rows of different graphs stay in row order.
+  m <- node_vec(c("X", "Y"), from = 2L, to = 1L)
+  b <- dplyr::bind_rows(tibble::tibble(v = n[1:2]), tibble::tibble(v = m), tibble::tibble(v = n[3:4]))$v
+  expect_equal(format(b), c("A", "B", "X", "Y", "C", "A"))
+  expect_equal(format(edges(b)), c("[A]->[B]", "[B]->[C]", "[C]->[A]", "[Y]->[X]"))
+})
+
+test_that("repeated rows_patch() keeps a node_vec's graph", {
+  skip_if_not_installed("dplyr")
+  n <- node_vec(c("A", "B", "C"), from = 1:2, to = 2:3)
+  df <- tibble::tibble(y = 1:3, v = n)
+  for (k in 1:3) df <- dplyr::rows_patch(df, tibble::tibble(y = 2L, v = n[2]), by = "y")
+  expect_identical(df$v, n)
+  expect_equal(n_nodes(df$v), 3L)
+})
+
 # -- edge_vec -------------------------------------------------------------
 
 test_that("edge_vec is a vctrs vector", {

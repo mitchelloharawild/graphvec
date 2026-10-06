@@ -173,9 +173,15 @@ vec_cast_from_agg_vec <- function(x, to, ..., x_arg = "", to_arg = "") {
 # combining; nothing that depends on the rows has to survive as an attribute,
 # which vec_rbind() would reset (_dev/vector.md §7-§8).
 #
-# The `id` (rather than the ref's memory address, as vecvec uses) separates
-# two inputs that are the same object, so `vec_c(x, x)` is a disjoint union
-# like `c(x, x)` rather than a replicating slice like `x[c(1:n, 1:n)]`.
+# The restore puts rows back together by *graph*, not by proxy call: a ref
+# carries its graph (the `graph` external pointer, kept by every slice), and
+# rows of the same graph go back into one graph whichever call they came
+# through, so `if_else(cond, x, x)`, `vec_assign(x, i, x[i])` and a no-op
+# rows_patch() keep every edge (_dev/graph-identity.md). The `id` still
+# matters: it says which *input* a row came from, which is what tells
+# `vec_c(x, x)` (the same nodes from two inputs: a disjoint union, like
+# `c(x, x)`) apart from `vec_slice(x, c(1:n, 1:n))` (one input replicating
+# its nodes). node_vec_assemble() and c.edge_vec() hold the exact rules.
 
 graph_ref_counter <- new.env(parent = emptyenv())
 graph_ref_counter$id <- 0
@@ -189,35 +195,26 @@ vec_proxy_graph_ref <- function(x) {
   )
 }
 
-# Rebuilds the object by slicing each source by its rows' positions (`[`
-# reindexes its edges), combining the slices with c() (a disjoint union),
-# then reordering the result back into row order. Rows with no source (from
-# vec_init()) are sliced from `to` with an NA position.
-vec_restore_graph_ref <- function(x, to) {
+# One input per proxy call (`id`), the object behind it, and each row's
+# position in it, handed to `combine(srcs, src, row)`. Rows with no source
+# (from vec_init(), which leaves `ref`, `id` and `i` missing) are taken from
+# `to` with an NA position: a missing node/edge.
+vec_restore_graph_ref <- function(x, to, combine) {
   ids <- x$id
   n <- length(ids)
   if (n == 0L) {
     return(to[integer()])
   }
-
   key <- unique(ids)
-  if (length(key) == 1L) {
-    return(graph_ref_source(x$ref[[1L]], to)[x$i])
-  }
-
-  loc <- split(seq_len(n), factor(match(ids, key), levels = seq_along(key)))
-  parts <- lapply(loc, function(rows) {
-    graph_ref_source(x$ref[[rows[[1L]]]], to)[x$i[rows]]
-  })
-  out <- do.call(c, unname(parts))
-
-  # `out` holds each group's rows in turn; scatter them back to row order.
-  out[order(unlist(loc, use.names = FALSE))]
+  src <- match(ids, key)
+  srcs <- lapply(match(key, ids), function(r) graph_ref_source(x$ref[[r]], to))
+  combine(srcs, src, x$i)
 }
 
 graph_ref_source <- function(ref, to) {
   if (is.null(ref)) to else ref
 }
+
 
 # vctrs' incompatible-type error for two node_vecs/edge_vecs that differ in
 # `directed`, which c() refuses to combine.
@@ -248,7 +245,7 @@ vec_proxy.node_vec <- function(x, ...) {
 }
 
 vec_restore.node_vec <- function(x, to, ...) {
-  vec_restore_graph_ref(x, to)
+  vec_restore_graph_ref(x, to, node_vec_assemble)
 }
 
 # Value-based, like unique.node_vec(): the proxy's refs and positions would
@@ -281,7 +278,7 @@ vec_proxy.edge_vec <- function(x, ...) {
 }
 
 vec_restore.edge_vec <- function(x, to, ...) {
-  vec_restore_graph_ref(x, to)
+  vec_restore_graph_ref(x, to, edge_vec_assemble)
 }
 
 # By the node values at each end and the edge attributes, like node_vec's
