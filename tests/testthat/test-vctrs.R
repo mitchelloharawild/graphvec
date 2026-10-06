@@ -53,6 +53,29 @@ test_that("vctrs sees missing disaggregated values, not <aggregated>, as missing
   expect_equal(format(vctrs::vec_init(v, 1)), "NA")
 })
 
+test_that("<aggregated> is complete and unequal to any value", {
+  v <- agg_vec(c(NA, "A", NA), c(TRUE, FALSE, FALSE))
+  expect_equal(vctrs::vec_detect_complete(v), c(TRUE, TRUE, FALSE))
+  expect_equal(vctrs::vec_equal(v, "A"), c(FALSE, TRUE, NA))
+  # `<aggregated>` and a missing value are distinct groups.
+  expect_equal(vctrs::vec_unique_count(vctrs::vec_c(v, v)), 3L)
+  expect_true(vctrs::vec_equal(v[1], agg_vec(NA, TRUE)))
+
+  for (vals in list(c(NA, 1L), c(NA, 1.5), c(NA, TRUE), as.Date(c(NA, "2020-01-01")),
+                    factor(c(NA, "x")), as.POSIXlt(c(NA, "2020-01-01")), list(NULL, 1))) {
+    x <- agg_vec(vals, c(TRUE, FALSE))
+    expect_equal(vctrs::vec_detect_complete(x), c(TRUE, TRUE))
+    expect_equal(vctrs::vec_unique_count(vctrs::vec_c(x, x)), 2L)
+  }
+  expect_equal(vctrs::vec_detect_complete(agg_vec(c(NA, NA), c(TRUE, TRUE))), c(TRUE, TRUE))
+})
+
+test_that("drop_na() keeps <aggregated> rows", {
+  skip_if_not_installed("tidyr")
+  df <- tibble::tibble(k = agg_vec(c(NA, "A", NA), c(TRUE, FALSE, FALSE)))
+  expect_equal(format(tidyr::drop_na(df)$k), c("<aggregated>", "A"))
+})
+
 test_that("<aggregated> sorts last", {
   v <- agg_vec(c(NA, "B", "A"), c(TRUE, FALSE, FALSE))
   expect_equal(vctrs::vec_order(v), c(3L, 2L, 1L))

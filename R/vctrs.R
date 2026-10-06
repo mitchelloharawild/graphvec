@@ -61,7 +61,35 @@ vec_proxy_equal.agg_vec <- function(x, ...) {
   # only counts a row as missing when every column is) sees it as missing.
   agg <- is_agg
   agg[!is_agg & vctrs::vec_detect_missing(vals)] <- NA
-  vctrs::new_data_frame(list(x = vctrs::vec_proxy_equal(vals), agg = agg), n = length(x))
+  # `<aggregated>` has no value, so give it the same non-missing filler in
+  # every agg_vec. vctrs then sees it as complete (e.g. drop_na() keeps it)
+  # and as unequal, not NA, to any value; `agg` alone tells them apart.
+  proxy <- fill_proxy(vctrs::vec_proxy_equal(vals), is_agg)
+  vctrs::new_data_frame(list(x = proxy, agg = agg), n = length(x))
+}
+
+# Sets the rows `where` of an equality proxy (an atomic vector, a data frame
+# of them, or a list) to a fixed non-missing value of its type. Classes such
+# as Date or factor are dropped first: the proxy only needs to compare.
+fill_proxy <- function(x, where) {
+  if (is.data.frame(x)) {
+    x[] <- lapply(x, fill_proxy, where = where)
+    return(x)
+  }
+  if (is.list(x)) {
+    x[where] <- list(FALSE)
+    return(x)
+  }
+  x <- vctrs::vec_data(x)
+  x[where] <- switch(typeof(x),
+    logical = FALSE,
+    integer = 0L,
+    double = 0,
+    complex = 0i,
+    character = "",
+    raw = as.raw(0L)
+  )
+  x
 }
 
 vec_proxy_compare.agg_vec <- function(x, ...) {
