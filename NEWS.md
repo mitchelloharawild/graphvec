@@ -21,6 +21,9 @@
 
 * `bind_rows()` no longer drops all edges of a `node_vec` column.
 * A data-frame-backed `node_vec` can be a tibble column again.
+* A data-frame-backed `node_vec` no longer reports its columns as
+  element names, which made `vec_c()`, `bind_rows()`, joins and other vctrs
+  functions fail with an internal vctrs error.
 
 ## Breaking changes
 

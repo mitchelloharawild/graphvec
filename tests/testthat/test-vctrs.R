@@ -120,6 +120,41 @@ test_that("node_vec equality is value-based", {
   expect_equal(vctrs::vec_order(n[c(3, 1, 2)]), c(2L, 3L, 1L))
 })
 
+test_that("a data-frame-backed node_vec combines through vctrs", {
+  skip_if_not_installed("dplyr")
+  nd <- node_vec(data.frame(id = 1:3, lab = c("A", "B", "C")), from = 1:2, to = 2:3)
+  expect_null(names(nd))
+  expect_equal(vctrs::vec_c(nd, nd), c(nd, nd))
+  expect_equal(vctrs::list_unchop(list(nd, nd)), c(nd, nd))
+
+  df <- tibble::tibble(x = nd, y = 1:3)
+  expect_equal(dplyr::bind_rows(df, df)$x, c(nd, nd))
+  expect_equal(nrow(dplyr::left_join(df, df, by = "x")), 3L)
+  expect_equal(format(dplyr::summarise(df, z = dplyr::first(x))$z), "1:A")
+  expect_equal(format(dplyr::coalesce(nd, nd)), format(nd))
+
+  # One column, and as many columns as rows.
+  n1 <- node_vec(data.frame(id = 1:3), from = 1L, to = 2L)
+  expect_equal(vctrs::vec_c(n1, n1), c(n1, n1))
+  n2 <- node_vec(data.frame(id = 1:2, lab = c("A", "B")), from = 1L, to = 2L)
+  expect_null(names(vctrs::vec_c(n2, n2)))
+})
+
+test_that("names(x) <- NULL keeps a data-frame-backed node_vec's columns", {
+  nd <- node_vec(data.frame(id = 1:2, lab = c("A", "B")))
+  names(nd) <- NULL
+  expect_equal(format(nd), c("1:A", "2:B"))
+  expect_error(names(nd) <- c("a", "b"), "can't have names")
+})
+
+test_that("atomic node_vecs keep their element names", {
+  n <- node_vec(c(a = "A", b = "B"), 1L, 2L)
+  expect_equal(names(n), c("a", "b"))
+  expect_equal(names(n[2:1]), c("b", "a"))
+  names(n) <- c("p", "q")
+  expect_equal(names(n), c("p", "q"))
+})
+
 test_that("node_vecs with different `directed` can't be combined", {
   n <- node_vec("A")
   expect_error(

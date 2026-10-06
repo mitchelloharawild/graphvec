@@ -221,6 +221,29 @@ length.node_vec <- function(x) {
   NROW(strip_node_vec(x))
 }
 
+# A data-frame-backed node_vec's underlying list names are its columns, not
+# names for its nodes, so it has none. Otherwise vctrs/tibble would read the
+# columns as element names, and erase the columns with `names(x) <- NULL`.
+#' @export
+names.node_vec <- function(x) {
+  if (is_df_node_vec(x)) NULL else NextMethod()
+}
+
+#' @export
+`names<-.node_vec` <- function(x, value) {
+  if (!is_df_node_vec(x)) {
+    return(NextMethod())
+  }
+  if (!is.null(value)) {
+    stop("A `node_vec` of data frame values can't have names.", call. = FALSE)
+  }
+  x
+}
+
+is_df_node_vec <- function(x) {
+  "data.frame" %in% attr(x, "value_class")
+}
+
 # Registered dynamically for pillar via zzz.R; abbreviated type header, e.g. "N[chr]".
 type_sum.node_vec <- function(x, ...) {
   paste0("N[", pillar::type_sum(node_vec_data(x), ...), "]")
