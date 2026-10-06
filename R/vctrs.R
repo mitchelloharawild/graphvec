@@ -263,20 +263,15 @@ vec_ptype_abbr.node_vec <- function(x, ...) {
 
 vec_ptype2.node_vec.node_vec <- function(x, y, ...) {
   check_same_directed(x, y, ...)
-  new_node_vec(
-    x = vctrs::vec_ptype2(node_vec_data(x), node_vec_data(y), ...),
-    edges = node_vec_full_edges(x[integer()]),
-    directed = attr(x, "directed")
-  )
+  node_vec_with_values(x[integer()], vctrs::vec_ptype2(node_vec_data(x), node_vec_data(y), ...))
 }
 
 vec_cast.node_vec.node_vec <- function(x, to, ...) {
   check_same_directed_cast(x, to, ...)
-  new_node_vec(
-    x = vctrs::vec_cast(node_vec_data(x), node_vec_data(to), ...),
-    edges = node_vec_full_edges(x),
-    directed = attr(x, "directed")
-  )
+  # Casting only changes the node values' type, never the graph, so a cast
+  # node_vec still combines with the rest of its graph (vctrs casts every
+  # input to the common type before combining them).
+  node_vec_with_values(x, vctrs::vec_cast(node_vec_data(x), node_vec_data(to), ...))
 }
 
 # -- edge_vec

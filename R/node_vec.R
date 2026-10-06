@@ -94,11 +94,17 @@ new_node_vec <- function(x = list(), edges = data.frame(from = integer(), to = i
   new_node_vec_backend(x, graph = graph, edges = attrs, directed = directed)
 }
 
-# Low-level constructor for the non-hyperedge (Rust-backed) case: `edges` is
-# already the attribute-only table aligned with `graph`'s edge order, and
-# `graph` is already built -- used by new_node_vec() and by
-# nodes.edge_vec()'s free (no-Rust-call) reorientation.
-new_node_vec_backend <- function(x, graph, edges, directed) {
+# Low-level constructor for the non-hyperedge (Rust-backed) case. `graph` is
+# the shared GraphBackend the nodes belong to, `edges` the attribute-only
+# table aligned with `graph`'s edge order, and `node_id` the position in
+# `graph` of each element of `x` (one per element, NA for a missing node
+# with no position). A node_vec built from scratch covers its whole graph
+# (`node_id` is `seq_len(NROW(x))`); a slice keeps its parent's `graph` and
+# `edges` and only subsets `x` and `node_id`, the same way an edge_vec slice
+# keeps `graph` and subsets `edge_id` (see `[.node_vec`). Used by
+# new_node_vec() and by nodes.edge_vec()'s free (no-Rust-call)
+# reorientation.
+new_node_vec_backend <- function(x, graph, edges, directed, node_id = seq_len(NROW(x))) {
   value_class <- class(x)
   structure(
     x,
@@ -106,7 +112,65 @@ new_node_vec_backend <- function(x, graph, edges, directed) {
     value_class = value_class,
     graph = graph,
     edges = edges,
+    directed = directed,
+    node_id = node_id
+  )
+}
+
+# Whether a (Rust-backed) node_vec is exactly its graph's node set, in the
+# graph's own order: then `graph` and `edges` already describe its edges,
+# with no induced view to compute.
+node_vec_is_full <- function(x) {
+  identical(attr(x, "node_id"), seq_len(attr(x, "graph")$n_nodes()))
+}
+
+# The node_vec's own graph: the subgraph `graph` induces on `node_id`,
+# renumbered to positions 1..length(x), as a node_vec covering its whole
+# (new) graph. Everything that reads a node_vec's edges (edges(),
+# as.igraph(), the topology operations, waldo, c()) goes through this, so a
+# slice sees only the edges among its own nodes: an edge is dropped once
+# either end is no longer selected, and a replicated node (`x[c(1, 1)]`)
+# clones its edges once per replica, as GraphBackend$induced_subgraph()
+# defines.
+#
+# Computed lazily, on read, rather than when slicing (_dev/RUST_BACKEND.md
+# §2.2's "selection backing"): slicing is the hot path (dplyr verbs and
+# vctrs restores slice constantly) and costs O(length(i)) this way, while
+# the O(N + M) induced view is only paid for when edges are actually read.
+# A node_vec that is already full is returned as-is, for free. Nothing is
+# cached: the objects are immutable values, and an environment attribute to
+# cache into would break identical() and serialisation.
+node_vec_compact <- function(x) {
+  graph <- attr(x, "graph")
+  if (is.null(graph) || node_vec_is_full(x)) {
+    return(x)
+  }
+  remap <- graphvec_backend_induced_subgraph(graph, attr(x, "node_id"))
+  attrs <- attr(x, "edges")[remap$source_edge, , drop = FALSE]
+  rownames(attrs) <- NULL
+  directed <- attr(x, "directed")
+  new_node_vec_backend(
+    node_vec_data(x),
+    graph = graphvec_backend_new(length(x), remap$from, remap$to, directed),
+    edges = attrs,
     directed = directed
+  )
+}
+
+# `x`'s graph with its node values swapped for `values` (one per node), for
+# operations that relabel nodes without touching the graph: assigning plain
+# values with `[<-`, and vctrs casts. Keeps the graph identity.
+node_vec_with_values <- function(x, values) {
+  graph <- attr(x, "graph")
+  if (is.null(graph)) {
+    return(new_node_vec(values, edges = attr(x, "edges"), directed = attr(x, "directed")))
+  }
+  new_node_vec_backend(
+    values,
+    graph = graph,
+    edges = attr(x, "edges"),
+    directed = attr(x, "directed"),
+    node_id = attr(x, "node_id")
   )
 }
 
@@ -146,6 +210,7 @@ strip_node_vec <- function(x) {
   value_class <- attr(x, "value_class")
   attr(x, "edges") <- NULL
   attr(x, "graph") <- NULL # absent (NULL already) for the hyperedge case
+  attr(x, "node_id") <- NULL # likewise
   attr(x, "directed") <- NULL
   attr(x, "value_class") <- NULL
   oldClass(x) <- NULL
@@ -259,15 +324,15 @@ node_vec_reindex_edges <- function(n, idx, edges) {
 
   graph <- attr(x, "graph")
   if (!is.null(graph)) {
-    # Ordinary case: the Rust side computes the induced subgraph directly
-    # (dropped/cloned edges, remapped positions); `source_edge` says which
-    # original edge each surviving new edge carries its attributes from.
-    remap <- graphvec_backend_induced_subgraph(graph, idx)
-    attrs <- attr(x, "edges")
-    new_node_vec(
-      x = val,
-      edges = cbind_edge_fields(remap$from, remap$to, attrs[remap$source_edge, , drop = FALSE]),
-      directed = attr(x, "directed")
+    # Ordinary case: keep the whole graph and select positions in it, like
+    # an edge_vec slice. The induced subgraph is only worked out when the
+    # edges are read (node_vec_compact()).
+    new_node_vec_backend(
+      val,
+      graph = graph,
+      edges = attr(x, "edges"),
+      directed = attr(x, "directed"),
+      node_id = attr(x, "node_id")[idx]
     )
   } else {
     new_node_vec(
@@ -278,7 +343,8 @@ node_vec_reindex_edges <- function(n, idx, edges) {
   }
 }
 
-# A plain `value` relabels the selected nodes, keeping every edge. A
+# A plain `value` relabels the selected nodes, keeping the graph and every
+# edge. A
 # node_vec `value` brings its own graph: like c() and vctrs::vec_assign(),
 # the result is the disjoint union with the replaced nodes swapped out, so
 # `x`'s edges to them are dropped and `value`'s edges among the assigned
@@ -300,7 +366,11 @@ node_vec_reindex_edges <- function(n, idx, edges) {
   } else {
     data[i] <- value
   }
-  new_node_vec(x = data, edges = node_vec_full_edges(x), directed = attr(x, "directed"))
+  if (NROW(data) != length(x)) {
+    # Assigning past the end grows `x` with new, unconnected nodes.
+    x <- x[seq_len(NROW(data))]
+  }
+  node_vec_with_values(x, data)
 }
 
 #' @export
@@ -417,12 +487,14 @@ nodes.node_vec <- function(x, ...) {
 #' @rdname reorient
 #' @export
 edges.node_vec <- function(x, ...) {
+  x <- node_vec_compact(x)
   graph <- attr(x, "graph")
   if (!is.null(graph)) {
-    # Free reorientation (_dev/RUST_BACKEND.md §2.3): a node_vec's `edges`
-    # attribute is always already aligned 1:1 with `graph`'s edge order, so
-    # this is just a re-wrap -- same graph pointer, same attribute table,
-    # no Rust call, no from/to materialised.
+    # Free reorientation (_dev/RUST_BACKEND.md §2.3) for a node_vec that
+    # covers its whole graph: its `edges` attribute is already aligned 1:1
+    # with `graph`'s edge order, so this is just a re-wrap -- same graph
+    # pointer, same attribute table, no Rust call, no from/to materialised.
+    # A slice was first compacted to its own induced subgraph above.
     return(new_edge_vec_backend(
       attrs = attr(x, "edges"),
       nodes = node_vec_data(x),
@@ -453,6 +525,7 @@ edges.node_vec <- function(x, ...) {
 # materialised transiently from `graph`, never kept as a second persistent
 # copy (new_node_vec() strips them back out again once the caller is done).
 node_vec_full_edges <- function(x) {
+  x <- node_vec_compact(x)
   graph <- attr(x, "graph")
   if (is.null(graph)) {
     return(attr(x, "edges"))

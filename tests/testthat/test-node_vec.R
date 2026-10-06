@@ -122,13 +122,16 @@ test_that("`[.node_vec` carries edge attributes through the induced-subgraph rem
     weight = c(1, 2, 5)
   )
   m <- g[2:3]
-  expect_equal(attr(m, "edges")$weight, 2)
+  # Rewritten: a slice now keeps its parent's whole graph (and attribute
+  # table) and computes its induced edges on read, so check via edges().
+  expect_equal(edges(m)$weight, 2)
 })
 
 test_that("`[.node_vec` clones edge attributes when a node is replicated", {
   g <- node_vec(x = c("A", "B"), from = 1L, to = 2L, weight = 42)
   m <- g[c(1, 1, 2)]
-  expect_equal(attr(m, "edges")$weight, c(42, 42))
+  # Rewritten (see above): check via edges(), not the shared attribute table.
+  expect_equal(edges(m)$weight, c(42, 42))
 })
 
 test_that("format.node_vec() formats the underlying vector", {
@@ -351,7 +354,8 @@ test_that("rep.node_vec() clones a replicated node's incident edges, like `[` do
   # is cloned once per combination of A's replicas (1, 3) and B's (2, 4).
   # Rewritten (see above): check via edges()/format(), not internal positions.
   expect_equal(format(edges(r)), rep("[A]->[B]", 4))
-  expect_equal(attr(r, "edges")$weight, rep(42, 4))
+  # Rewritten (see `[.node_vec` above): via edges(), not the attribute table.
+  expect_equal(edges(r)$weight, rep(42, 4))
 })
 
 test_that("append() works on a node_vec via length()/c()/`[` without a bespoke method", {
@@ -538,4 +542,20 @@ test_that("a data-frame-backed node_vec is a single data.frame column", {
   expect_equal(edge_pairs(df[2:3, ]$v), "1->2")
   expect_output(print(df), "1:A")
   expect_equal(names(as.data.frame(n)), "n")
+})
+
+# -- graph identity (_dev/graph-identity.md) -------------------------------
+
+test_that("a node_vec slice keeps its graph and only sees the induced edges", {
+  n <- node_vec(c("A", "B", "C", "A"), from = c(1L, 2L, 3L), to = c(2L, 3L, 1L))
+  s <- n[c(3, 1, 2)]
+  expect_identical(attr(s, "graph"), attr(n, "graph"))
+  expect_equal(format(edges(s)), c("[A]->[B]", "[B]->[C]", "[C]->[A]"))
+  expect_equal(edge_pairs(s), c("2->3", "3->1", "1->2"))
+  expect_equal(edge_pairs(n[c(1, 2, 4)]), "1->2")
+  expect_equal(n_edges(n[c(1, 2, 4)]), 1L)
+  expect_equal(node_degree(n[c(1, 2, 4)]), c(1L, 1L, 0L))
+  expect_equal(n_nodes(n[2:3]), 2L)
+  # A slice covering the whole graph in order reads the graph as is.
+  expect_identical(backend_of(n[1:4]), attr(n, "graph"))
 })

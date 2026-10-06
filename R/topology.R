@@ -31,6 +31,12 @@ backend_of <- function(x) {
   if (is.null(graph)) {
     check_no_hyperedges()
   }
+  if (inherits(x, "node_vec")) {
+    # A node_vec slice keeps its parent's whole graph plus the positions of
+    # its own nodes in it; its own graph is the induced subgraph on those
+    # (free for a node_vec that covers its whole graph).
+    graph <- attr(node_vec_compact(x), "graph")
+  }
   graph
 }
 
@@ -57,8 +63,9 @@ check_no_hyperedges <- function() {
 
 # A backend covering *exactly* the edges `x` currently holds.
 #
-# For a `node_vec`, and for an `edge_vec` that still spans every edge of its
-# graph in the graph's own order, that is the shared backend itself -- free.
+# For a `node_vec` (backend_of() already gives its own, induced, graph), and
+# for an `edge_vec` that still spans every edge of its graph in the graph's
+# own order, that is the shared backend itself -- free.
 #
 # A *sliced* `edge_vec` is the interesting case: it keeps its parent graph's
 # pointer plus an `edge_id` selection into it (`_dev/RUST_BACKEND.md` §2.2),
