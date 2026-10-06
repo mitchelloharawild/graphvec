@@ -569,6 +569,26 @@ field_is_missing <- function(col) {
   is.na(col)
 }
 
+# The per-edge values to sort edges by: edge_vec_value_fields(), with each
+# hyperedge role's node sets replaced by their lexicographic rank within `x`.
+# Shared by xtfrm() and vctrs' order proxy so the two agree.
+edge_vec_order_fields <- function(x) {
+  fields <- edge_vec_value_fields(x)
+  for (role in c("from", "to")) {
+    if (is.list(fields[[role]]) && !is.data.frame(fields[[role]])) {
+      fields[[role]] <- incidence_set_rank(attr(x, "nodes"), edge_vec_endpoints(x)[[role]])
+    }
+  }
+  fields
+}
+
+# Ranks for order()/sort()/dplyr::desc(): by the node values at each end,
+# then the edge attributes, as vctrs::vec_order() sorts them.
+#' @export
+xtfrm.edge_vec <- function(x) {
+  rank_rows(edge_vec_order_fields(x), length(x))
+}
+
 # Whether `nodes` holds values to identify nodes by, rather than being the
 # default empty data frame.
 has_node_values <- function(nodes) {

@@ -30,6 +30,40 @@ rbind_fill <- function(dfs) {
   do.call(rbind, dfs)
 }
 
+# Dense rank of the rows of `cols`, a list of key columns (data frame columns
+# included, compared column by column), sorting lexicographically like
+# vctrs::vec_rank(ties = "dense"): missing values last within each column
+# and characters in the C locale. A row is NA only when every key is missing.
+rank_rows <- function(cols, n) {
+  keys <- flatten_keys(cols)
+  if (length(keys) == 0L) {
+    return(rep(1L, n))
+  }
+  ord <- do.call(order, c(unname(keys), list(na.last = TRUE, method = "radix")))
+  # A new rank starts wherever any key differs from the row sorted before it.
+  new_rank <- rep(n > 0L, n)
+  if (n > 1L) {
+    new_rank[-1L] <- Reduce(`|`, lapply(keys, function(k) {
+      s <- k[ord]
+      prev <- s[-n]
+      cur <- s[-1L]
+      same <- (cur == prev) | (is.na(cur) & is.na(prev))
+      is.na(same) | !same
+    }))
+  }
+  out <- integer(n)
+  out[ord] <- cumsum(new_rank)
+  out[Reduce(`&`, lapply(keys, is.na))] <- NA_integer_
+  out
+}
+
+# Splices data frame columns into a flat list of keys that order() can sort.
+flatten_keys <- function(cols) {
+  unlist(lapply(cols, function(col) {
+    if (is.data.frame(col)) flatten_keys(col) else list(xtfrm(col))
+  }), recursive = FALSE)
+}
+
 # `[[` selects exactly one element, by a single position.
 check_scalar_index <- function(i) {
   if (length(i) != 1L || is.na(i)) {

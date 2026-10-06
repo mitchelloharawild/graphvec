@@ -83,6 +83,24 @@ incidence_slice <- function(nodes, field) {
   lapply(field, function(idx) slice_rows(nodes, idx))
 }
 
+# Dense lexicographic rank of each hyperedge's node set, by the order of the
+# node values. Shorter sets sort before longer ones sharing their prefix.
+# Ranks are only comparable within the one field, which is all sorting needs.
+incidence_set_rank <- function(nodes, field) {
+  node_rank <- if (has_node_values(nodes)) {
+    rank_rows(list(nodes), NROW(nodes))
+  } else {
+    seq_len(max(c(0L, unlist(field))))
+  }
+  sets <- lapply(field, function(idx) node_rank[idx])
+  width <- max(c(0L, lengths(sets)))
+  # Pad with 0, below every rank, so a prefix sorts first.
+  cols <- lapply(seq_len(width), function(k) {
+    vapply(sets, function(s) if (length(s) >= k) s[[k]] else 0L, integer(1))
+  })
+  rank_rows(cols, length(field))
+}
+
 # Every way an edge's from/to membership survives a node reindex (slicing,
 # replication, or dropping): `val` is the edge's old position(s) in this
 # role -- length 1 for an ordinary column, any length for a hyperedge one --

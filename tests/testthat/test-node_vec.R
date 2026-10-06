@@ -384,6 +384,20 @@ test_that("order() sorts a node_vec by node value, not position", {
   expect_equal(order(g), c(2L, 3L, 1L))
 })
 
+test_that("a data-frame node_vec sorts row-wise by value with base and dplyr", {
+  g <- node_vec(data.frame(id = c(2L, 1L, 2L), lab = c("b", "z", "a")), from = 1L, to = 2L)
+  expect_equal(order(g), c(2L, 3L, 1L))
+  expect_equal(rev(order(g)), c(1L, 3L, 2L))
+  s <- sort(g)
+  expect_s3_class(s, "node_vec")
+  expect_equal(format(s), c("1:z", "2:a", "2:b"))
+  # The edge still joins 2:b to 1:z, now at positions 3 and 1.
+  expect_equal(edge_pairs(s), "3->1")
+
+  skip_if_not_installed("dplyr")
+  expect_equal(order(dplyr::desc(g)), c(1L, 3L, 2L))
+})
+
 test_that("print.node_vec() shows a header and the formatted values, not raw attributes", {
   g <- node_vec(x = c("A", "B"), from = 1L, to = 2L)
   expect_output(print(g), "<node_vec[2]>", fixed = TRUE)

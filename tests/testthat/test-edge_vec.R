@@ -400,3 +400,26 @@ test_that("edge_vec labels are used by pivot_wider(), write_csv() and str_c()", 
     c("[A]->[B]!", "[B]->[C]!", "[C]->[A]!", "[A]->[B]!")
   )
 })
+
+test_that("edge_vecs sort by node values, then attributes, with base and dplyr", {
+  e <- edge_vec(c(2L, 1L, 1L, 3L, 1L), c(3L, 3L, 2L, 1L, 2L), w = c(1, 2, 3, 4, 0), nodes = c("A", "B", "C"))
+  expect_equal(order(e), c(5L, 3L, 2L, 1L, 4L))
+  expect_equal(rev(order(e)), c(4L, 1L, 2L, 3L, 5L))
+  s <- sort(e)
+  expect_s3_class(s, "edge_vec")
+  expect_equal(format(s), c("[A]->[B]", "[A]->[B]", "[A]->[C]", "[B]->[C]", "[C]->[A]"))
+  expect_equal(s$w, c(0, 3, 2, 1, 4))
+
+  # Data frame node values sort column by column.
+  d <- edge_vec(1:3, c(2L, 3L, 1L), nodes = data.frame(g = c("x", "x", "a"), k = 3:1))
+  expect_equal(order(d), c(3L, 2L, 1L))
+  # Without node data, by position.
+  expect_equal(order(edge_vec(c(2L, 1L), c(1L, 2L))), c(2L, 1L))
+
+  # Hyperedge node sets sort lexicographically, a prefix first.
+  h <- edge_vec(list(1:2, 3L, 1L, 1:3), list(3L, 1L, 2L, 1L), nodes = c("A", "B", "C"))
+  expect_equal(format(sort(h)), c("[A]->[B]", "[{A,B}]->[C]", "[{A,B,C}]->[A]", "[C]->[A]"))
+
+  skip_if_not_installed("dplyr")
+  expect_equal(order(dplyr::desc(e)), c(4L, 1L, 2L, 3L, 5L))
+})

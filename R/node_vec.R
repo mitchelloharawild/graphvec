@@ -364,6 +364,17 @@ duplicated.node_vec <- function(x, incomparables = FALSE, ...) {
   duplicated(node_vec_data(x), incomparables = incomparables, ...)
 }
 
+# Ranks for order()/sort()/dplyr::desc() by node value; data frame values
+# sort row-wise, column by column, as vctrs::vec_order() sorts them.
+#' @export
+xtfrm.node_vec <- function(x) {
+  data <- node_vec_data(x)
+  if (is.data.frame(data)) {
+    return(rank_rows(list(data), length(x)))
+  }
+  xtfrm(data)
+}
+
 #' @export
 anyDuplicated.node_vec <- function(x, incomparables = FALSE, ...) {
   anyDuplicated(node_vec_data(x), incomparables = incomparables, ...)

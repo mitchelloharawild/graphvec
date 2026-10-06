@@ -300,13 +300,9 @@ vec_proxy_equal.edge_vec <- function(x, ...) {
 # Ordered by the node values at each end, then the edge attributes. A
 # hyperedge role sorts its node sets lexicographically, by rank within `x`,
 # so this only orders a single vector (which is all vec_order() needs).
+# Same fields as xtfrm.edge_vec(), so base and vctrs sorting agree.
 vec_proxy_order.edge_vec <- function(x, ...) {
-  fields <- edge_vec_value_fields(x)
-  for (role in c("from", "to")) {
-    if (is.list(fields[[role]]) && !is.data.frame(fields[[role]])) {
-      fields[[role]] <- incidence_set_rank(attr(x, "nodes"), edge_vec_endpoints(x)[[role]])
-    }
-  }
+  fields <- edge_vec_order_fields(x)
   vctrs::vec_proxy_order(vctrs::new_data_frame(fields, n = length(x)))
 }
 
@@ -319,25 +315,6 @@ vec_proxy_compare.edge_vec <- function(x, ...) {
     stop("Can't compare hyperedges with `vec_compare()`; use `vec_order()` to sort them.", call. = FALSE)
   }
   vctrs::vec_proxy_compare(vctrs::new_data_frame(edge_vec_value_fields(x), n = length(x)))
-}
-
-# Dense lexicographic rank of each hyperedge's node set, by the order of the
-# node values. Shorter sets sort before longer ones sharing their prefix.
-incidence_set_rank <- function(nodes, field) {
-  node_rank <- if (has_node_values(nodes)) {
-    vctrs::vec_rank(nodes, ties = "dense", incomplete = "na")
-  } else {
-    seq_len(max(c(0L, unlist(field))))
-  }
-  sets <- lapply(field, function(idx) node_rank[idx])
-  width <- max(c(0L, lengths(sets)))
-  cols <- lapply(seq_len(width), function(k) {
-    vapply(sets, function(s) if (length(s) >= k) s[[k]] else 0L, integer(1))
-  })
-  if (width == 0L) {
-    return(integer(length(field)))
-  }
-  vctrs::vec_rank(vctrs::new_data_frame(cols, n = length(field)), ties = "dense", incomplete = "na")
 }
 
 vec_ptype_abbr.edge_vec <- function(x, ...) {

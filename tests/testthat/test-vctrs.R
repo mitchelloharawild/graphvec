@@ -272,6 +272,16 @@ test_that("edge_vecs sort by node values, including hyperedges", {
   expect_error(vctrs::vec_compare(h, h), "Can't compare hyperedges")
 })
 
+test_that("base order() agrees with vec_order() for edge_vecs and node_vecs", {
+  e <- edge_vec(c(2L, 1L, 1L, 3L, 1L), c(3L, 3L, 2L, 1L, 2L), w = c(1, 2, 3, 4, 0), nodes = c("A", "B", "C"))
+  h <- edge_vec(list(1:2, 3L, 1L, 1:3), list(3L, 1L, 2L, 1L), nodes = c("A", "B", "C"))
+  d <- edge_vec(1:3, c(2L, 3L, 1L), nodes = data.frame(g = c("x", "x", "a"), k = 3:1))
+  n <- node_vec(data.frame(id = c(2L, 1L, 2L), lab = c("b", "z", "a")))
+  for (x in list(e, h, d, edge_vec(c(2L, 1L), c(1L, 2L)), n, node_vec(c(3, 1, 2)))) {
+    expect_equal(order(x), vctrs::vec_order(x))
+  }
+})
+
 test_that("[<- on an edge_vec matches vec_assign()", {
   e <- edge_vec(1:2, 2:3, w = c(5, 6), nodes = c("A", "B", "C"))
   g <- edge_vec(1L, 2L, w = 9, nodes = c("X", "Y"))
