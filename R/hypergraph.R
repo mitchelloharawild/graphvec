@@ -56,13 +56,19 @@ as_incidence_list <- function(field) {
 
 # Per-edge label for a from/to field, for format()/print(): the ordinary
 # node_label() for a ordinary (scalar) column, or one "{a,b}"-style label per
-# edge, for a hyperedge column.
+# edge, for a hyperedge column. With no node data (a zero-column data frame,
+# the edge_vec() default), nodes are labelled by position instead.
 incidence_label <- function(nodes, field) {
+  label <- if (is.data.frame(nodes) && ncol(nodes) == 0L) {
+    function(idx) as.character(idx)
+  } else {
+    function(idx) node_label(slice_rows(nodes, idx))
+  }
   if (!is.list(field)) {
-    return(node_label(slice_rows(nodes, field)))
+    return(label(field))
   }
   vapply(field, function(idx) {
-    lbl <- node_label(slice_rows(nodes, idx))
+    lbl <- label(idx)
     if (length(lbl) == 1L) lbl else paste0("{", paste(lbl, collapse = ","), "}")
   }, character(1))
 }

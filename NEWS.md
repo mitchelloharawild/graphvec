@@ -38,6 +38,9 @@
 
 * `bind_rows()` no longer drops all edges of a `node_vec` column.
 * A data-frame-backed `node_vec` can be a tibble column again.
+* `format()` and `print()` on an `edge_vec` with no node data now label
+  each endpoint by its node position (e.g. `[1]->[2]`), rather than
+  returning nothing.
 * vctrs no longer treats `<aggregated>` as incomplete, so
   `tidyr::drop_na()` keeps `<aggregated>` rows, and `vec_equal()` gives
   `FALSE` rather than `NA` when comparing `<aggregated>` with a value.

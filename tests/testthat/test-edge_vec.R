@@ -7,6 +7,18 @@ test_that("edge_vec() returns an edge_vec object", {
   expect_s3_class(e, "edge_vec")
 })
 
+test_that("format() labels endpoints by position when there's no node data", {
+  expect_equal(format(edge_vec(1:2, 2:3)), c("[1]->[2]", "[2]->[3]"))
+  expect_equal(format(edge_vec(1:2, 2:3, directed = FALSE)), c("[1]--[2]", "[2]--[3]"))
+  expect_equal(
+    format(edge_vec(list(1:2, integer()), list(3L, 1L))),
+    c("[{1,2}]->[3]", "[{}]->[1]")
+  )
+  expect_equal(format(edge_vec(1:2, 2:3)[2]), "[2]->[3]")
+  expect_equal(format(edge_vec()), character())
+  expect_output(print(edge_vec(1L, 2L)), "[1]->[2]", fixed = TRUE)
+})
+
 test_that("edge_vec() preserves the number of edges", {
   e <- edge_vec(
     from = c(1L, 2L, 1L, 3L),
