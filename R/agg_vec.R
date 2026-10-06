@@ -191,6 +191,15 @@ as.list.agg_vec <- function(x, ...) {
   lapply(seq_along(x), function(i) x[i])
 }
 
+# A single column, like vctrs' as.data.frame.vctrs_vctr(), rather than
+# as.data.frame.list() splitting the underlying list into columns.
+#' @export
+as.data.frame.agg_vec <- function(x, row.names = NULL, optional = FALSE, ...,
+    nm = paste(deparse(substitute(x), width.cutoff = 500L), collapse = " ")) {
+  force(nm)
+  as.data.frame.vector(x, row.names = row.names, optional = optional, ..., nm = nm)
+}
+
 #' @export
 c.agg_vec <- function(...) {
   xs <- list(...)

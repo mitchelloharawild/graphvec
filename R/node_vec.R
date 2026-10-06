@@ -343,6 +343,14 @@ as.list.node_vec <- function(x, ...) {
   lapply(seq_along(x), function(i) x[[i]])
 }
 
+# A single column, as for as.data.frame.agg_vec(), whatever the node values.
+#' @export
+as.data.frame.node_vec <- function(x, row.names = NULL, optional = FALSE, ...,
+    nm = paste(deparse(substitute(x), width.cutoff = 500L), collapse = " ")) {
+  force(nm)
+  as.data.frame.vector(x, row.names = row.names, optional = optional, ..., nm = nm)
+}
+
 # Value-based and row-wise for data frame values, the same duplicates that
 # unique.node_vec() drops.
 #' @export

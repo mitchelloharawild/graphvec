@@ -463,3 +463,15 @@ test_that("data-frame node_vecs can't be plotted without format()", {
   b <- ggplot2::ggplot_build(p)
   expect_equal(b$layout$panel_params[[1]]$x$get_labels(), c("A", "B", "C"))
 })
+
+test_that("a data-frame-backed node_vec is a single data.frame column", {
+  n <- node_vec(data.frame(id = 1:3, lab = c("A", "B", "C")), 1:2, 2:3)
+  df <- data.frame(v = n, y = 1:3)
+  expect_equal(names(df), c("v", "y"))
+  expect_equal(nrow(df), 3L)
+  expect_s3_class(df[2:3, ]$v, "node_vec")
+  expect_equal(format(df[2:3, ]$v), c("2:B", "3:C"))
+  expect_equal(edge_pairs(df[2:3, ]$v), "1->2")
+  expect_output(print(df), "1:A")
+  expect_equal(names(as.data.frame(n)), "n")
+})

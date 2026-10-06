@@ -167,3 +167,14 @@ test_that("agg_vec can't be plotted without format()", {
   p <- ggplot2::ggplot(df, ggplot2::aes(k, y)) + ggplot2::geom_col()
   expect_error(ggplot2::ggplot_build(p), "use format\\(\\)")
 })
+
+test_that("an agg_vec is a single data.frame column", {
+  v <- agg_vec(c(NA, "B", "A"), c(TRUE, FALSE, FALSE))
+  df <- data.frame(v = v, y = 1:3)
+  expect_equal(names(df), c("v", "y"))
+  expect_equal(nrow(df), 3L)
+  expect_s3_class(df[2:3, ]$v, "agg_vec")
+  expect_equal(format(df[2:3, ]$v), c("B", "A"))
+  expect_output(print(df), "<aggregated>")
+  expect_equal(names(as.data.frame(v)), "v")
+})
