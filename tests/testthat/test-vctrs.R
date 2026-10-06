@@ -79,6 +79,20 @@ test_that("<aggregated> sorts last", {
   expect_equal(order(v), c(3L, 2L, 1L))
 })
 
+test_that("<aggregated> compares equal to itself and above any value", {
+  v <- agg_vec(c(NA, "B", "A", NA), c(TRUE, FALSE, FALSE, FALSE))
+  expect_equal(vctrs::vec_compare(v, v), c(0L, 0L, 0L, NA))
+  expect_equal(vctrs::vec_compare(v, v[c(2, 1, 1, 1)]), c(1L, -1L, -1L, NA))
+  expect_equal(vctrs::vec_order(v), c(3L, 2L, 1L, 4L))
+  expect_equal(vctrs::vec_rank(v, incomplete = "na"), c(3L, 2L, 1L, NA))
+
+  skip_if_not_installed("dplyr")
+  expect_equal(dplyr::between(v, "A", "B"), c(FALSE, TRUE, TRUE, NA))
+  df <- tibble::tibble(k = v, i = 1:4)
+  expect_equal(dplyr::arrange(df, k)$i, c(3L, 2L, 1L, 4L))
+  expect_equal(dplyr::arrange(df, dplyr::desc(k))$i, c(1L, 2L, 3L, 4L))
+})
+
 test_that("agg_vec works with dplyr verbs", {
   skip_if_not_installed("dplyr")
   df <- tibble::tibble(k = agg_vec(c(NA, "A", "B"), c(TRUE, FALSE, FALSE)), y = 1:3)

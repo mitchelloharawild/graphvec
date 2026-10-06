@@ -93,11 +93,16 @@ fill_proxy <- function(x, where) {
 }
 
 vec_proxy_compare.agg_vec <- function(x, ...) {
-  # `agg` first, so `<aggregated>` sorts after every disaggregated value.
-  vctrs::new_data_frame(
-    list(agg = agg_vec_is_agg(x), x = vctrs::vec_proxy_compare(agg_vec_expand(x))),
-    n = length(x)
-  )
+  vals <- agg_vec_expand(x)
+  is_agg <- agg_vec_is_agg(x)
+  # As for vec_proxy_equal.agg_vec(): a missing disaggregated value is NA
+  # throughout, so it compares as NA and sorts with other missing values,
+  # while `<aggregated>` gets a filler value so it compares equal to itself.
+  # `agg` comes first, so `<aggregated>` sorts after every value.
+  agg <- is_agg
+  agg[!is_agg & vctrs::vec_detect_missing(vals)] <- NA
+  proxy <- fill_proxy(vctrs::vec_proxy_compare(vals), is_agg)
+  vctrs::new_data_frame(list(agg = agg, x = proxy), n = length(x))
 }
 
 vec_ptype_abbr.agg_vec <- function(x, ...) {
