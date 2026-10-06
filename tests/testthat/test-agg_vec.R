@@ -159,3 +159,11 @@ test_that("[[ and as.list() give single-element agg_vecs", {
   expect_equal(as.list(v), list(v[1], v[2], v[3]))
   expect_equal(vapply(v, format, character(1)), c("<aggregated>", "A", "B"))
 })
+
+test_that("agg_vec can't be plotted without format()", {
+  skip_if_not_installed("ggplot2")
+  df <- data.frame(y = 1:3)
+  df$k <- agg_vec(c(NA, "A", "B"), c(TRUE, FALSE, FALSE))
+  p <- ggplot2::ggplot(df, ggplot2::aes(k, y)) + ggplot2::geom_col()
+  expect_error(ggplot2::ggplot_build(p), "use format\\(\\)")
+})

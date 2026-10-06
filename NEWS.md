@@ -16,6 +16,9 @@
   `vec_order()`, `dplyr::arrange()`, `order()` and `sort()`.
 * Added `as.character()`, `unique()`, `duplicated()` and `rep()` methods for
   `agg_vec`, and a `rep()` method for `edge_vec`.
+* Adding an `agg_vec` to a ggplot2 plot now gives an error suggesting
+  `format()`, rather than defaulting to a continuous scale. ggplot2 is not
+  a hard dependency.
 * Added `[[`, `[<-`, `[[<-` and `as.list()` methods for `agg_vec` and
   `edge_vec`, so assignment (including `df$col[i] <- value`) and
   `purrr::map()`/`lapply()` work element-wise. Assigning an `agg_vec`
