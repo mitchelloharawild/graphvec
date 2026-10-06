@@ -262,6 +262,22 @@ test_that("edge_vecs sort by node values, including hyperedges", {
   expect_error(vctrs::vec_compare(h, h), "Can't compare hyperedges")
 })
 
+test_that("[<- on an edge_vec matches vec_assign()", {
+  e <- edge_vec(1:2, 2:3, w = c(5, 6), nodes = c("A", "B", "C"))
+  g <- edge_vec(1L, 2L, w = 9, nodes = c("X", "Y"))
+  x <- e
+  x[1] <- g
+  expect_equal(vctrs::vec_equal(x, vctrs::vec_assign(e, 1L, g)), c(TRUE, TRUE))
+})
+
+test_that("purrr::map() iterates over agg_vec and edge_vec elements", {
+  skip_if_not_installed("purrr")
+  v <- agg_vec(c(NA, "A", "B"), c(TRUE, FALSE, FALSE))
+  expect_equal(purrr::map_chr(v, format), c("<aggregated>", "A", "B"))
+  e <- edge_vec(1:2, 2:3, nodes = c("A", "B", "C"))
+  expect_equal(purrr::map_chr(e, format), c("[A]->[B]", "[B]->[C]"))
+})
+
 test_that("edge_vecs with different `directed` can't be combined", {
   e <- edge_vec(1L, 2L, nodes = c("A", "B"))
   expect_error(

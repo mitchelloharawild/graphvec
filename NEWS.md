@@ -16,6 +16,14 @@
   `vec_order()`, `dplyr::arrange()`, `order()` and `sort()`.
 * Added `as.character()`, `unique()`, `duplicated()` and `rep()` methods for
   `agg_vec`, and a `rep()` method for `edge_vec`.
+* Added `[[`, `[<-`, `[[<-` and `as.list()` methods for `agg_vec` and
+  `edge_vec`, so assignment (including `df$col[i] <- value`) and
+  `purrr::map()`/`lapply()` work element-wise. Assigning an `agg_vec`
+  element can set `<aggregated>`.
+* Added a `[<-` method for `node_vec`. A plain value relabels the selected
+  nodes and keeps their edges; a `node_vec` value replaces them, with its
+  own edges, as a disjoint union like `c()`. Assigning an `edge_vec` into
+  an `edge_vec` is also a disjoint union.
 * `edge_vec` equality now compares the node values at each end and the
   edge attributes, not node positions, so edge_vecs work as join keys and
   with `distinct()`/`count()` after `bind_rows()`. They sort by node values

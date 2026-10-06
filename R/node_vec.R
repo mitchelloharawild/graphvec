@@ -216,6 +216,31 @@ node_vec_reindex_edges <- function(n, idx, edges) {
   )
 }
 
+# A plain `value` relabels the selected nodes, keeping every edge. A
+# node_vec `value` brings its own graph: like c() and vctrs::vec_assign(),
+# the result is the disjoint union with the replaced nodes swapped out, so
+# `x`'s edges to them are dropped and `value`'s edges among the assigned
+# nodes are kept.
+#' @export
+`[<-.node_vec` <- function(x, i, value) {
+  if (missing(i)) {
+    i <- seq_along(x)
+  }
+  if (inherits(value, "node_vec")) {
+    pos <- seq_along(x)
+    pos[i] <- length(x) + seq_along(value)
+    return(c(x, value)[pos])
+  }
+  data <- node_vec_data(x)
+  if (is.data.frame(data)) {
+    data[i, ] <- value
+    rownames(data) <- NULL
+  } else {
+    data[i] <- value
+  }
+  new_node_vec(x = data, edges = attr(x, "edges"), directed = attr(x, "directed"))
+}
+
 #' @export
 length.node_vec <- function(x) {
   NROW(strip_node_vec(x))

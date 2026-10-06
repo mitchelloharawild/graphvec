@@ -361,3 +361,32 @@ test_that("print.node_vec() shows a header and the formatted values, not raw att
   expect_output(print(g), "[1] A B", fixed = TRUE)
   expect_false(grepl("attr\\(,", paste(capture.output(print(g)), collapse = "\n")))
 })
+
+test_that("[<- relabels nodes with plain values", {
+  n <- node_vec(c("A", "B", "C"), from = 1:2, to = 2:3)
+  n[1] <- "Z"
+  expect_equal(format(n), c("Z", "B", "C"))
+  expect_equal(attr(n, "edges")$from, 1:2)
+
+  nd <- node_vec(data.frame(id = 1:2, lab = c("A", "B")), from = 1L, to = 2L)
+  nd[2] <- data.frame(id = 9L, lab = "Z")
+  expect_equal(format(nd), c("1:A", "9:Z"))
+  expect_equal(nrow(attr(nd, "edges")), 1L)
+})
+
+test_that("[<- with a node_vec swaps in its nodes and their edges", {
+  n <- node_vec(c("A", "B", "C"), from = 1:2, to = 2:3)
+  m <- node_vec(c("X", "Y"), from = 1L, to = 2L)
+  x <- n
+  x[2:3] <- m
+  expect_equal(format(x), c("A", "X", "Y"))
+  expect_equal(attr(x, "edges")$from, 2L)
+  expect_equal(attr(x, "edges")$to, 3L)
+  skip_if_not_installed("vctrs")
+  expect_equal(x, vctrs::vec_assign(n, 2:3, m))
+
+  nd <- node_vec(data.frame(id = 1:3), from = 1:2, to = 2:3)
+  df <- tibble::tibble(x = nd)
+  df$x[2] <- nd[3]
+  expect_equal(format(df$x), c("1", "3", "3"))
+})

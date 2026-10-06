@@ -266,3 +266,27 @@ test_that("unique() and duplicated() compare edges by node values", {
   ed <- edge_vec(1:2, 2:3, nodes = data.frame(id = 1:3, lab = c("A", "B", "C")))
   expect_equal(format(unique(c(ed, ed))), c("[1:A]->[2:B]", "[2:B]->[3:C]"))
 })
+
+test_that("[<- assigns edges as a disjoint union", {
+  e <- edge_vec(1:2, 2:3, w = c(5, 6), nodes = c("A", "B", "C"))
+  g <- edge_vec(1L, 2L, w = 9, nodes = c("X", "Y"))
+  x <- e
+  x[1] <- g
+  expect_equal(format(x), c("[X]->[Y]", "[B]->[C]"))
+  expect_equal(x$w, c(9, 6))
+  expect_equal(attr(x, "nodes"), c("A", "B", "C", "X", "Y"))
+  x[[2]] <- e[[1]]
+  expect_equal(format(x), c("[X]->[Y]", "[A]->[B]"))
+  expect_error(x[1] <- 1L, "Can only assign")
+
+  h <- edge_vec(list(1:2), 3L, nodes = c("A", "B", "C"))
+  x <- e
+  x[2] <- h
+  expect_equal(format(x), c("[A]->[B]", "[{A,B}]->[C]"))
+})
+
+test_that("[[ and as.list() give single-edge edge_vecs", {
+  e <- edge_vec(1:2, 2:3, nodes = c("A", "B", "C"))
+  expect_equal(e[[2]], e[2])
+  expect_equal(as.list(e), list(e[1], e[2]))
+})

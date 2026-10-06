@@ -181,6 +181,41 @@ pillar_shaft.edge_vec <- function(x, ...) {
 }
 
 #' @export
+`[[.edge_vec` <- function(x, i, ...) {
+  check_scalar_index(i)
+  x[i]
+}
+
+# Assigning edges from another edge_vec is a disjoint union, like c() and
+# vctrs::vec_assign(): `value`'s nodes are appended to `x`'s and its edges
+# keep pointing at them, even if both have the same nodes.
+#' @export
+`[<-.edge_vec` <- function(x, i, value) {
+  if (!inherits(value, "edge_vec")) {
+    stop("Can only assign `edge_vec` objects into an `edge_vec`.", call. = FALSE)
+  }
+  pos <- seq_along(x)
+  if (missing(i)) {
+    pos[] <- length(x) + seq_along(value)
+  } else {
+    pos[i] <- length(x) + seq_along(value)
+  }
+  c(x, value)[pos]
+}
+
+#' @export
+`[[<-.edge_vec` <- function(x, i, value) {
+  check_scalar_index(i)
+  x[i] <- value
+  x
+}
+
+#' @export
+as.list.edge_vec <- function(x, ...) {
+  lapply(seq_along(x), function(i) x[i])
+}
+
+#' @export
 length.edge_vec <- function(x) {
   length(edge_vec_data(x)[["from"]]) # `from` is aligned 1:1 with edges
 }

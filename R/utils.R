@@ -29,3 +29,10 @@ rbind_fill <- function(dfs) {
   })
   do.call(rbind, dfs)
 }
+
+# `[[` selects exactly one element, by a single position.
+check_scalar_index <- function(i) {
+  if (length(i) != 1L || is.na(i)) {
+    stop("Can't select more or less than one element with `[[`.", call. = FALSE)
+  }
+}

@@ -74,7 +74,7 @@ new_agg_vec <- function(x, agg_pos) {
 
 # The disaggregated values, unwrapped.
 agg_vec_values <- function(x) {
-  x[[1L]]
+  .subset2(x, 1L)
 }
 
 # Full-length logical mask: TRUE at each aggregated position.
@@ -138,6 +138,48 @@ length.agg_vec <- function(x) {
   is_agg <- agg_vec_is_agg(x)[i]
   vals <- agg_vec_expand(x)[i]
   new_agg_vec(vals[!is_agg], which(is_agg))
+}
+
+#' @export
+`[[.agg_vec` <- function(x, i, ...) {
+  check_scalar_index(i)
+  x[i]
+}
+
+# Element-wise assignment, as for the full-length vector: `value` may be an
+# agg_vec (so `<aggregated>` can be assigned) or a plain vector of values,
+# which is never `<aggregated>`. Base recycling and coercion rules apply.
+#' @export
+`[<-.agg_vec` <- function(x, i, value) {
+  vals <- agg_vec_expand(x)
+  is_agg <- agg_vec_is_agg(x)
+  value_agg <- is_aggregated(value)
+  if (inherits(value, "agg_vec")) value <- agg_vec_expand(value)
+  if (missing(i)) {
+    vals[] <- value
+    is_agg[] <- value_agg
+  } else {
+    vals[i] <- value
+    is_agg[i] <- value_agg
+  }
+  # Positions added past the end (base `[<-` extends) are missing values.
+  is_agg[is.na(is_agg)] <- FALSE
+  new_agg_vec(vals[!is_agg], which(is_agg))
+}
+
+#' @export
+`[[<-.agg_vec` <- function(x, i, value) {
+  check_scalar_index(i)
+  if (length(value) != 1L) {
+    stop("`value` must be a single value.", call. = FALSE)
+  }
+  x[i] <- value
+  x
+}
+
+#' @export
+as.list.agg_vec <- function(x, ...) {
+  lapply(seq_along(x), function(i) x[i])
 }
 
 #' @export

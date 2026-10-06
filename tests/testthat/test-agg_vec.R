@@ -131,3 +131,31 @@ test_that("rep.agg_vec() keeps <aggregated> values", {
   v <- agg_vec(c(NA, "A"), c(TRUE, FALSE))
   expect_equal(format(rep(v, 2)), c("<aggregated>", "A", "<aggregated>", "A"))
 })
+
+test_that("[<- and [[<- assign values or <aggregated>", {
+  v <- agg_vec(c(NA, "A", "B"), c(TRUE, FALSE, FALSE))
+  x <- v
+  x[2] <- "Z"
+  expect_equal(format(x), c("<aggregated>", "Z", "B"))
+  x[3] <- v[1]
+  expect_equal(format(x), c("<aggregated>", "Z", "<aggregated>"))
+  x[1] <- "Q"
+  expect_equal(format(x), c("Q", "Z", "<aggregated>"))
+  x[[2]] <- v[[1]]
+  expect_equal(format(x), c("Q", "<aggregated>", "<aggregated>"))
+  x[5] <- "E"
+  expect_equal(is.na(x), c(FALSE, FALSE, FALSE, TRUE, FALSE))
+  expect_error(x[[1]] <- c("a", "b"), "single value")
+
+  df <- tibble::tibble(k = v)
+  df$k[1] <- "Z"
+  expect_equal(format(df$k), c("Z", "A", "B"))
+})
+
+test_that("[[ and as.list() give single-element agg_vecs", {
+  v <- agg_vec(c(NA, "A", "B"), c(TRUE, FALSE, FALSE))
+  expect_equal(v[[1]], v[1])
+  expect_error(v[[1:2]], "one element")
+  expect_equal(as.list(v), list(v[1], v[2], v[3]))
+  expect_equal(vapply(v, format, character(1)), c("<aggregated>", "A", "B"))
+})
