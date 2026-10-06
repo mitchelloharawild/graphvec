@@ -9,6 +9,15 @@ use rustworkx_core::petgraph::visit::{
 use rustworkx_core::petgraph::{Directed, Direction, EdgeType, Undirected};
 use std::collections::hash_map::RandomState;
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+// Source of `GraphBackend::uid`: one fresh, never-reused number per graph
+// built in this R session (see `uid()`).
+static NEXT_UID: AtomicU64 = AtomicU64::new(1);
+
+fn next_uid() -> u64 {
+    NEXT_UID.fetch_add(1, Ordering::Relaxed)
+}
 
 // One `Graph` instantiation, generic over `Ty: EdgeType`. `N`/`E` are both
 // `()` (no weights needed -- presence alone is the payload) and `Ix` stays
@@ -1157,6 +1166,7 @@ macro_rules! with_graph_view {
 struct GraphBackend {
     repr: Repr,
     directed: bool,
+    uid: u64,
 }
 
 #[extendr]
@@ -1176,6 +1186,7 @@ impl GraphBackend {
             return GraphBackend {
                 repr: Repr::Dense(dense),
                 directed,
+                uid: next_uid(),
             };
         }
 
@@ -1192,6 +1203,7 @@ impl GraphBackend {
             return GraphBackend {
                 repr: Repr::Csr(csr),
                 directed,
+                uid: next_uid(),
             };
         }
 
@@ -1222,6 +1234,7 @@ impl GraphBackend {
                 self_loops,
             }),
             directed,
+            uid: next_uid(),
         }
     }
 
@@ -1246,6 +1259,18 @@ impl GraphBackend {
 
     fn is_directed(&self) -> bool {
         self.directed
+    }
+
+    /// A number unique to this graph among every graph built in the R
+    /// session, never reused (unlike a memory address, which can be once a
+    /// graph is garbage collected). A graph's identity at the R level is its
+    /// external pointer, compared with `identical()`; `uid()` is the same
+    /// identity as a plain value, for the places that need one to compare
+    /// across vectors, e.g. the `graph` column of an `edge_vec`'s vctrs
+    /// equality proxy (`R/vctrs.R`). A double, so it fits an R numeric
+    /// exactly (2^53 graphs is out of reach).
+    fn uid(&self) -> f64 {
+        self.uid as f64
     }
 
     /// Which physical representation this backend picked, as a stable name
@@ -1536,6 +1561,16 @@ mod tests {
         fn is_csr(&self) -> bool {
             matches!(self.repr, Repr::Csr(_))
         }
+    }
+
+    // Every graph gets its own identity, even when built from identical
+    // input, so two separately built graphs never compare as the same.
+    #[test]
+    fn uid_is_unique_per_graph() {
+        let a = GraphBackend::new(2, vec![1], vec![2], true);
+        let b = GraphBackend::new(2, vec![1], vec![2], true);
+        assert_ne!(a.uid(), b.uid());
+        assert_eq!(a.uid(), a.uid());
     }
 
     // A `node_vec`/`edge_vec` sliced with `x[i]` relies on `edge_endpoints()`

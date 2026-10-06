@@ -37,6 +37,17 @@ internally, 1-based at the R boundary) stay stable and match the row
 order of the R-side edge attribute table, for every representation.
 }
 
+\subsection{Method \code{uid}}{
+A number unique to this graph among every graph built in the R
+session, never reused (unlike a memory address, which can be once a
+graph is garbage collected). A graph's identity at the R level is its
+external pointer, compared with \code{identical()}; \code{uid()} is the same
+identity as a plain value, for the places that need one to compare
+across vectors, e.g. the \code{graph} column of an \code{edge_vec}'s vctrs
+equality proxy (\code{R/vctrs.R}). A double, so it fits an R numeric
+exactly (2^53 graphs is out of reach).
+}
+
 \subsection{Method \code{repr_name}}{
 Which physical representation this backend picked, as a stable name
 (\code{"general"}, \code{"dense"}, \code{"csr"}) -- the one diagnostic entry point

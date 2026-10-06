@@ -28,6 +28,17 @@ NULL
 #'order of the R-side edge attribute table, for every representation.
 #'}
 #'
+#'\subsection{Method `uid`}{
+#'A number unique to this graph among every graph built in the R
+#'session, never reused (unlike a memory address, which can be once a
+#'graph is garbage collected). A graph's identity at the R level is its
+#'external pointer, compared with `identical()`; `uid()` is the same
+#'identity as a plain value, for the places that need one to compare
+#'across vectors, e.g. the `graph` column of an `edge_vec`'s vctrs
+#'equality proxy (`R/vctrs.R`). A double, so it fits an R numeric
+#'exactly (2^53 graphs is out of reach).
+#'}
+#'
 #'\subsection{Method `repr_name`}{
 #'Which physical representation this backend picked, as a stable name
 #'(`"general"`, `"dense"`, `"csr"`) -- the one diagnostic entry point
@@ -116,6 +127,8 @@ GraphBackend$n_nodes <- function() .Call(wrap__GraphBackend__n_nodes, self)
 GraphBackend$n_edges <- function() .Call(wrap__GraphBackend__n_edges, self)
 
 GraphBackend$is_directed <- function() .Call(wrap__GraphBackend__is_directed, self)
+
+GraphBackend$uid <- function() .Call(wrap__GraphBackend__uid, self)
 
 GraphBackend$repr_name <- function() .Call(wrap__GraphBackend__repr_name, self)
 
