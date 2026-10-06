@@ -55,6 +55,7 @@
 * A data-frame-backed `node_vec` no longer reports its columns as
   element names, which made `vec_c()`, `bind_rows()`, joins and other vctrs
   functions fail with an internal vctrs error.
+* Tab completion after `$` on an `edge_vec` offers `from` and `to` again.
 
 ## Breaking changes
 

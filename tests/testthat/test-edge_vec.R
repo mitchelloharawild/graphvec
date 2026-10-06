@@ -323,3 +323,14 @@ test_that("nodes() of an edge_vec without node data labels nodes by position", {
   expect_equal(format(nodes(e)), c("1", "2", "3"))
   expect_equal(format(edges(nodes(e))), format(e))
 })
+
+test_that(".DollarNames() completes from, to and edge attributes", {
+  e <- edge_vec(1:2, 2:3, w = c(5, 6), nodes = c("A", "B", "C"))
+  expect_equal(utils::.DollarNames(e, ""), c("from", "to", "w"))
+  expect_equal(utils::.DollarNames(e, "^t"), "to")
+
+  expect_equal(utils::.DollarNames(edge_vec(1:2, 2:3), ""), c("from", "to"))
+
+  h <- edge_vec(list(1:2), 3L, nodes = c("A", "B", "C"))
+  expect_equal(utils::.DollarNames(h, ""), c("from", "to"))
+})

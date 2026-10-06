@@ -435,7 +435,8 @@ names.edge_vec <- function(x) {
 
 #' @export
 .DollarNames.edge_vec <- function(x, pattern){
-  utils::.DollarNames(edge_vec_data(x), pattern)
+  # from/to live in the graph backend, not the body, unless x is a hyperedge.
+  utils::findMatches(pattern, unique(c("from", "to", names(edge_vec_data(x)))))
 }
 
 #' @export
