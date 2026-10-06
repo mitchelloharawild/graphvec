@@ -33,6 +33,34 @@ A \code{node_vec} object.
 A \code{node_vec} is a vector of graph nodes with associated edges stored as
 attributes.
 }
+\section{Slicing and combining}{
+
+Every \code{node_vec} belongs to a graph. Slicing (\code{x[i]}, \code{dplyr::filter()},
+\code{dplyr::arrange()}, ...) keeps that graph and selects nodes in it: the
+slice's edges are the induced subgraph on its nodes, so an edge is
+dropped once either of its ends is, and a node repeated within a slice
+(\code{x[c(1, 1)]}, \code{\link[=rep]{rep()}}) has its edges cloned for each copy.
+
+Combining node_vecs, with \code{\link[=c]{c()}}, \verb{[<-}, \verb{[[<-}, \code{vctrs::vec_c()},
+\code{dplyr::bind_rows()}, \code{dplyr::if_else()}, \code{dplyr::rows_patch()} and the
+like, groups the nodes by the graph they belong to:
+\itemize{
+\item Nodes of the same graph go back into that graph, keeping every edge
+between them, including edges between nodes that came from different
+inputs: \code{c(x[1:2], x[3:4])} is \code{x}, and \code{if_else(cond, x, x)} or
+\code{x[2] <- x[2]} keep all of \code{x}'s edges.
+\item The same node coming from two different inputs makes them separate
+copies of the graph, a disjoint union: \code{c(x, x)} has two copies of
+every node and edge, and \code{c(x[1:2], x[2:3])} two copies of \code{x[2]}, each
+with only its own input's edges.
+\item Nodes of different graphs are a disjoint union of those graphs. The
+nodes always stay in the order they're combined in.
+}
+
+Assigning plain values with \verb{[<-} relabels nodes and keeps the graph.
+Equality (\code{\link[=duplicated]{duplicated()}}, \code{\link[=unique]{unique()}}, joins) is by node value.
+}
+
 \examples{
 
 g <- node_vec(

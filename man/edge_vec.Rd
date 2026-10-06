@@ -41,6 +41,33 @@ An \code{edge_vec} object.
 An \code{edge_vec} is a vector of graph edges with associated node data stored as
 attributes.
 }
+\section{Slicing, combining and equality}{
+
+Every \code{edge_vec} belongs to a graph, which slicing keeps: \code{e[i]} selects
+edges of the same graph, between the same nodes.
+
+Combining edge_vecs, with \code{\link[=c]{c()}}, \verb{[<-}, \code{vctrs::vec_c()},
+\code{dplyr::bind_rows()}, \code{dplyr::rows_patch()} and the like, shares the
+graph between inputs of the same graph: their edges keep pointing at the
+same nodes, and the nodes aren't copied, so \code{c(e, e)} has the same nodes
+as \code{e}. Edge_vecs of different graphs are combined as a disjoint union of
+their graphs (each graph's nodes once, in order of first appearance); the
+edges always stay in the order they're combined in.
+
+Two edges are equal when they are edges of the same graph between the
+same node positions, with the same edge attributes, whether or not
+there is node data. This is what \code{\link[=duplicated]{duplicated()}}, \code{\link[=unique]{unique()}},
+\code{vctrs::vec_in()}, joins, \code{dplyr::distinct()} and \code{dplyr::count()} use,
+so \code{e[2]} matches the second edge of \code{e} (or of \code{c(e, e)}), but edges of
+two separately built edge_vecs never match, even with identical labels:
+to match those by label, compare \code{format(e)} explicitly, e.g.
+\code{dplyr::mutate(df, key = format(e))} before joining \code{by = "key"}.
+Edge_vecs sort by the node values at each end (then the edge
+attributes, then node positions to break ties). Hyperedges have no
+graph identity: they compare by node values and always combine as a
+disjoint union.
+}
+
 \examples{
 g <- edge_vec(
   from = c(1L, 2L, 1L, 3L),

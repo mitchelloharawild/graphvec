@@ -14,14 +14,21 @@
 \item{...}{Passed on.}
 }
 \value{
-A \code{node_vec} containing only the selected nodes, with \code{edges}
-restricted to the induced subgraph.
+A \code{node_vec} containing only the selected nodes, whose edges are
+the induced subgraph.
 }
 \description{
-Slicing a \code{node_vec} is an induced subgraph: edges that lose an endpoint
-are dropped, surviving edges are remapped to the new positions, and
-replicated nodes (e.g. \code{x[c(1, 1, 2)]}) clone the edges incident to the
-original.
+Slicing a \code{node_vec} behaves as an induced subgraph: edges that lose an
+endpoint are dropped, surviving edges are remapped to the new positions,
+and replicated nodes (e.g. \code{x[c(1, 1, 2)]}) clone the edges incident to
+the original.
+}
+\details{
+The slice still remembers which graph its nodes came from (and where in
+it they are), so putting slices of the same graph back together with
+\code{\link[=c]{c()}}, \verb{[<-} or a vctrs/dplyr operation restores the edges between them:
+\code{c(x[1:2], x[3:4])} has every edge of \code{x}, including those joining
+\code{x[2]} to \code{x[3]}. See \code{\link[=node_vec]{node_vec()}} for the rule.
 }
 \examples{
 g <- node_vec(

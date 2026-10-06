@@ -1,5 +1,36 @@
 # graphvec (development version)
 
+## Breaking changes
+
+* A `node_vec` slice now keeps the graph it came from, plus the positions
+  of its nodes in it, as an `edge_vec` slice already did. On its own a
+  slice behaves as before (its edges are the induced subgraph on its
+  nodes), but combining nodes of the same graph puts them back into that
+  graph with every edge between them. Nodes only become a separate,
+  disjoint copy where the same node comes from two different inputs, so
+  `c(n, n)` and `vec_c(n, n)` are still a disjoint union, while
+  `c(n[1:2], n[3:4])` now gives back `n`, including the edges between the
+  two halves. This applies to `c()`, `[<-`, `[[<-` and every vctrs
+  operation: `if_else(cond, n, n)`, `case_when()`, `coalesce()`,
+  `replace()`, no-op `rows_patch()`/`rows_update()`, `x[2] <- x[2]` and
+  `purrr::map_vec(n, identity)` now keep all of `n`'s edges instead of
+  dropping those between rows from different inputs.
+* `c()`, `vec_c()`, `[<-` and `bind_rows()` of `edge_vec`s of the same
+  graph now share it: the edges keep pointing at the same nodes, with one
+  node table, instead of copying the nodes for every input. Edge_vecs of
+  different graphs are still combined as a disjoint union, in row order.
+  No-op `rows_patch()`, `full_join(by = e)`, `drop_na()` and `fill()` no
+  longer grow the node table or disconnect the edges.
+* `edge_vec` equality is now by graph and node positions (and edge
+  attributes), not node values, with or without node data. Two edges are
+  equal when they are edges of the same graph between the same nodes, so
+  `vec_in()`, `duplicated()`, `unique()`, joins, `distinct()` and
+  `count()` match edges of one graph (and edge_vecs without node data now
+  match at all), but two separately built edge_vecs never match, even
+  with identical labels: match on `format(e)` for that. Sorting is still
+  by node values, with positions breaking ties. Hyperedges, which have no
+  graph identity, still compare by value.
+
 ## New features
 
 * `agg_vec`, `node_vec` and `edge_vec` now work with vctrs, so they can be
@@ -7,8 +38,8 @@
   `filter()`, `arrange()`, `group_by()` and `bind_rows()`. The vctrs
   methods are registered when vctrs is loaded, so vctrs is not a hard
   dependency.
-* `vec_c()` and `bind_rows()` combine `node_vec`s and `edge_vec`s as a
-  disjoint union of their graphs, the same as `c()`.
+* `vec_c()` and `bind_rows()` combine `node_vec`s and `edge_vec`s the same
+  way as `c()` (see Breaking changes).
 * `agg_vec` combines with character (and other base vectors) in either
   order with `vec_c()`. An all-`<aggregated>` `agg_vec` takes on the
   other side's value type.
@@ -27,21 +58,23 @@
   `purrr::map()`/`lapply()` work element-wise. Assigning an `agg_vec`
   element can set `<aggregated>`.
 * Added a `[<-` method for `node_vec`. A plain value relabels the selected
-  nodes and keeps their edges; a `node_vec` value replaces them, with its
-  own edges, as a disjoint union like `c()`. Assigning an `edge_vec` into
-  an `edge_vec` is also a disjoint union.
-* `edge_vec` equality now compares the node values at each end and the
-  edge attributes, not node positions, so edge_vecs work as join keys and
-  with `distinct()`/`count()` after `bind_rows()`. They sort by node values
-  with `vec_order()` and `arrange()`, including hyperedges. Added
-  `unique()` and `duplicated()` methods for `edge_vec` with the same
-  semantics.
+  nodes and keeps their edges; a `node_vec` value replaces them, combined
+  with the rest of `x` the same way as `c()`. Assigning an `edge_vec` into
+  an `edge_vec` also combines them like `c()`.
+* `edge_vec`s work as join keys and with `distinct()`/`count()`, by graph
+  and position (see Breaking changes). They sort by node values with
+  `vec_order()` and `arrange()`, including hyperedges. Added `unique()`
+  and `duplicated()` methods for `edge_vec` with the same semantics.
 * testthat's `expect_equal()` (via `waldo::compare()`) now compares
   `node_vec`s and `edge_vec`s by their nodes, edges and `directed`, so
   equivalent graph vectors compare equal. waldo is not a hard dependency.
 
 ## Bug fixes
 
+* `nodes()` and the topology functions (`node_degree()`,
+  `node_neighbors()`, ...) on an `edge_vec` with a missing edge (e.g. from
+  `vec_init()`, `lag()` or a join) no longer fail in the graph backend; the
+  missing edge joins no nodes and is left out.
 * `bind_rows()` no longer drops all edges of a `node_vec` column.
 * A data-frame-backed `node_vec` can be a tibble column again.
 * `format()` and `print()` on an `edge_vec` with no node data now label

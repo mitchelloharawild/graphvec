@@ -19,7 +19,9 @@ An \code{edge_vec} containing only the selected edges.
 \description{
 Slicing an \code{edge_vec} selects edges directly: dropping or reordering
 edges never invalidates a node reference, so \code{nodes}/\code{directed} are
-unaffected -- unlike slicing a \code{\link[=node_vec]{node_vec()}}, no remap is needed.
+unaffected and the slice keeps the same graph, which is what lets
+\code{\link[=c]{c()}} put slices of the same graph back together without copying their
+nodes (see \code{\link[=edge_vec]{edge_vec()}}).
 }
 \examples{
 g <- edge_vec(

@@ -22,6 +22,31 @@
 #'
 #' @return An `edge_vec` object.
 #'
+#' @section Slicing, combining and equality:
+#' Every `edge_vec` belongs to a graph, which slicing keeps: `e[i]` selects
+#' edges of the same graph, between the same nodes.
+#'
+#' Combining edge_vecs, with [c()], `[<-`, `vctrs::vec_c()`,
+#' `dplyr::bind_rows()`, `dplyr::rows_patch()` and the like, shares the
+#' graph between inputs of the same graph: their edges keep pointing at the
+#' same nodes, and the nodes aren't copied, so `c(e, e)` has the same nodes
+#' as `e`. Edge_vecs of different graphs are combined as a disjoint union of
+#' their graphs (each graph's nodes once, in order of first appearance); the
+#' edges always stay in the order they're combined in.
+#'
+#' Two edges are equal when they are edges of the same graph between the
+#' same node positions, with the same edge attributes, whether or not
+#' there is node data. This is what [duplicated()], [unique()],
+#' `vctrs::vec_in()`, joins, `dplyr::distinct()` and `dplyr::count()` use,
+#' so `e[2]` matches the second edge of `e` (or of `c(e, e)`), but edges of
+#' two separately built edge_vecs never match, even with identical labels:
+#' to match those by label, compare `format(e)` explicitly, e.g.
+#' `dplyr::mutate(df, key = format(e))` before joining `by = "key"`.
+#' Edge_vecs sort by the node values at each end (then the edge
+#' attributes, then node positions to break ties). Hyperedges have no
+#' graph identity: they compare by node values and always combine as a
+#' disjoint union.
+#'
 #' @examples
 #' g <- edge_vec(
 #'   from = c(1L, 2L, 1L, 3L),
@@ -238,7 +263,9 @@ pillar_shaft.edge_vec <- function(x, ...) {
 #'
 #' Slicing an `edge_vec` selects edges directly: dropping or reordering
 #' edges never invalidates a node reference, so `nodes`/`directed` are
-#' unaffected -- unlike slicing a [`node_vec()`], no remap is needed.
+#' unaffected and the slice keeps the same graph, which is what lets
+#' [c()] put slices of the same graph back together without copying their
+#' nodes (see [edge_vec()]).
 #'
 #' @param x An `edge_vec`.
 #' @param i Indices to select, as for `` `[` ``.
