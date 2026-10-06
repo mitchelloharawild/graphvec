@@ -398,7 +398,7 @@ test_that("[<- with a node_vec swaps in its nodes and their edges", {
   expect_equal(format(x), c("A", "X", "Y"))
   expect_equal(format(edges(x)), "[X]->[Y]")
   skip_if_not_installed("vctrs")
-  expect_same_graph(x, vctrs::vec_assign(n, 2:3, m))
+  expect_equal(x, vctrs::vec_assign(n, 2:3, m))
 
   nd <- node_vec(data.frame(id = 1:3), from = 1:2, to = 2:3)
   df <- tibble::tibble(x = nd)

@@ -33,6 +33,9 @@
   with `vec_order()` and `arrange()`, including hyperedges. Added
   `unique()` and `duplicated()` methods for `edge_vec` with the same
   semantics.
+* testthat's `expect_equal()` (via `waldo::compare()`) now compares
+  `node_vec`s and `edge_vec`s by their nodes, edges and `directed`, so
+  equivalent graph vectors compare equal. waldo is not a hard dependency.
 
 ## Bug fixes
 
