@@ -288,3 +288,37 @@ test_that("vec_c() of edge_vecs without node data matches c()", {
   expect_equal(vctrs::vec_c(e, f), c(e, f))
   expect_equal(format(vctrs::vec_init(e, 1)), "[NA]->[NA]")
 })
+
+test_that("vec_init() of a hyperedge edge_vec is missing", {
+  h <- edge_vec(list(1:2, 3L, 1L), list(3L, 1L, 2:3), w = 1:3, nodes = c("A", "B", "C"))
+  init <- vctrs::vec_init(h, 1)
+  expect_equal(format(init), "[NA]->[NA]")
+  expect_true(vctrs::vec_detect_missing(init))
+  expect_true(is.na(init))
+  x <- vctrs::vec_c(h, init)
+  expect_equal(vctrs::vec_detect_missing(x), c(FALSE, FALSE, FALSE, TRUE))
+  expect_equal(is.na(x), vctrs::vec_detect_missing(x))
+
+  # Likewise without node data.
+  init <- vctrs::vec_init(edge_vec(list(1:2), list(3L)), 1)
+  expect_equal(format(init), "[NA]->[NA]")
+  expect_true(vctrs::vec_detect_missing(init))
+})
+
+test_that("is.na() of an edge_vec agrees with vec_detect_missing()", {
+  e <- edge_vec(1:2, 2:3, w = 1:2, nodes = c("A", "B", "C"))
+  x <- vctrs::vec_c(e, vctrs::vec_init(e, 1))
+  expect_equal(is.na(x), c(FALSE, FALSE, TRUE))
+  expect_equal(is.na(x), vctrs::vec_detect_missing(x))
+})
+
+test_that("lag(), drop_na() and fill() treat missing hyperedges as missing", {
+  skip_if_not_installed("dplyr")
+  skip_if_not_installed("tidyr")
+  h <- edge_vec(list(1:2, 3L, 1L), list(3L, 1L, 2:3), nodes = c("A", "B", "C"))
+  df <- dplyr::mutate(tibble::tibble(e = h, x = 1:3), l = dplyr::lag(e))
+  expect_equal(format(df$l), c("[NA]->[NA]", "[{A,B}]->[C]", "[C]->[A]"))
+  expect_equal(tidyr::drop_na(df)$x, 2:3)
+  filled <- tidyr::fill(df, l, .direction = "up")
+  expect_equal(format(filled$l), c("[{A,B}]->[C]", "[{A,B}]->[C]", "[C]->[A]"))
+})

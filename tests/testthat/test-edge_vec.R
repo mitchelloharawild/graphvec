@@ -345,3 +345,26 @@ test_that("edge_vec can't be plotted without format()", {
   b <- ggplot2::ggplot_build(p)
   expect_equal(b$layout$panel_params[[1]]$x$get_labels(), c("[A]->[B]", "[B]->[C]"))
 })
+
+test_that("is.na() and anyNA() give one value per edge", {
+  e <- edge_vec(1:2, 2:3, w = c(1, NA), nodes = c("A", "B", "C"))
+  expect_equal(is.na(e), c(FALSE, FALSE))
+  expect_false(anyNA(e))
+  # The Rust backend can't hold an ordinary edge with only one end missing.
+  expect_error(edge_vec(1:2, c(2L, NA), nodes = c("A", "B", "C")), "only one of")
+
+  e <- edge_vec(c(1L, NA), c(2L, NA), w = c(1, NA), nodes = c("A", "B"))
+  expect_equal(is.na(e), c(FALSE, TRUE))
+  expect_true(anyNA(e))
+  expect_equal(is.na(edge_vec(nodes = "A")), logical())
+})
+
+test_that("an NA index gives a missing hyperedge, not an empty one", {
+  h <- edge_vec(list(1:2, 3L), list(3L, 1L), nodes = c("A", "B", "C"))
+  out <- h[c(1L, NA)]
+  expect_equal(format(out), c("[{A,B}]->[C]", "[NA]->[NA]"))
+  expect_equal(is.na(out), c(FALSE, TRUE))
+  expect_true(anyNA(out))
+  # A hyperedge with no nodes in a role isn't missing.
+  expect_false(is.na(edge_vec(list(integer()), list(1L), nodes = "A")))
+})

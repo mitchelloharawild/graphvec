@@ -165,9 +165,21 @@ new_edge_vec_fields <- function(fields, nodes = data.frame(), directed = TRUE) {
   # own body keeps only the attribute columns, aligned 1:1 with the graph's
   # edge order.
   n_edges <- length(from)
-  graph <- graphvec_backend_new(NROW(nodes), from, to, directed)
+  # A missing edge (NA at both ends, e.g. from vctrs::vec_init() or an NA
+  # index, then combined with c()) has no place in the graph, so it's left
+  # out and given an NA edge_id, exactly as an NA index into `[` gives it.
+  # The backend can't hold an edge with only one end missing.
+  missing_from <- is.na(from)
+  missing_to <- is.na(to)
+  if (any(missing_from != missing_to)) {
+    stop("An edge can't have only one of `from` and `to` missing.", call. = FALSE)
+  }
+  present <- !missing_from
+  graph <- graphvec_backend_new(NROW(nodes), from[present], to[present], directed)
+  edge_id <- rep(NA_integer_, n_edges)
+  edge_id[present] <- seq_len(sum(present))
   attrs <- attrs_frame(fields[setdiff(names(fields), c("from", "to"))], n_edges)
-  new_edge_vec_backend(attrs, nodes = nodes, directed = directed, graph = graph, edge_id = seq_len(n_edges))
+  new_edge_vec_backend(attrs, nodes = nodes, directed = directed, graph = graph, edge_id = edge_id)
 }
 
 # Low-level constructor for the non-hyperedge (Rust-backed) case: `attrs` is
@@ -270,8 +282,15 @@ pillar_shaft.edge_vec <- function(x, ...) {
     ))
   }
 
+  # Hyperedge (pure-R) case.
+  fields <- edge_vec_fields_df(x)[idx, , drop = FALSE]
+  # An NA index gives a hyperedge role NULL, an empty node set; make it NA,
+  # the missing position an ordinary role gets (its length-1 case).
+  for (role in c("from", "to")) {
+    if (is.list(fields[[role]])) fields[[role]][is.na(idx)] <- list(NA_integer_)
+  }
   new_edge_vec_fields(
-    fields = edge_vec_fields_df(x)[idx, , drop = FALSE],
+    fields = fields,
     nodes = attr(x, "nodes"),
     directed = attr(x, "directed")
   )
@@ -495,22 +514,52 @@ unique.edge_vec <- function(x, incomparables = FALSE, ...) {
 # The per-edge values that identify an edge: the node values in each role
 # (one node-value slice per edge for a hyperedge role), then the edge
 # attributes. Positions stand in for node values when `nodes` holds none.
+# A missing hyperedge role (an NA position) becomes NULL, the missing value
+# of a list.
 edge_vec_value_fields <- function(x) {
   nodes <- attr(x, "nodes")
   fields <- as.list(edge_vec_fields_df(x))
   for (role in c("from", "to")) {
     pos <- fields[[role]]
-    if (!has_node_values(nodes)) {
-      if (is.list(pos)) fields[[role]] <- lapply(pos, as.integer)
+    if (!is.list(pos)) {
+      if (has_node_values(nodes)) fields[[role]] <- unname_rows(slice_rows(nodes, pos))
       next
     }
-    fields[[role]] <- if (is.list(pos)) {
-      lapply(pos, function(idx) unname_rows(slice_rows(nodes, idx)))
-    } else {
-      unname_rows(slice_rows(nodes, pos))
-    }
+    fields[[role]] <- lapply(pos, function(idx) {
+      if (length(idx) == 1L && is.na(idx)) {
+        NULL
+      } else if (has_node_values(nodes)) {
+        unname_rows(slice_rows(nodes, idx))
+      } else {
+        as.integer(idx)
+      }
+    })
   }
   fields
+}
+
+# One logical per edge: TRUE when every field is missing, as vctrs detects
+# from vec_proxy_equal() (a data-frame field, such as data-frame node values,
+# only when all its columns are).
+#' @export
+is.na.edge_vec <- function(x) {
+  missing <- lapply(edge_vec_value_fields(x), field_is_missing)
+  Reduce(`&`, missing, rep(TRUE, length(x)))
+}
+
+#' @export
+anyNA.edge_vec <- function(x, recursive = FALSE) {
+  any(is.na(x))
+}
+
+field_is_missing <- function(col) {
+  if (is.data.frame(col)) {
+    return(Reduce(`&`, lapply(col, field_is_missing), rep(TRUE, nrow(col))))
+  }
+  if (is.list(col)) {
+    return(vapply(col, is.null, logical(1)))
+  }
+  is.na(col)
 }
 
 # Whether `nodes` holds values to identify nodes by, rather than being the
