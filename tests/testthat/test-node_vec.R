@@ -436,3 +436,30 @@ test_that("purrr::map() works element-wise on node_vecs", {
   expect_equal(purrr::map_chr(nd, ~ .x$lab), c("A", "B"))
   expect_equal(purrr::map_chr(node_vec(c("A", "B")), identity), c("A", "B"))
 })
+
+test_that("atomic node_vecs plot with the scale of their values", {
+  skip_if_not_installed("ggplot2")
+  df <- data.frame(y = 1:3)
+  df$v <- node_vec(c("A", "B", "C"), 1:2, 2:3)
+  p <- ggplot2::ggplot(df, ggplot2::aes(v, y)) + ggplot2::geom_point()
+  b <- expect_silent(ggplot2::ggplot_build(p))
+  expect_s3_class(b$layout$panel_scales_x[[1]], "ScaleDiscretePosition")
+  expect_equal(b$layout$panel_params[[1]]$x$get_labels(), c("A", "B", "C"))
+
+  df$v <- node_vec(c(10, 20.5, 30), 1:2, 2:3)
+  p <- ggplot2::ggplot(df, ggplot2::aes(v, y)) + ggplot2::geom_point()
+  b <- expect_silent(ggplot2::ggplot_build(p))
+  expect_s3_class(b$layout$panel_scales_x[[1]], "ScaleContinuousPosition")
+  expect_equal(b$data[[1]]$x, c(10, 20.5, 30))
+})
+
+test_that("data-frame node_vecs can't be plotted without format()", {
+  skip_if_not_installed("ggplot2")
+  df <- data.frame(y = 1:3)
+  df$n <- node_vec(data.frame(lab = c("A", "B", "C")), 1:2, 2:3)
+  p <- ggplot2::ggplot(df, ggplot2::aes(n, y)) + ggplot2::geom_point()
+  expect_error(ggplot2::ggplot_build(p), "use format\\(\\)")
+  p <- ggplot2::ggplot(df, ggplot2::aes(format(n), y)) + ggplot2::geom_point()
+  b <- ggplot2::ggplot_build(p)
+  expect_equal(b$layout$panel_params[[1]]$x$get_labels(), c("A", "B", "C"))
+})

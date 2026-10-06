@@ -334,3 +334,14 @@ test_that(".DollarNames() completes from, to and edge attributes", {
   h <- edge_vec(list(1:2), 3L, nodes = c("A", "B", "C"))
   expect_equal(utils::.DollarNames(h, ""), c("from", "to"))
 })
+
+test_that("edge_vec can't be plotted without format()", {
+  skip_if_not_installed("ggplot2")
+  df <- data.frame(y = 1:2)
+  df$e <- edge_vec(1:2, 2:3, nodes = c("A", "B", "C"))
+  p <- ggplot2::ggplot(df, ggplot2::aes(e, y)) + ggplot2::geom_point()
+  expect_error(ggplot2::ggplot_build(p), "use format\\(\\)")
+  p <- ggplot2::ggplot(df, ggplot2::aes(format(e), y)) + ggplot2::geom_point()
+  b <- ggplot2::ggplot_build(p)
+  expect_equal(b$layout$panel_params[[1]]$x$get_labels(), c("[A]->[B]", "[B]->[C]"))
+})

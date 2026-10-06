@@ -7,6 +7,8 @@
   register_s3_method("pillar", "type_sum", "node_vec")
   register_s3_method("pillar", "type_sum", "edge_vec")
   register_s3_method("ggplot2", "scale_type", "agg_vec")
+  register_s3_method("ggplot2", "scale_type", "node_vec")
+  register_s3_method("ggplot2", "scale_type", "edge_vec")
   register_s3_method("igraph", "as.igraph", "agg_vec")
   register_s3_method("igraph", "as.igraph", "agg_df")
   register_s3_method("igraph", "as.igraph", "node_vec")

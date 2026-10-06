@@ -19,6 +19,9 @@
 * Adding an `agg_vec` to a ggplot2 plot now gives an error suggesting
   `format()`, rather than defaulting to a continuous scale. ggplot2 is not
   a hard dependency.
+* An atomic `node_vec` in a ggplot2 plot now uses the scale of its values
+  (e.g. discrete for character nodes). Adding a data-frame `node_vec` or an
+  `edge_vec` gives an error suggesting `format()`.
 * Added `[[`, `[<-`, `[[<-` and `as.list()` methods for `agg_vec` and
   `edge_vec`, so assignment (including `df$col[i] <- value`) and
   `purrr::map()`/`lapply()` work element-wise. Assigning an `agg_vec`
