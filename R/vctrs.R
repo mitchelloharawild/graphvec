@@ -281,18 +281,22 @@ vec_restore.edge_vec <- function(x, to, ...) {
   vec_restore_graph_ref(x, to, edge_vec_assemble)
 }
 
-# By the node values at each end and the edge attributes, like node_vec's
-# value-based equality. Positions alone would differ between two copies of
-# the same edge once vctrs combines them (e.g. in a join), since combining
-# offsets them, and would match edges of different graphs.
+# Graph + positions (+ edge attributes): two edges are equal exactly when
+# they are the same graph's edges between the same nodes, with or without
+# node data (edge_vec_equal_fields()). Edges of different graphs never
+# match, whatever their labels; match those by label explicitly, e.g. on
+# format(e). Comparing within a combined vector (joins combine needles and
+# haystack first) works because c() shares the graph between inputs of the
+# same graph instead of offsetting their positions.
 vec_proxy_equal.edge_vec <- function(x, ...) {
-  vctrs::vec_proxy_equal(vctrs::new_data_frame(edge_vec_value_fields(x), n = length(x)))
+  vctrs::vec_proxy_equal(vctrs::new_data_frame(edge_vec_equal_fields(x), n = length(x)))
 }
 
-# Ordered by the node values at each end, then the edge attributes. A
-# hyperedge role sorts its node sets lexicographically, by rank within `x`,
-# so this only orders a single vector (which is all vec_order() needs).
-# Same fields as xtfrm.edge_vec(), so base and vctrs sorting agree.
+# Ordered by the node values at each end, then the edge attributes, then
+# (ordinary edges) the node positions as a tie-break, so only equal edges
+# tie. A hyperedge role sorts its node sets lexicographically, by rank
+# within `x`, so this only orders a single vector (which is all vec_order()
+# needs). Same fields as xtfrm.edge_vec(), so base and vctrs sorting agree.
 vec_proxy_order.edge_vec <- function(x, ...) {
   fields <- edge_vec_order_fields(x)
   vctrs::vec_proxy_order(vctrs::new_data_frame(fields, n = length(x)))
@@ -306,7 +310,12 @@ vec_proxy_compare.edge_vec <- function(x, ...) {
   if (is.list(ends$from) || is.list(ends$to)) {
     stop("Can't compare hyperedges with `vec_compare()`; use `vec_order()` to sort them.", call. = FALSE)
   }
-  vctrs::vec_proxy_compare(vctrs::new_data_frame(edge_vec_value_fields(x), n = length(x)))
+  # As the order proxy, then the graph, so edges of different graphs never
+  # compare as equal either.
+  fields <- edge_vec_order_fields(x)
+  uid <- rep(attr(x, "graph")$uid(), length(x))
+  uid[is.na(attr(x, "edge_id"))] <- NA
+  vctrs::vec_proxy_compare(vctrs::new_data_frame(c(fields, list(.graph = uid)), n = length(x)))
 }
 
 vec_ptype_abbr.edge_vec <- function(x, ...) {

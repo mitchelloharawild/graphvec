@@ -269,21 +269,36 @@ test_that("edge_vec works with dplyr verbs", {
   expect_equal(dplyr::filter(df, y == 2)$e, e[2])
 })
 
-test_that("edge_vec equality is by node values, not positions", {
+test_that("edge_vec equality is by graph and positions, not node values", {
+  # Rewritten: equality used to be by node values, so two separately built
+  # edge_vecs with the same labels matched. Now an edge is equal only to
+  # edges of the same graph between the same positions (and attributes).
   e <- edge_vec(1:2, 2:3, w = c(5, 6), nodes = c("A", "B", "C"))
   g <- edge_vec(1:2, 2:3, w = c(5, 6), nodes = c("X", "Y", "Z"))
+  same <- edge_vec(1:2, 2:3, w = c(5, 6), nodes = c("A", "B", "C"))
   expect_equal(vctrs::vec_equal(e, g), c(FALSE, FALSE))
+  expect_equal(vctrs::vec_equal(e, same), c(FALSE, FALSE))
+  expect_equal(vctrs::vec_equal(e, e[c(1, 1)]), c(TRUE, FALSE))
   expect_equal(vctrs::vec_unique_count(vctrs::vec_c(e, e)), 2L)
   expect_equal(vctrs::vec_unique_count(vctrs::vec_c(e, g)), 4L)
+  expect_equal(vctrs::vec_unique_count(vctrs::vec_c(e, same)), 4L)
+  # Edge attributes are part of an edge.
   expect_equal(vctrs::vec_unique_count(vctrs::vec_c(e, edge_vec(1:2, 2:3, w = 0, nodes = c("A", "B", "C")))), 4L)
 
   ed <- edge_vec(1:2, 2:3, nodes = data.frame(id = 1:3, lab = c("A", "B", "C")))
   expect_equal(vctrs::vec_unique_count(vctrs::vec_c(ed, ed)), 2L)
+  # Hyperedges have no graph identity, so they still compare by value.
   h <- edge_vec(list(1:2, 3L), list(3L, 1L), nodes = c("A", "B", "C"))
   expect_equal(vctrs::vec_unique_count(vctrs::vec_c(h, h)), 2L)
-  # With no node data, positions are all there is to compare.
+  # Without node data too: same graph and positions, not just positions.
   e0 <- edge_vec(1:2, 2:3)
-  expect_equal(vctrs::vec_equal(e0, edge_vec(c(1L, 3L), 2:3)), c(TRUE, FALSE))
+  expect_equal(vctrs::vec_equal(e0, e0[c(1, 1)]), c(TRUE, FALSE))
+  expect_equal(vctrs::vec_equal(e0, edge_vec(c(1L, 3L), 2:3)), c(FALSE, FALSE))
+  # Two edges between the same nodes of a graph (a multigraph) are equal
+  # when their attributes are.
+  m <- edge_vec(c(1L, 1L), c(2L, 2L), nodes = c("A", "B"))
+  expect_equal(vctrs::vec_unique_count(m), 1L)
+  expect_equal(duplicated(m), c(FALSE, TRUE))
 })
 
 test_that("edge_vec columns can be join keys", {
@@ -292,7 +307,10 @@ test_that("edge_vec columns can be join keys", {
   g <- edge_vec(1L, 2L, nodes = c("X", "Y"))
   joined <- dplyr::inner_join(tibble::tibble(e = e, y = 1:2), tibble::tibble(e = e, z = 2:1), by = "e")
   expect_equal(joined$z, 2:1)
-  expect_equal(nrow(dplyr::semi_join(tibble::tibble(e = c(e, g)), tibble::tibble(e = e[2]), by = "e")), 1L)
+  # Rewritten: c(e, g) is a new graph (a disjoint union), so it was changed
+  # to c(e, e) to keep e[2] matching; see the graph-identity tests below.
+  expect_equal(nrow(dplyr::semi_join(tibble::tibble(e = c(e, e)), tibble::tibble(e = e[2]), by = "e")), 2L)
+  expect_equal(nrow(dplyr::semi_join(tibble::tibble(e = c(e, g)), tibble::tibble(e = e[2]), by = "e")), 0L)
   expect_equal(dplyr::count(tibble::tibble(e = c(e, e)), e)$n, c(2L, 2L))
 
   h <- edge_vec(list(1:2, 3L), list(3L, 1L), nodes = c("A", "B", "C"))
@@ -327,7 +345,10 @@ test_that("[<- on an edge_vec matches vec_assign()", {
   g <- edge_vec(1L, 2L, w = 9, nodes = c("X", "Y"))
   x <- e
   x[1] <- g
-  expect_equal(vctrs::vec_equal(x, vctrs::vec_assign(e, 1L, g)), c(TRUE, TRUE))
+  # Rewritten: both are a new (disjoint-union) graph each, so their edges
+  # are no longer vec_equal(); compare their contents instead.
+  expect_equal(x, vctrs::vec_assign(e, 1L, g))
+  expect_equal(format(x), c("[X]->[Y]", "[B]->[C]"))
 })
 
 test_that("purrr::map() iterates over agg_vec and edge_vec elements", {
@@ -405,6 +426,40 @@ test_that("vec_c() of edge_vecs shares a graph and keeps others disjoint", {
   skip_if_not_installed("dplyr")
   b <- dplyr::bind_rows(tibble::tibble(e = e[2]), tibble::tibble(e = f), tibble::tibble(e = e[1]))$e
   expect_equal(b, efe)
+})
+
+test_that("edge_vecs match by graph and position, with or without node data", {
+  skip_if_not_installed("dplyr")
+  for (e in list(
+    edge_vec(c(1L, 2L, 3L, 1L), c(2L, 3L, 1L, 2L)),
+    edge_vec(c(1L, 2L, 3L, 1L), c(2L, 3L, 1L, 2L), nodes = c("A", "B", "C")),
+    edge_vec(c(1L, 2L, 3L, 1L), c(2L, 3L, 1L, 2L), nodes = data.frame(id = 1:3))
+  )) {
+    expect_equal(vctrs::vec_in(e[2], e), TRUE)
+    expect_equal(vctrs::vec_match(e[c(4, 2)], e), c(1L, 2L))
+    expect_equal(vctrs::vec_locate_matches(e[2], e)$haystack, 2L)
+    df <- tibble::tibble(e = e, y = 1:4)
+    expect_equal(dplyr::semi_join(df, tibble::tibble(e = e[2]), by = "e")$y, 2L)
+    expect_equal(dplyr::anti_join(df, tibble::tibble(e = e[2]), by = "e")$y, c(1L, 3L, 4L))
+    expect_equal(
+      dplyr::inner_join(df, tibble::tibble(e = e[c(3, 1)], z = 1:2), by = "e")$z,
+      c(2L, 1L, 2L)
+    )
+    expect_equal(dplyr::distinct(df, e)$e, e[1:3])
+    expect_equal(dplyr::count(df, e)$n, c(2L, 1L, 1L))
+    full <- dplyr::full_join(tibble::tibble(e = e[2]), tibble::tibble(e = e[3]), by = "e")$e
+    expect_equal(NROW(attr(full, "nodes")), NROW(attr(e, "nodes")))
+
+    # A separately built edge_vec with identical labels is another graph.
+    same <- edge_vec(c(1L, 2L, 3L, 1L), c(2L, 3L, 1L, 2L), nodes = attr(e, "nodes"))
+    expect_equal(vctrs::vec_in(same[2], e), FALSE)
+    expect_equal(nrow(dplyr::semi_join(df, tibble::tibble(e = same), by = "e")), 0L)
+    # Match those by label explicitly.
+    expect_equal(
+      dplyr::semi_join(dplyr::mutate(df, k = format(e)), tibble::tibble(k = format(same[2])), by = "k")$y,
+      2L
+    )
+  }
 })
 
 test_that("no-op rows_patch()/rows_update() leave an edge_vec unchanged", {

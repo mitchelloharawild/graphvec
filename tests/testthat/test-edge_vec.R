@@ -454,3 +454,12 @@ test_that("c() of edge_vecs of the same graph shares its nodes", {
   expect_equal(nrow(attr(c(e0, e0[2]), "nodes")), 3L)
   expect_equal(format(c(e0[2], e0)), c("[2]->[3]", "[1]->[2]", "[2]->[3]", "[3]->[1]"))
 })
+
+test_that("edge_vec duplicates are by graph and positions, not labels", {
+  e <- edge_vec(c(1L, 2L, 1L), c(2L, 1L, 2L), nodes = c("A", "A"))
+  # Same labels, different positions: different edges.
+  expect_equal(duplicated(e), c(FALSE, FALSE, TRUE))
+  expect_equal(format(unique(e)), c("[A]->[A]", "[A]->[A]"))
+  f <- edge_vec(c(1L, 2L, 1L), c(2L, 1L, 2L), nodes = c("A", "A"))
+  expect_equal(duplicated(c(e, f)), c(FALSE, FALSE, TRUE, FALSE, FALSE, TRUE))
+})

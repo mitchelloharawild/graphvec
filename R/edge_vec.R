@@ -609,12 +609,12 @@ names.edge_vec <- function(x) {
   )
 }
 
-# Edges are equal when they join the same node values in each role and have
-# the same attributes, regardless of their nodes' positions, so equality
-# holds across edge_vecs (and through c(), which offsets positions).
+# Edges are equal when they are edges of the same graph between the same
+# node positions in each role, with the same edge attributes (see
+# edge_vec_equal_fields()).
 #' @export
 duplicated.edge_vec <- function(x, incomparables = FALSE, ...) {
-  fields <- edge_vec_value_fields(x)
+  fields <- edge_vec_equal_fields(x)
   # Base duplicated() can't compare a list (hyperedge) column, so key each
   # node set by its deparsed values instead.
   fields <- lapply(fields, function(col) {
@@ -666,7 +666,7 @@ edge_vec_value_fields <- function(x) {
 # only when all its columns are).
 #' @export
 is.na.edge_vec <- function(x) {
-  missing <- lapply(edge_vec_value_fields(x), field_is_missing)
+  missing <- lapply(edge_vec_equal_fields(x), field_is_missing)
   Reduce(`&`, missing, rep(TRUE, length(x)))
 }
 
@@ -688,6 +688,11 @@ field_is_missing <- function(col) {
 # The per-edge values to sort edges by: edge_vec_value_fields(), with each
 # hyperedge role's node sets replaced by their lexicographic rank within `x`.
 # Shared by xtfrm() and vctrs' order proxy so the two agree.
+#
+# Node values come first so that edges sort by label, for display; for an
+# ordinary edge_vec the node positions follow as a tie-break, so that two
+# edges only tie when they are equal (edge_vec_equal_fields()): the order
+# proxy is also what vctrs matches join keys with.
 edge_vec_order_fields <- function(x) {
   fields <- edge_vec_value_fields(x)
   for (role in c("from", "to")) {
@@ -695,7 +700,34 @@ edge_vec_order_fields <- function(x) {
       fields[[role]] <- incidence_set_rank(attr(x, "nodes"), edge_vec_endpoints(x)[[role]])
     }
   }
+  if (!is.null(attr(x, "graph"))) {
+    ends <- edge_vec_endpoints(x)
+    fields <- c(fields, list(.from_pos = ends$from, .to_pos = ends$to))
+  }
   fields
+}
+
+# The per-edge fields that make two edges equal. For an ordinary edge_vec:
+# its graph (the backend's uid(), the same identity as the `graph` pointer),
+# the node positions in each role, then the edge attributes. So two edges
+# are equal exactly when they are the same graph's edges between the same
+# nodes (positions, in order, even when undirected) with the same
+# attributes, whether or not `nodes` holds node data; edges of different
+# graphs never are, even with identical labels. A missing edge is missing in
+# every field. Hyperedges have no graph identity and keep comparing by value
+# (edge_vec_value_fields()).
+edge_vec_equal_fields <- function(x) {
+  graph <- attr(x, "graph")
+  if (is.null(graph)) {
+    return(edge_vec_value_fields(x))
+  }
+  ends <- edge_vec_endpoints(x)
+  uid <- rep(graph$uid(), length(x))
+  uid[is.na(attr(x, "edge_id"))] <- NA
+  c(
+    list(.graph = uid, .from = ends$from, .to = ends$to),
+    as.list(edge_vec_attrs_df(x))
+  )
 }
 
 # Ranks for order()/sort()/dplyr::desc(): by the node values at each end,
