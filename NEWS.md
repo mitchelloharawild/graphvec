@@ -41,6 +41,10 @@
 * `format()` and `print()` on an `edge_vec` with no node data now label
   each endpoint by its node position (e.g. `[1]->[2]`), rather than
   returning nothing.
+* An `edge_vec` with no node data now has a node for every position its
+  edges reference, so `c()`, `vec_c()` and `bind_rows()` combine them as a
+  disjoint union instead of overlapping their positions, `as.igraph()`
+  counts every node, and `nodes()` labels nodes by position.
 * `[[`, `as.list()`, `duplicated()` and `anyDuplicated()` on a
   data-frame-backed `node_vec` now work on its nodes (1-row data frames)
   rather than its columns, so `purrr::map()` and `lapply()` work

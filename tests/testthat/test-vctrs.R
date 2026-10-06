@@ -285,3 +285,10 @@ test_that("edge_vecs with different `directed` can't be combined", {
     class = "vctrs_error_incompatible_type"
   )
 })
+
+test_that("vec_c() of edge_vecs without node data matches c()", {
+  e <- edge_vec(1:2, 2:3)
+  f <- edge_vec(1L, 2L)
+  expect_equal(vctrs::vec_c(e, f), c(e, f))
+  expect_equal(format(vctrs::vec_init(e, 1)), "[NA]->[NA]")
+})

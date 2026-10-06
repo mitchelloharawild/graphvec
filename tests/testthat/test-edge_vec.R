@@ -302,3 +302,24 @@ test_that("[[ and as.list() give single-edge edge_vecs", {
   expect_equal(e[[2]], e[2])
   expect_equal(as.list(e), list(e[1], e[2]))
 })
+
+test_that("edge_vecs without node data combine as a disjoint union", {
+  e <- edge_vec(1:2, 2:3)
+  f <- edge_vec(1L, 2L)
+  h <- edge_vec(list(1:2), list(4L))
+
+  expect_equal(nrow(attr(e, "nodes")), 3L)
+  expect_equal(format(c(e, f)), c("[1]->[2]", "[2]->[3]", "[4]->[5]"))
+  expect_equal(format(c(e, h)), c("[1]->[2]", "[2]->[3]", "[{4,5}]->[7]"))
+  expect_equal(nrow(attr(c(e, f), "nodes")), 5L)
+  # Extra node rows beyond the edges' positions are kept.
+  expect_equal(nrow(attr(edge_vec(1L, 2L, nodes = data.frame(row.names = 1:5)), "nodes")), 5L)
+  # Slicing keeps every node.
+  expect_equal(nrow(attr(e[1], "nodes")), 3L)
+})
+
+test_that("nodes() of an edge_vec without node data labels nodes by position", {
+  e <- edge_vec(1:2, 2:3)
+  expect_equal(format(nodes(e)), c("1", "2", "3"))
+  expect_equal(format(edges(nodes(e))), format(e))
+})

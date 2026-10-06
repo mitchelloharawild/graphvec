@@ -139,3 +139,9 @@ test_that("as.igraph() respects edge_vec's `directed` attribute", {
   )
   expect_false(igraph::is_directed(igraph::as.igraph(eu)))
 })
+
+test_that("as.igraph() counts every node of an edge_vec without node data", {
+  skip_if_not_installed("igraph")
+  e <- c(edge_vec(1:2, 2:3), edge_vec(1L, 2L))
+  expect_equal(igraph::vcount(igraph::as.igraph(e)), 5L)
+})

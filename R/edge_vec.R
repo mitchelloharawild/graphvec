@@ -118,6 +118,13 @@ new_edge_vec <- function(from = integer(), to = integer(), ..., nodes = data.fra
 # class is set to exactly "edge_vec" so no data.frame generic can hijack it.
 new_edge_vec_fields <- function(fields, nodes = data.frame(), directed = TRUE) {
   attr(fields, "row.names") <- NULL # stray leftover once no longer classed data.frame
+  # No node data (a zero-column data frame) still has a node count: every
+  # position the edges reference. This is what c() offsets by, so combining
+  # edge_vecs without node data is a disjoint union like any other.
+  if (is.data.frame(nodes) && ncol(nodes) == 0L) {
+    n_nodes <- max(NROW(nodes), unlist(fields[c("from", "to")], use.names = FALSE), 0L, na.rm = TRUE)
+    nodes <- data.frame(row.names = seq_len(n_nodes))
+  }
   structure(fields, class = "edge_vec", nodes = nodes, directed = directed)
 }
 

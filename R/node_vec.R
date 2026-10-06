@@ -119,7 +119,10 @@ node_vec_data <- strip_node_vec
 # A per-element label for a vector of node values: paste columns together
 # for a data frame of node attributes, or format the values directly.
 node_label <- function(x, ...) {
-  if (is.data.frame(x)) {
+  if (is.data.frame(x) && ncol(x) == 0L) {
+    # No node data: label nodes by position.
+    as.character(seq_len(nrow(x)))
+  } else if (is.data.frame(x)) {
     do.call(paste, c(x, sep = ":"))
   } else {
     format(x, ...)
