@@ -24,6 +24,8 @@ register_vctrs_methods <- function() {
     register_s3_method("vctrs", "vec_cast", paste0(cls, ".", cls))
   }
   register_s3_method("vctrs", "vec_proxy_compare", "agg_vec")
+  register_s3_method("vctrs", "vec_proxy_compare", "edge_vec")
+  register_s3_method("vctrs", "vec_proxy_order", "edge_vec")
 
   for (type in agg_vec_vctrs_types) {
     register_s3_method("vctrs", "vec_ptype2", paste0("agg_vec.", type), fun = vec_ptype2_agg_vec_other)
@@ -254,10 +256,55 @@ vec_restore.edge_vec <- function(x, to, ...) {
   vec_restore_graph_ref(x, to)
 }
 
-# By from/to position and edge attributes, which is edge identity within a
-# single edge_vec.
+# By the node values at each end and the edge attributes, like node_vec's
+# value-based equality. Positions alone would differ between two copies of
+# the same edge once vctrs combines them (e.g. in a join), since combining
+# offsets them, and would match edges of different graphs.
 vec_proxy_equal.edge_vec <- function(x, ...) {
-  vctrs::vec_proxy_equal(vctrs::new_data_frame(as.list(edge_vec_data(x)), n = length(x)))
+  vctrs::vec_proxy_equal(vctrs::new_data_frame(edge_vec_value_fields(x), n = length(x)))
+}
+
+# Ordered by the node values at each end, then the edge attributes. A
+# hyperedge role sorts its node sets lexicographically, by rank within `x`,
+# so this only orders a single vector (which is all vec_order() needs).
+vec_proxy_order.edge_vec <- function(x, ...) {
+  fields <- edge_vec_value_fields(x)
+  for (role in c("from", "to")) {
+    if (is.list(fields[[role]]) && !is.data.frame(fields[[role]])) {
+      fields[[role]] <- incidence_set_rank(attr(x, "nodes"), edge_vec_data(x)[[role]])
+    }
+  }
+  vctrs::vec_proxy_order(vctrs::new_data_frame(fields, n = length(x)))
+}
+
+# Ranks within one vector can't compare two vectors, so hyperedges have no
+# comparison proxy (vec_compare() is the only caller; ordering uses the
+# order proxy above).
+vec_proxy_compare.edge_vec <- function(x, ...) {
+  fields <- edge_vec_data(x)
+  if (is.list(fields[["from"]]) || is.list(fields[["to"]])) {
+    stop("Can't compare hyperedges with `vec_compare()`; use `vec_order()` to sort them.", call. = FALSE)
+  }
+  vctrs::vec_proxy_compare(vctrs::new_data_frame(edge_vec_value_fields(x), n = length(x)))
+}
+
+# Dense lexicographic rank of each hyperedge's node set, by the order of the
+# node values. Shorter sets sort before longer ones sharing their prefix.
+incidence_set_rank <- function(nodes, field) {
+  node_rank <- if (has_node_values(nodes)) {
+    vctrs::vec_rank(nodes, ties = "dense", incomplete = "na")
+  } else {
+    seq_len(max(c(0L, unlist(field))))
+  }
+  sets <- lapply(field, function(idx) node_rank[idx])
+  width <- max(c(0L, lengths(sets)))
+  cols <- lapply(seq_len(width), function(k) {
+    vapply(sets, function(s) if (length(s) >= k) s[[k]] else 0L, integer(1))
+  })
+  if (width == 0L) {
+    return(integer(length(field)))
+  }
+  vctrs::vec_rank(vctrs::new_data_frame(cols, n = length(field)), ties = "dense", incomplete = "na")
 }
 
 vec_ptype_abbr.edge_vec <- function(x, ...) {

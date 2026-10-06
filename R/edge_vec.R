@@ -300,6 +300,62 @@ names.edge_vec <- function(x) {
   )
 }
 
+# Edges are equal when they join the same node values in each role and have
+# the same attributes, regardless of their nodes' positions, so equality
+# holds across edge_vecs (and through c(), which offsets positions).
+#' @export
+duplicated.edge_vec <- function(x, incomparables = FALSE, ...) {
+  fields <- edge_vec_value_fields(x)
+  # Base duplicated() can't compare a list (hyperedge) column, so key each
+  # node set by its deparsed values instead.
+  fields <- lapply(fields, function(col) {
+    if (is.list(col) && !is.data.frame(col)) vapply(col, function(v) paste(deparse(v), collapse = ""), character(1)) else col
+  })
+  key <- do.call(cbind, lapply(fields, function(col) {
+    if (is.data.frame(col)) as.data.frame(col) else data.frame(col, stringsAsFactors = FALSE)
+  }))
+  if (length(key) == 0L) {
+    return(logical(length(x)))
+  }
+  duplicated(key, incomparables = incomparables, ...)
+}
+
+#' @export
+unique.edge_vec <- function(x, incomparables = FALSE, ...) {
+  x[!duplicated(x, incomparables = incomparables, ...)]
+}
+
+# The per-edge values that identify an edge: the node values in each role
+# (one node-value slice per edge for a hyperedge role), then the edge
+# attributes. Positions stand in for node values when `nodes` holds none.
+edge_vec_value_fields <- function(x) {
+  nodes <- attr(x, "nodes")
+  fields <- as.list(edge_vec_data(x))
+  for (role in c("from", "to")) {
+    pos <- fields[[role]]
+    if (!has_node_values(nodes)) {
+      if (is.list(pos)) fields[[role]] <- lapply(pos, as.integer)
+      next
+    }
+    fields[[role]] <- if (is.list(pos)) {
+      lapply(pos, function(idx) unname_rows(slice_rows(nodes, idx)))
+    } else {
+      unname_rows(slice_rows(nodes, pos))
+    }
+  }
+  fields
+}
+
+# Whether `nodes` holds values to identify nodes by, rather than being the
+# default empty data frame.
+has_node_values <- function(nodes) {
+  !(is.data.frame(nodes) && length(nodes) == 0L)
+}
+
+unname_rows <- function(x) {
+  if (is.data.frame(x)) x else unname(x)
+}
+
 #' @export
 as_tibble.edge_vec <- function(x, ...) {
   tibble::as_tibble(edge_vec_data(x))

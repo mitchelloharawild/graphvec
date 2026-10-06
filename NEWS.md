@@ -16,6 +16,12 @@
   `vec_order()`, `dplyr::arrange()`, `order()` and `sort()`.
 * Added `as.character()`, `unique()`, `duplicated()` and `rep()` methods for
   `agg_vec`, and a `rep()` method for `edge_vec`.
+* `edge_vec` equality now compares the node values at each end and the
+  edge attributes, not node positions, so edge_vecs work as join keys and
+  with `distinct()`/`count()` after `bind_rows()`. They sort by node values
+  with `vec_order()` and `arrange()`, including hyperedges. Added
+  `unique()` and `duplicated()` methods for `edge_vec` with the same
+  semantics.
 
 ## Bug fixes
 

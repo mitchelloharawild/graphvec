@@ -254,3 +254,15 @@ test_that("as_tibble()/as.data.frame() on an edge_vec show from/to and attribute
   df <- as.data.frame(e)
   expect_equal(df, data.frame(from = c(1L, 2L), to = c(2L, 3L), weight = c(10, 20)))
 })
+
+test_that("unique() and duplicated() compare edges by node values", {
+  e <- edge_vec(1:2, 2:3, w = c(5, 6), nodes = c("A", "B", "C"))
+  g <- edge_vec(1L, 2L, w = 5, nodes = c("X", "Y"))
+  expect_equal(duplicated(c(e, g, e)), c(FALSE, FALSE, FALSE, TRUE, TRUE))
+  expect_equal(format(unique(c(e, g, e))), c("[A]->[B]", "[B]->[C]", "[X]->[Y]"))
+
+  h <- edge_vec(list(1:2, 3L), list(3L, 1L), nodes = c("A", "B", "C"))
+  expect_equal(duplicated(c(h, h)), c(FALSE, FALSE, TRUE, TRUE))
+  ed <- edge_vec(1:2, 2:3, nodes = data.frame(id = 1:3, lab = c("A", "B", "C")))
+  expect_equal(format(unique(c(ed, ed))), c("[1:A]->[2:B]", "[2:B]->[3:C]"))
+})

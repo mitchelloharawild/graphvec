@@ -196,6 +196,49 @@ test_that("edge_vec works with dplyr verbs", {
   expect_equal(dplyr::filter(df, y == 2)$e, e[2])
 })
 
+test_that("edge_vec equality is by node values, not positions", {
+  e <- edge_vec(1:2, 2:3, w = c(5, 6), nodes = c("A", "B", "C"))
+  g <- edge_vec(1:2, 2:3, w = c(5, 6), nodes = c("X", "Y", "Z"))
+  expect_equal(vctrs::vec_equal(e, g), c(FALSE, FALSE))
+  expect_equal(vctrs::vec_unique_count(vctrs::vec_c(e, e)), 2L)
+  expect_equal(vctrs::vec_unique_count(vctrs::vec_c(e, g)), 4L)
+  expect_equal(vctrs::vec_unique_count(vctrs::vec_c(e, edge_vec(1:2, 2:3, w = 0, nodes = c("A", "B", "C")))), 4L)
+
+  ed <- edge_vec(1:2, 2:3, nodes = data.frame(id = 1:3, lab = c("A", "B", "C")))
+  expect_equal(vctrs::vec_unique_count(vctrs::vec_c(ed, ed)), 2L)
+  h <- edge_vec(list(1:2, 3L), list(3L, 1L), nodes = c("A", "B", "C"))
+  expect_equal(vctrs::vec_unique_count(vctrs::vec_c(h, h)), 2L)
+  # With no node data, positions are all there is to compare.
+  e0 <- edge_vec(1:2, 2:3)
+  expect_equal(vctrs::vec_equal(e0, edge_vec(c(1L, 3L), 2:3)), c(TRUE, FALSE))
+})
+
+test_that("edge_vec columns can be join keys", {
+  skip_if_not_installed("dplyr")
+  e <- edge_vec(1:2, 2:3, nodes = c("A", "B", "C"))
+  g <- edge_vec(1L, 2L, nodes = c("X", "Y"))
+  joined <- dplyr::inner_join(tibble::tibble(e = e, y = 1:2), tibble::tibble(e = e, z = 2:1), by = "e")
+  expect_equal(joined$z, 2:1)
+  expect_equal(nrow(dplyr::semi_join(tibble::tibble(e = c(e, g)), tibble::tibble(e = e[2]), by = "e")), 1L)
+  expect_equal(dplyr::count(tibble::tibble(e = c(e, e)), e)$n, c(2L, 2L))
+
+  h <- edge_vec(list(1:2, 3L), list(3L, 1L), nodes = c("A", "B", "C"))
+  expect_equal(nrow(dplyr::inner_join(tibble::tibble(e = h), tibble::tibble(e = h), by = "e")), 2L)
+})
+
+test_that("edge_vecs sort by node values, including hyperedges", {
+  skip_if_not_installed("dplyr")
+  e <- edge_vec(c(2L, 1L, 1L), c(3L, 3L, 2L), nodes = c("A", "B", "C"))
+  expect_equal(format(vctrs::vec_sort(e)), c("[A]->[B]", "[A]->[C]", "[B]->[C]"))
+
+  h <- edge_vec(list(1:2, 3L, 1L), list(3L, 1L, 2L), nodes = c("A", "B", "C"))
+  expect_equal(
+    format(dplyr::arrange(tibble::tibble(h = h), h)$h),
+    c("[A]->[B]", "[{A,B}]->[C]", "[C]->[A]")
+  )
+  expect_error(vctrs::vec_compare(h, h), "Can't compare hyperedges")
+})
+
 test_that("edge_vecs with different `directed` can't be combined", {
   e <- edge_vec(1L, 2L, nodes = c("A", "B"))
   expect_error(
