@@ -45,7 +45,13 @@
 #'   nodes always stay in the order they're combined in.
 #'
 #' Assigning plain values with `[<-` relabels nodes and keeps the graph.
-#' Equality ([duplicated()], [unique()], joins) is by node value.
+#' Two nodes are equal when they are (copies of) the same node of the same
+#' graph, with the same value. This is what `==`, [duplicated()],
+#' [unique()], `vctrs::vec_equal()` and joins use, so `x[1]` equals the
+#' first node of `x` (or of `c(x, x)`), but not another node with the same
+#' label, nor a node of a separately built node_vec. Comparing with a plain
+#' value (`x == "A"`) compares the node values. Hyperedge node_vecs have no
+#' graph identity and compare by value.
 #'
 #' @examples
 #'
@@ -551,6 +557,20 @@ as.data.frame.node_vec <- function(x, row.names = NULL, optional = FALSE, ...,
 #' @export
 duplicated.node_vec <- function(x, incomparables = FALSE, ...) {
   duplicated(node_vec_key_df(x), incomparables = incomparables, ...)
+}
+
+# `==` and `!=` between node_vecs compare nodes as vctrs::vec_equal() and
+# duplicated() do (see node_vec_equal_fields()), recycling as vctrs does; a
+# missing node gives NA. Against a plain value they compare node values, and
+# every other operator acts on the values too, as before.
+#' @export
+Ops.node_vec <- function(e1, e2) {
+  if (.Generic %in% c("==", "!=") && !missing(e2) &&
+      inherits(e1, "node_vec") && inherits(e2, "node_vec")) {
+    eq <- vctrs::vec_equal(e1, e2)
+    return(if (.Generic == "==") eq else !eq)
+  }
+  NextMethod()
 }
 
 # Ranks for order()/sort()/dplyr::desc() by node value (data frame values

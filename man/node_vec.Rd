@@ -60,7 +60,13 @@ nodes always stay in the order they're combined in.
 }
 
 Assigning plain values with \verb{[<-} relabels nodes and keeps the graph.
-Equality (\code{\link[=duplicated]{duplicated()}}, \code{\link[=unique]{unique()}}, joins) is by node value.
+Two nodes are equal when they are (copies of) the same node of the same
+graph, with the same value. This is what \code{==}, \code{\link[=duplicated]{duplicated()}},
+\code{\link[=unique]{unique()}}, \code{vctrs::vec_equal()} and joins use, so \code{x[1]} equals the
+first node of \code{x} (or of \code{c(x, x)}), but not another node with the same
+label, nor a node of a separately built node_vec. Comparing with a plain
+value (\code{x == "A"}) compares the node values. Hyperedge node_vecs have no
+graph identity and compare by value.
 }
 
 \examples{

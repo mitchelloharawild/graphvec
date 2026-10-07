@@ -35,6 +35,11 @@
   with identical labels: match on `format(e)` for that. Sorting is still
   by node values, with positions breaking ties. Hyperedges, which have no
   graph identity, still compare by value.
+* `==` and `!=` between two `node_vec`s now compare nodes as `vec_equal()`
+  and `duplicated()` do, by graph, position and value, rather than by
+  value alone: `n == n[3:1]` is no longer `TRUE` for different nodes with
+  the same label. Comparing with a plain value (`n == "A"`) and other
+  operators still use the node values.
 
 ## New features
 

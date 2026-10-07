@@ -323,6 +323,42 @@ test_that("unique.node_vec() drops repeats of a node and their incident edges, v
   expect_equal(n_edges(u), 2L)
 })
 
+test_that("== and != on node_vecs compare as vec_equal() does", {
+  n <- node_vec(c("A", "B", "A"), 1:2, 2:3)
+  # Nodes with the same label are still different nodes.
+  expect_equal(n == n[3:1], c(FALSE, TRUE, FALSE))
+  expect_equal(n != n[3:1], c(TRUE, FALSE, TRUE))
+  expect_equal(n == n[3:1], vctrs::vec_equal(n, n[3:1]))
+  expect_equal(n == n[1], c(TRUE, FALSE, FALSE))
+  expect_error(n == n[1:2], "recycle")
+  # A copy equals the node it copies, as for duplicated().
+  expect_equal(c(n, n)[4:6] == n, c(TRUE, TRUE, TRUE))
+  # Nodes of separately built graphs are never equal.
+  expect_equal(n == node_vec(c("A", "B", "A"), 1:2, 2:3), c(FALSE, FALSE, FALSE))
+  # A relabelled node no longer equals the original.
+  r <- n
+  r[2] <- "Z"
+  expect_equal(r == n, c(TRUE, FALSE, TRUE))
+  # A missing node compares as NA.
+  x <- c(n, vctrs::vec_init(n, 1))
+  expect_equal(x == x, c(TRUE, TRUE, TRUE, NA))
+
+  # Against a plain value, and for other operators, the node values compare.
+  expect_equal(n == "A", c(TRUE, FALSE, TRUE))
+  expect_equal("A" != n, c(FALSE, TRUE, FALSE))
+  expect_equal(n < "B", c(TRUE, FALSE, TRUE))
+
+  # Data-frame values compare row-wise.
+  d <- node_vec(data.frame(id = 1:2, lab = c("a", "b")), 1L, 2L)
+  expect_equal(d == d, c(TRUE, TRUE))
+  expect_equal(d == d[2:1], c(FALSE, FALSE))
+
+  # Hyperedge node_vecs have no graph identity and compare by value.
+  h <- node_vec(c("A", "B", "A"), from = list(1:2), to = list(3L))
+  expect_equal(h == h[3:1], c(TRUE, TRUE, TRUE))
+  expect_equal(h == h[3:1], vctrs::vec_equal(h, h[3:1]))
+})
+
 test_that("c.node_vec() is a disjoint union: values concatenate, second graph's edges are offset", {
   g1 <- node_vec(x = c("A", "B"), from = 1L, to = 2L)
   g2 <- node_vec(x = c("X", "Y"), from = 1L, to = 2L)
