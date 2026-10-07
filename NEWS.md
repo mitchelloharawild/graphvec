@@ -173,6 +173,12 @@
   rather than an older row-order model where each value only joined the
   `<aggregated>` values just before it, a value with none before it had no
   parent, and consecutive `<aggregated>` values were a hyperedge error.
+* `format()`, `as.character()` and `print()` on an `edge_vec` no longer
+  pad node labels to a common width inside each edge's label, so an edge's
+  label doesn't depend on the other edges: `format(e[i])` is
+  `format(e)[i]`, as matching edges across graphs by `format(e)` needs.
+  `format(e)` now gives `"[A]->[BBB]" "[C]->[A]"` rather than
+  `"[A]->[BBB]" "[C]->[A  ]"`; printing still aligns the labels as a whole.
 * `edge_multiplicity()` now gives `NA` for a missing edge (e.g. from
   `vec_init()`) and leaves it out of the grouping, rather than counting
   missing edges as parallel to each other, and `edge_is_multi()` is `NA`

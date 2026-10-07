@@ -19,6 +19,17 @@ test_that("format() labels endpoints by position when there's no node data", {
   expect_output(print(edge_vec(1L, 2L)), "[1]->[2]", fixed = TRUE)
 })
 
+test_that("format() doesn't pad node labels, so an edge's label doesn't depend on the others", {
+  e2 <- edges(node_vec(c("A", "BBB", "C"), c(1L, 3L), c(2L, 1L)))
+  expect_equal(format(e2), c("[A]->[BBB]", "[C]->[A]"))
+  expect_equal(format(e2[2]), format(e2)[2])
+  expect_equal(as.character(e2), format(e2))
+  en <- edges(node_vec(c(1, 10, 100), c(1L, 2L), c(3L, 1L)))
+  expect_equal(format(en), c("[1]->[100]", "[10]->[1]"))
+  ef <- edges(node_vec(factor(c("a", "bbb", "c")), c(1L, 3L), c(2L, 1L)))
+  expect_equal(format(ef), c("[a]->[bbb]", "[c]->[a]"))
+})
+
 test_that("edge_vec() preserves the number of edges", {
   e <- edge_vec(
     from = c(1L, 2L, 1L, 3L),
