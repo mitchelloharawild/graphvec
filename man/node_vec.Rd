@@ -39,7 +39,7 @@ Every \code{node_vec} belongs to a graph. Slicing (\code{x[i]}, \code{dplyr::fil
 \code{dplyr::arrange()}, ...) keeps that graph and selects nodes in it: the
 slice's edges are the induced subgraph on its nodes, so an edge is
 dropped once either of its ends is, and a node repeated within a slice
-(\code{x[c(1, 1)]}) has its edges cloned for each copy.
+(\code{x[c(1, 1)]}) is a separate copy of the graph, as for \code{\link[=c]{c()}} below.
 
 Combining node_vecs, with \code{\link[=c]{c()}}, \verb{[<-}, \verb{[[<-}, \code{vctrs::vec_c()},
 \code{dplyr::bind_rows()}, \code{dplyr::if_else()}, \code{dplyr::rows_patch()} and the
@@ -52,9 +52,10 @@ inputs: \code{c(x[1:2], x[3:4])} is \code{x}, and \code{if_else(cond, x, x)} or
 \item The same node coming from two different inputs makes them separate
 copies of the graph, a disjoint union: \code{c(x, x)} has two copies of
 every node and edge, and \code{c(x[1:2], x[2:3])} two copies of \code{x[2]}, each
-with only its own input's edges. \code{\link[=rep]{rep()}} makes copies the same way:
-\code{rep(x, 2)} is \code{c(x, x)}, and the k-th repeat of each node (with
-\code{each}, \code{times} or \code{length.out}) belongs to the k-th copy.
+with only its own input's edges. Repeats within one slice make copies
+the same way: \code{x[c(1:n, 1:n)]}, \code{rep(x, 2)} and \code{vctrs::vec_rep(x, 2)}
+are \code{c(x, x)}, and the k-th repeat of each node (\code{x[c(1, 1, 2)]},
+\code{rep(x, each = 2)}) belongs to the k-th copy.
 \item Nodes of different graphs are a disjoint union of those graphs. The
 nodes always stay in the order they're combined in.
 }

@@ -49,15 +49,14 @@ test_that("`[.node_vec` drops a hyperedge losing any one of its members", {
   expect_length(attr(m, "edges")$from, 0L)
 })
 
-test_that("`[.node_vec` clones a hyperedge once per combination of replicated members", {
+test_that("`[.node_vec` makes a copy of a hyperedge graph per repeated member", {
   g <- node_vec(x = c("A", "B", "C"), from = list(c(1L, 2L)), to = 3L)
-  m <- g[c(1, 1, 2, 3)] # A has 2 replicas (1, 2), B has 1 (3), C is now 4
-  expect_equal(
-    attr(m, "edges")$from,
-    list(c(1L, 3L), c(2L, 3L)),
-    ignore_attr = TRUE
-  )
-  expect_equal(attr(m, "edges")$to, c(4L, 4L))
+  # The first A is in the copy with B and C, so keeps the hyperedge; the
+  # second is a copy of its own, with no edges.
+  m <- g[c(1, 1, 2, 3)]
+  expect_equal(attr(m, "edges")$from, list(c(1L, 3L)), ignore_attr = TRUE)
+  expect_equal(attr(m, "edges")$to, 4L)
+  expect_equal(g[c(1:3, 1:3)], c(g, g))
 })
 
 test_that("c.node_vec() up-casts an ordinary `from`/`to` to a hyperedge column to combine with one", {
@@ -127,11 +126,11 @@ test_that("`[.node_vec` carries edge attributes through the induced-subgraph rem
   expect_equal(edges(m)$weight, 2)
 })
 
-test_that("`[.node_vec` clones edge attributes when a node is replicated", {
+test_that("`[.node_vec` copies edge attributes when a node is repeated", {
   g <- node_vec(x = c("A", "B"), from = 1L, to = 2L, weight = 42)
-  m <- g[c(1, 1, 2)]
   # Rewritten (see above): check via edges(), not the shared attribute table.
-  expect_equal(edges(m)$weight, c(42, 42))
+  expect_equal(edges(g[c(1, 1, 2)])$weight, 42)
+  expect_equal(edges(g[c(1, 2, 1, 2)])$weight, c(42, 42))
 })
 
 test_that("format.node_vec() formats the underlying vector", {
@@ -196,13 +195,31 @@ test_that("`[.node_vec` drops edges that lose an endpoint", {
   expect_length(edges(m), 0L)
 })
 
-test_that("`[.node_vec` clones incident edges when a node is replicated", {
-  g <- node_vec(x = c("A", "B"), from = 1L, to = 2L)
-  m <- g[c(1, 1, 2)]
-  expect_length(m, 3L)
-  expect_equal(format(m), c("A", "A", "B"))
-  # Rewritten (see above): check via edges()/format(), not internal positions.
-  expect_equal(format(edges(m)), c("[A]->[B]", "[A]->[B]"))
+test_that("`[.node_vec` makes a separate copy of the graph per repeat, as c() does", {
+  g <- node_vec(x = c("A", "B", "C"), from = 1:2, to = 2:3)
+  # The k-th occurrence of each node is in the k-th copy: here the first A
+  # with B and C, and the second A on its own.
+  m <- g[c(1, 1, 2, 3)]
+  expect_length(m, 4L)
+  expect_equal(format(m), c("A", "A", "B", "C"))
+  expect_equal(edge_pairs(m), c("1->3", "3->4"))
+  expect_equal(m, c(g, g[1])[c(1, 4, 2, 3)])
+  # Copies equal the node they copy.
+  expect_equal(m == g[c(1, 1, 2, 3)], rep(TRUE, 4))
+  expect_equal(duplicated(m), c(FALSE, TRUE, FALSE, FALSE))
+  # Repeating every node is c(), the same as rep().
+  expect_equal(g[c(1:3, 1:3)], c(g, g))
+  expect_equal(n_edges(g[c(1:3, 1:3)]), 4L)
+  expect_equal(g[c(1, 2, 3, 1, 2, 3)], rep(g, 2))
+  expect_equal(g[c(1, 1, 2, 2, 3, 3)], rep(g, each = 2))
+  # A missing index is a missing node, never a copy.
+  expect_equal(edge_pairs(g[c(1, NA, 2, NA)]), "1->3")
+
+  # Data-frame node values likewise.
+  d <- node_vec(data.frame(id = 1:2, lab = c("a", "b")), 1L, 2L)
+  expect_equal(d[c(1, 2, 1, 2)], c(d, d))
+  expect_equal(format(d[c(2, 1, 2)]), c("2:b", "1:a", "2:b"))
+  expect_equal(edge_pairs(d[c(2, 1, 2)]), "2->1")
 })
 
 test_that("`[.node_vec` supports negative and logical indices", {
@@ -313,11 +330,11 @@ test_that("unique.node_vec() drops repeats of a node and their incident edges, v
   g <- node_vec(x = c("A", "A", "B"), from = c(1L, 2L), to = c(2L, 3L))
   # Two nodes with the same label are still different nodes.
   expect_equal(unique(g), g)
-  # Rewritten: was value-based ("A", "A" collapsed). Repeating node 1 clones
-  # its edge; dropping the repeat drops the clone too, rather than
-  # redirecting it onto the kept node.
+  # Rewritten: was value-based ("A", "A" collapsed). Repeating node 1 makes
+  # a second copy of it (with no edges of its own here); dropping the copy
+  # gives back `g`.
   r <- g[c(1, 2, 1, 3)]
-  expect_equal(n_edges(r), 3L)
+  expect_equal(n_edges(r), 2L)
   u <- unique(r)
   expect_equal(u, g)
   expect_equal(n_edges(u), 2L)
@@ -387,9 +404,9 @@ test_that("rep.node_vec() makes disjoint copies of the graph, as c() does", {
   g <- node_vec(x = c("A", "B", "A"), from = 1:2, to = 2:3, weight = c(1, 2))
   r <- rep(g, 2)
   expect_equal(format(r), rep(c("A", "B", "A"), 2))
-  # Each copy keeps only its own edges (4, not the 8 of `g[c(1:3, 1:3)]`'s
-  # replicating slice), with their attributes, and every node equals the
-  # node it copies.
+  # Each copy keeps only its own edges (4, not 8 cloned per combination of
+  # repeats), with their attributes, and every node equals the node it
+  # copies.
   expect_equal(r, c(g, g))
   expect_equal(format(edges(r)), rep(c("[A]->[B]", "[B]->[A]"), 2))
   expect_equal(edges(r)$weight, c(1, 2, 1, 2))
@@ -635,8 +652,10 @@ test_that("c() puts slices of the same graph back together", {
   expect_equal(edge_pairs(u), c("1->2", "2->3", "3->1", "5->6", "6->7", "7->5"))
   # Overlapping slices are separate copies, each with its own edges.
   expect_equal(edge_pairs(c(n[1:2], n[2:3])), c("1->2", "3->4"))
-  # A repeat within one slice still replicates, cloning edges.
-  expect_equal(edge_pairs(c(n[c(1, 1)], n[2])), c("1->3", "2->3"))
+  # A repeat within one slice is already a copy, a graph of its own, so it
+  # doesn't go back into `n`'s graph.
+  expect_equal(n_edges(c(n[c(1, 1)], n[2])), 0L)
+  expect_equal(edge_pairs(n[c(1, 1, 2)]), "1->3")
 })
 
 test_that("[<- with nodes of the same graph keeps every edge", {

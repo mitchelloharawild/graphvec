@@ -173,11 +173,12 @@ vec_cast_from_agg_vec <- function(x, to, ..., x_arg = "", to_arg = "") {
 # carries its graph (the `graph` external pointer, kept by every slice), and
 # rows of the same graph go back into one graph whichever call they came
 # through, so `if_else(cond, x, x)`, `vec_assign(x, i, x[i])` and a no-op
-# rows_patch() keep every edge (_dev/graph-identity.md). The `id` still
-# matters: it says which *input* a row came from, which is what tells
-# `vec_c(x, x)` (the same nodes from two inputs: a disjoint union, like
-# `c(x, x)`) apart from `vec_slice(x, c(1:n, 1:n))` (one input replicating
-# its nodes). node_vec_assemble() and c.edge_vec() hold the exact rules.
+# rows_patch() keep every edge (_dev/graph-identity.md). The `id` says
+# which *input* a row came from, which the combining rules are written in
+# terms of (for node_vecs, `vec_c(x, x)` and `vec_slice(x, c(1:n, 1:n))`
+# both end up as two copies of the graph, since a row repeated within one
+# input is split into copies too). node_vec_assemble() and c.edge_vec()
+# hold the exact rules.
 
 graph_ref_counter <- new.env(parent = emptyenv())
 graph_ref_counter$id <- 0

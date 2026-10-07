@@ -242,8 +242,16 @@ test_that("selecting between copies of a node_vec keeps its edges", {
   u <- vctrs::vec_c(n, n)
   expect_equal(vctrs::vec_size(u), 8L)
   expect_equal(n_edges(u), 6L)
-  # A slice with repeats still replicates edges, as `[` does.
+  # A slice with repeats is a copy per repeat, as `[`, rep() and c() are.
   expect_equal(vctrs::vec_rep(n[1:2], 2), n[1:2][c(1, 2, 1, 2)])
+  expect_equal(vctrs::vec_rep(n, 2), c(n, n))
+  expect_equal(vctrs::vec_rep(n, 2), rep(n, 2))
+  expect_equal(n_edges(vctrs::vec_rep(n, 2)), 6L)
+  expect_equal(vctrs::vec_rep_each(n, 2), rep(n, each = 2))
+  expect_equal(vctrs::vec_slice(n, c(1, 1, 2)), n[c(1, 1, 2)])
+  h <- node_vec(c("A", "B", "C"), from = list(1:2), to = list(3L))
+  expect_equal(vctrs::vec_rep(h, 2), c(h, h))
+  expect_equal(vctrs::vec_rep_each(h, 2), rep(h, each = 2))
 
   skip_if_not_installed("dplyr")
   expect_equal(dplyr::if_else(c(TRUE, FALSE, TRUE, FALSE), n, n), n)

@@ -15,11 +15,16 @@
   `replace()`, no-op `rows_patch()`/`rows_update()`, `x[2] <- x[2]` and
   `purrr::map_vec(n, identity)` now keep all of `n`'s edges instead of
   dropping those between rows from different inputs.
-* `rep()` on a `node_vec` now makes disjoint copies of the graph, as `c()`
-  does: `rep(n, 2)` is `c(n, n)`, with one copy of each edge per repeat,
-  rather than cloning every edge once per combination of its ends'
-  replicas. With `each`, `times` or `length.out`, the k-th repeat of each
-  node belongs to the k-th copy.
+* Repeating nodes of a `node_vec` now makes disjoint copies of the graph,
+  as `c()` does, rather than cloning every edge once per combination of
+  its ends' repeats. `n[c(1:3, 1:3)]`, `vec_slice()`, `rep(n, 2)` and
+  `vec_rep(n, 2)` are all `c(n, n)`, with one copy of each edge per
+  repeat. The k-th occurrence of each node belongs to the k-th copy, so in
+  `n[c(1, 1, 2)]` only the first `n[1]` keeps its edge to `n[2]`, and
+  `rep(n, each = 2)`, `vec_rep_each()`, `slice(df, c(1, 1))`, joins that
+  repeat rows and `tidyr::uncount()` give the same copies. Copies still
+  equal the nodes they copy. A slice with repeats is a graph of its own,
+  so `c(n[c(1, 1)], n[2])` no longer connects to `n[2]`.
 * `c()`, `vec_c()`, `[<-` and `bind_rows()` of `edge_vec`s of the same
   graph now share it: the edges keep pointing at the same nodes, with one
   node table, instead of copying the nodes for every input. Edge_vecs of

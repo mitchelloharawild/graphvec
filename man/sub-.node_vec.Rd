@@ -19,11 +19,17 @@ the induced subgraph.
 }
 \description{
 Slicing a \code{node_vec} behaves as an induced subgraph: edges that lose an
-endpoint are dropped, surviving edges are remapped to the new positions,
-and replicated nodes (e.g. \code{x[c(1, 1, 2)]}) clone the edges incident to
-the original.
+endpoint are dropped, and surviving edges are remapped to the new
+positions.
 }
 \details{
+Repeating a node (e.g. \code{x[c(1, 1, 2)]}, \code{\link[=rep]{rep()}}, \code{vctrs::vec_rep()})
+makes a separate copy of the graph for each repeat, as \code{\link[=c]{c()}} does: the
+k-th occurrence of each node belongs to the k-th copy, and each copy has
+only the edges among its own nodes. So \code{x[c(1:n, 1:n)]} is \code{c(x, x)}, and
+in \code{x[c(1, 1, 2)]} the edge from \code{x[1]} to \code{x[2]} is only kept by the
+first \code{x[1]}. Copies still equal the nodes they copy.
+
 The slice still remembers which graph its nodes came from (and where in
 it they are), so putting slices of the same graph back together with
 \code{\link[=c]{c()}}, \verb{[<-} or a vctrs/dplyr operation restores the edges between them:

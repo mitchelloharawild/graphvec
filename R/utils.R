@@ -155,3 +155,11 @@ key_number <- function(x) {
   x[!is.na(x) & x == 0] <- 0
   sprintf("%a", x)
 }
+
+# For each element of the group ids `g` (positive integers), how many times
+# its group has occurred so far: 1 for the first, 2 for the second, ...
+occurrence <- function(g) {
+  out <- integer(length(g))
+  out[order(g)] <- sequence(tabulate(g))
+  out
+}

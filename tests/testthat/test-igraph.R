@@ -182,11 +182,12 @@ test_that("as.igraph() aligns attributes with a node_vec slice's induced subgrap
     to = c(2L, 3L, 1L),
     weight = c(1, 2, 3)
   )
-  # B is repeated, so its edge to C is cloned; the edges touching A are gone.
+  # B is repeated, so the second B is a copy of its own, with no edges; the
+  # edges touching A are gone.
   ig <- igraph::as.igraph(g[c(3L, 2L, 2L)])
   expect_identical(igraph::V(ig)$name, c("C", "B", "B"))
-  expect_equal(igraph::as_edgelist(ig, names = FALSE), cbind(c(2L, 3L), c(1L, 1L)))
-  expect_identical(igraph::E(ig)$weight, c(2, 2))
+  expect_equal(igraph::as_edgelist(ig, names = FALSE), cbind(2L, 1L))
+  expect_identical(igraph::E(ig)$weight, 2)
 
   ig <- igraph::as.igraph(g[c(1L, 3L)])
   expect_identical(igraph::V(ig)$name, c("A", "C"))

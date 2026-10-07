@@ -25,7 +25,7 @@
 #' `dplyr::arrange()`, ...) keeps that graph and selects nodes in it: the
 #' slice's edges are the induced subgraph on its nodes, so an edge is
 #' dropped once either of its ends is, and a node repeated within a slice
-#' (`x[c(1, 1)]`) has its edges cloned for each copy.
+#' (`x[c(1, 1)]`) is a separate copy of the graph, as for [c()] below.
 #'
 #' Combining node_vecs, with [c()], `[<-`, `[[<-`, `vctrs::vec_c()`,
 #' `dplyr::bind_rows()`, `dplyr::if_else()`, `dplyr::rows_patch()` and the
@@ -38,9 +38,10 @@
 #' * The same node coming from two different inputs makes them separate
 #'   copies of the graph, a disjoint union: `c(x, x)` has two copies of
 #'   every node and edge, and `c(x[1:2], x[2:3])` two copies of `x[2]`, each
-#'   with only its own input's edges. [rep()] makes copies the same way:
-#'   `rep(x, 2)` is `c(x, x)`, and the k-th repeat of each node (with
-#'   `each`, `times` or `length.out`) belongs to the k-th copy.
+#'   with only its own input's edges. Repeats within one slice make copies
+#'   the same way: `x[c(1:n, 1:n)]`, `rep(x, 2)` and `vctrs::vec_rep(x, 2)`
+#'   are `c(x, x)`, and the k-th repeat of each node (`x[c(1, 1, 2)]`,
+#'   `rep(x, each = 2)`) belongs to the k-th copy.
 #' * Nodes of different graphs are a disjoint union of those graphs. The
 #'   nodes always stay in the order they're combined in.
 #'
@@ -231,9 +232,9 @@ node_vec_is_full <- function(x) {
 # (new) graph. Everything that reads a node_vec's edges (edges(),
 # as.igraph(), the topology operations, waldo, c()) goes through this, so a
 # slice sees only the edges among its own nodes: an edge is dropped once
-# either end is no longer selected, and a replicated node (`x[c(1, 1)]`)
-# clones its edges once per replica, as GraphBackend$induced_subgraph()
-# defines.
+# either end is no longer selected, as GraphBackend$induced_subgraph()
+# defines. (A slice never repeats a position: `[` makes a repeat a separate
+# copy of the graph, see node_vec_assemble().)
 #
 # Computed lazily, on read, rather than when slicing (_dev/RUST_BACKEND.md
 # §2.2's "selection backing"): slicing is the hot path (dplyr verbs and
@@ -314,6 +315,7 @@ strip_node_vec <- function(x) {
   attr(x, "edges") <- NULL
   attr(x, "graph") <- NULL # absent (NULL already) for the hyperedge case
   attr(x, "node_id") <- NULL # likewise
+  attr(x, "origin") <- NULL # only on copies (node_vec_origin())
   attr(x, "directed") <- NULL
   attr(x, "value_class") <- NULL
   oldClass(x) <- NULL
@@ -343,8 +345,9 @@ node_label <- function(x, ...) {
 # references (in either role, and for every member of a hyperedge role) was
 # dropped; an edge whose referenced nodes were replicated is cloned once per
 # combination of replica positions, carrying the same attribute values as
-# the original. `from`/`to` stay whatever shape (plain or hyperedge) they
-# arrived in.
+# the original (though `[` no longer passes repeats here: it makes them
+# separate copies, see node_vec_assemble()). `from`/`to` stay whatever shape
+# (plain or hyperedge) they arrived in.
 #
 # Hyperedge-only fallback: the ordinary (non-hyperedge) case is handled by
 # GraphBackend$induced_subgraph() instead (_dev/RUST_BACKEND.md), which is
@@ -395,9 +398,15 @@ node_vec_reindex_edges <- function(n, idx, edges) {
 #' Subset a node_vec
 #'
 #' Slicing a `node_vec` behaves as an induced subgraph: edges that lose an
-#' endpoint are dropped, surviving edges are remapped to the new positions,
-#' and replicated nodes (e.g. `x[c(1, 1, 2)]`) clone the edges incident to
-#' the original.
+#' endpoint are dropped, and surviving edges are remapped to the new
+#' positions.
+#'
+#' Repeating a node (e.g. `x[c(1, 1, 2)]`, [rep()], `vctrs::vec_rep()`)
+#' makes a separate copy of the graph for each repeat, as [c()] does: the
+#' k-th occurrence of each node belongs to the k-th copy, and each copy has
+#' only the edges among its own nodes. So `x[c(1:n, 1:n)]` is `c(x, x)`, and
+#' in `x[c(1, 1, 2)]` the edge from `x[1]` to `x[2]` is only kept by the
+#' first `x[1]`. Copies still equal the nodes they copy.
 #'
 #' The slice still remembers which graph its nodes came from (and where in
 #' it they are), so putting slices of the same graph back together with
@@ -426,6 +435,12 @@ node_vec_reindex_edges <- function(n, idx, edges) {
 
   n <- length(x)
   idx <- seq_len(n)[i]
+
+  if (anyDuplicated(idx, incomparables = NA)) {
+    # A repeated node is a separate copy of the graph (node_vec_assemble()
+    # rule 3), as for rep() and c().
+    return(node_vec_assemble(list(x), src = rep(1L, length(idx)), row = idx))
+  }
 
   # slice_rows(), not base `[`: a bare index on a data-frame-valued x
   # otherwise means "select columns", not "select rows".
@@ -718,10 +733,11 @@ c.node_vec <- function(...) {
 #    graph (`if_else(cond, x, x)`, `x[2] <- x[2]`, a no-op rows_patch(),
 #    c(x[1:2], x[3:4])) are put back into one graph with every edge between
 #    them, including edges crossing between the inputs.
-# 3. A position repeated *within* one input (x[c(1, 1)], vec_rep(x, 2),
-#    vctrs::vec_slice() with repeats) is that input's own replicating slice:
-#    it stays in one copy, and the replicated node's edges are cloned once
-#    per replica, exactly as `[` does. Only repeats *across* inputs split.
+# 3. A row repeated *within* one input (x[c(1, 1)], vec_rep(x, 2),
+#    vctrs::vec_slice() with repeats) splits that input as if each repeat
+#    came from a further input: the k-th occurrence of each row belongs to
+#    the input's k-th part, so by rule 2 each repeat is its own copy of the
+#    graph, the same as c(x, x).
 # 4. Missing nodes (no position: vec_init(), an NA index) belong to no graph;
 #    an input with only missing nodes joins the first copy of whatever else
 #    is combined, so it never forces a disjoint union.
@@ -736,8 +752,19 @@ c.node_vec <- function(...) {
 # its copies stay equal.
 node_vec_assemble <- function(srcs, src, row) {
   n <- length(src)
-  k <- length(srcs)
   directed <- attr(srcs[[1]], "directed")
+
+  # Rule 3: split each input whose rows repeat into one part per occurrence,
+  # numbered in order of first row like separate inputs.
+  ok <- !is.na(row)
+  if (anyDuplicated(cbind(src, row)[ok, , drop = FALSE])) {
+    occ <- rep(1L, n)
+    occ[ok] <- occurrence(vctrs::vec_group_id(vctrs::new_data_frame(list(src = src[ok], row = row[ok]))))
+    part <- vctrs::vec_group_id(vctrs::new_data_frame(list(src = src, occ = occ)))
+    srcs <- srcs[src[match(seq_len(max(part)), part)]]
+    src <- as.integer(part)
+  }
+  k <- length(srcs)
 
   # The common case of a single input (any slice by vctrs): just a slice.
   if (k == 1L) {
@@ -880,16 +907,7 @@ node_vec_assemble <- function(srcs, src, row) {
 
 #' @export
 rep.node_vec <- function(x, ...) {
-  # Repeats are copies of `x`'s graph, as for c(): the k-th repeat of each
-  # node goes into the k-th copy, so `rep(x, 2)` is `c(x, x)` (a disjoint
-  # union, each copy with its own edges) rather than `x[c(1:n, 1:n)]`'s
-  # replicating slice. `each`, `times` and `length.out` only choose which
-  # nodes each copy holds and in what order.
-  idx <- rep(seq_along(x), ...)
-  copy <- integer(length(idx))
-  copy[order(idx)] <- sequence(tabulate(idx, nbins = length(x)))
-  if (length(idx) == 0L || max(copy) == 1L) {
-    return(x[idx])
-  }
-  node_vec_assemble(rep(list(x), max(copy)), src = copy, row = idx)
+  # `[` makes the k-th repeat of each node part of the k-th copy of the
+  # graph, so `rep(x, 2)` is `c(x, x)`.
+  x[rep(seq_along(x), ...)]
 }
