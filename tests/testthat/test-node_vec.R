@@ -347,16 +347,37 @@ test_that("c.node_vec() pads a missing edge attribute with NA when combining nod
   expect_equal(attr(u, "edges")$weight, c(5, NA))
 })
 
-test_that("rep.node_vec() clones a replicated node's incident edges, like `[` does", {
-  g <- node_vec(x = c("A", "B"), from = 1L, to = 2L, weight = 42)
+test_that("rep.node_vec() makes disjoint copies of the graph, as c() does", {
+  g <- node_vec(x = c("A", "B", "A"), from = 1:2, to = 2:3, weight = c(1, 2))
   r <- rep(g, 2)
-  expect_equal(format(r), c("A", "B", "A", "B"))
-  # rep(x, 2) tiles the whole vector (positions 1,2,1,2), so the A->B edge
-  # is cloned once per combination of A's replicas (1, 3) and B's (2, 4).
-  # Rewritten (see above): check via edges()/format(), not internal positions.
-  expect_equal(format(edges(r)), rep("[A]->[B]", 4))
-  # Rewritten (see `[.node_vec` above): via edges(), not the attribute table.
-  expect_equal(edges(r)$weight, rep(42, 4))
+  expect_equal(format(r), rep(c("A", "B", "A"), 2))
+  # Each copy keeps only its own edges (4, not the 8 of `g[c(1:3, 1:3)]`'s
+  # replicating slice), with their attributes, and every node equals the
+  # node it copies.
+  expect_equal(r, c(g, g))
+  expect_equal(format(edges(r)), rep(c("[A]->[B]", "[B]->[A]"), 2))
+  expect_equal(edges(r)$weight, c(1, 2, 1, 2))
+  expect_equal(vctrs::vec_equal(r, c(g, g)), rep(TRUE, 6))
+  expect_equal(duplicated(r), rep(c(FALSE, TRUE), each = 3))
+
+  # The k-th repeat of each node goes into the k-th copy.
+  r <- rep(g, each = 2)
+  expect_equal(format(r), rep(c("A", "B", "A"), each = 2))
+  expect_equal(r, c(g, g)[c(1, 4, 2, 5, 3, 6)])
+  expect_equal(format(edges(r)), rep(c("[A]->[B]", "[B]->[A]"), 2))
+  expect_equal(rep(g, times = c(2, 1, 2)), c(g, g[c(1, 3)])[c(1, 4, 2, 3, 5)])
+  expect_equal(rep(g, length.out = 5), c(g, g[1:2]))
+  expect_equal(format(edges(rep(g, length.out = 5))), c("[A]->[B]", "[B]->[A]", "[A]->[B]"))
+
+  # No repeats: just a slice.
+  expect_equal(rep(g, 1), g)
+  expect_equal(rep(g, times = c(1, 0, 1)), g[c(1, 3)])
+  expect_length(rep(g, 0), 0L)
+
+  # Hyperedge node_vecs, which have no graph identity, likewise.
+  h <- node_vec(c("A", "B", "C"), from = list(1:2), to = list(3L))
+  expect_equal(rep(h, 2), c(h, h))
+  expect_equal(format(edges(rep(h, 2))), rep("[{A,B}]->[C]", 2))
 })
 
 test_that("append() works on a node_vec via length()/c()/`[` without a bespoke method", {

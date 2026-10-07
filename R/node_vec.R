@@ -25,7 +25,7 @@
 #' `dplyr::arrange()`, ...) keeps that graph and selects nodes in it: the
 #' slice's edges are the induced subgraph on its nodes, so an edge is
 #' dropped once either of its ends is, and a node repeated within a slice
-#' (`x[c(1, 1)]`, [rep()]) has its edges cloned for each copy.
+#' (`x[c(1, 1)]`) has its edges cloned for each copy.
 #'
 #' Combining node_vecs, with [c()], `[<-`, `[[<-`, `vctrs::vec_c()`,
 #' `dplyr::bind_rows()`, `dplyr::if_else()`, `dplyr::rows_patch()` and the
@@ -38,7 +38,9 @@
 #' * The same node coming from two different inputs makes them separate
 #'   copies of the graph, a disjoint union: `c(x, x)` has two copies of
 #'   every node and edge, and `c(x[1:2], x[2:3])` two copies of `x[2]`, each
-#'   with only its own input's edges.
+#'   with only its own input's edges. [rep()] makes copies the same way:
+#'   `rep(x, 2)` is `c(x, x)`, and the k-th repeat of each node (with
+#'   `each`, `times` or `length.out`) belongs to the k-th copy.
 #' * Nodes of different graphs are a disjoint union of those graphs. The
 #'   nodes always stay in the order they're combined in.
 #'
@@ -858,6 +860,16 @@ node_vec_assemble <- function(srcs, src, row) {
 
 #' @export
 rep.node_vec <- function(x, ...) {
-  # Delegates to [.node_vec, which already clones a replicated node's incident edges.
-  x[rep(seq_along(x), ...)]
+  # Repeats are copies of `x`'s graph, as for c(): the k-th repeat of each
+  # node goes into the k-th copy, so `rep(x, 2)` is `c(x, x)` (a disjoint
+  # union, each copy with its own edges) rather than `x[c(1:n, 1:n)]`'s
+  # replicating slice. `each`, `times` and `length.out` only choose which
+  # nodes each copy holds and in what order.
+  idx <- rep(seq_along(x), ...)
+  copy <- integer(length(idx))
+  copy[order(idx)] <- sequence(tabulate(idx, nbins = length(x)))
+  if (length(idx) == 0L || max(copy) == 1L) {
+    return(x[idx])
+  }
+  node_vec_assemble(rep(list(x), max(copy)), src = copy, row = idx)
 }

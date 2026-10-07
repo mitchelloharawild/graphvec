@@ -15,6 +15,11 @@
   `replace()`, no-op `rows_patch()`/`rows_update()`, `x[2] <- x[2]` and
   `purrr::map_vec(n, identity)` now keep all of `n`'s edges instead of
   dropping those between rows from different inputs.
+* `rep()` on a `node_vec` now makes disjoint copies of the graph, as `c()`
+  does: `rep(n, 2)` is `c(n, n)`, with one copy of each edge per repeat,
+  rather than cloning every edge once per combination of its ends'
+  replicas. With `each`, `times` or `length.out`, the k-th repeat of each
+  node belongs to the k-th copy.
 * `c()`, `vec_c()`, `[<-` and `bind_rows()` of `edge_vec`s of the same
   graph now share it: the edges keep pointing at the same nodes, with one
   node table, instead of copying the nodes for every input. Edge_vecs of
