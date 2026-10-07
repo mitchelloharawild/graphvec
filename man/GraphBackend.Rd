@@ -46,12 +46,13 @@ The R constructors check this first, with friendlier messages.
 \subsection{Method \code{uid}}{
 A number unique to this graph among every graph built in the R
 session, never reused (unlike a memory address, which can be once a
-graph is garbage collected). A graph's identity at the R level is its
-external pointer, compared with \code{identical()}; \code{uid()} is the same
-identity as a plain value, for the places that need one to compare
-across vectors, e.g. the \code{graph} column of an \code{edge_vec}'s vctrs
-equality proxy (\code{R/vctrs.R}). A double, so it fits an R numeric
-exactly (2^53 graphs is out of reach).
+graph is garbage collected), and starting from a random point per
+session so it doesn't collide with a graph saved from another one.
+This is a graph's identity: two R objects are of the same graph
+exactly when their \code{GraphBackend}s have the same \code{uid()}, including
+after a \code{saveRDS()}/\code{readRDS()} round trip, which rebuilds the graph
+behind a new address but keeps its uid (\code{graphvec_backend_revive()}).
+A double, so it fits an R numeric exactly (it's kept to 53 bits).
 }
 
 \subsection{Method \code{repr_name}}{

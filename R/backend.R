@@ -10,8 +10,46 @@
 # position must be a node, `1..n`: the constructors check that first with
 # check_edge_positions(), and the Rust side errors on anything that gets
 # past them rather than indexing out of range.
+#
+# The inputs are also kept, with the graph's uid, in the external pointer's
+# protected slot: the Rust graph itself doesn't survive serialize()/
+# saveRDS() (the pointer comes back null, e.g. after readRDS() or in a
+# callr/future worker), but this does, and graph_of() rebuilds the graph
+# from it on first use.
 graphvec_backend_new <- function(n, from, to, directed) {
-  GraphBackend$new(as.integer(n), as.integer(from), as.integer(to), as.logical(directed))
+  n <- as.integer(n)
+  from <- as.integer(from)
+  to <- as.integer(to)
+  directed <- as.logical(directed)
+  graph <- GraphBackend$new(n, from, to, directed)
+  graphvec_backend_set_source(
+    graph,
+    list(n = n, from = from, to = to, directed = directed, uid = graph$uid())
+  )
+  graph
+}
+
+# The `GraphBackend` of a node_vec/edge_vec (NULL for a hyperedge one),
+# rebuilt in place first if it was serialised (graphvec_backend_revive()).
+# Every read of `attr(x, "graph")` that calls into the graph or compares
+# its identity goes through here.
+graph_of <- function(x) {
+  graph <- attr(x, "graph")
+  if (!is.null(graph)) {
+    graphvec_backend_revive(graph)
+  }
+  graph
+}
+
+# Whether two backends (from graph_of(), so live) are the same graph: the
+# same uid(), not the same external pointer, which a reloaded graph no
+# longer is (two readRDS() of one save each rebuild their own pointer, with
+# the same uid). A hyperedge input's NULL is only the same as another NULL.
+same_graph <- function(x, y) {
+  if (is.null(x) || is.null(y)) {
+    return(is.null(x) && is.null(y))
+  }
+  x$uid() == y$uid()
 }
 
 # Errors unless every non-missing `from`/`to` position is a node of a graph

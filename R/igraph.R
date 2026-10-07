@@ -66,7 +66,7 @@ as.igraph.agg_df <- function(x, ...) {
 as.igraph.node_vec <- function(x, ...) {
   # A slice's own edges are the induced subgraph on its nodes.
   x <- node_vec_compact(x)
-  graph <- attr(x, "graph")
+  graph <- graph_of(x)
   # Node identity is positional, so the vertex count comes from `x` rather than
   # from the edges -- otherwise trailing isolated nodes would be dropped.
   if (!is.null(graph)) {

@@ -26,6 +26,7 @@ Imports:
     cli,
     tibble
 Suggests: 
+    callr,
     crayon,
     dplyr,
     ggplot2,

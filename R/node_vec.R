@@ -162,7 +162,7 @@ node_vec_origin <- function(x) {
   if (!is.null(origin)) {
     return(origin)
   }
-  graph <- attr(x, "graph")
+  graph <- graph_of(x)
   if (is.null(graph)) {
     return(NULL)
   }
@@ -214,7 +214,7 @@ node_vec_order_fields <- function(x) {
 # graph's own order: then `graph` and `edges` already describe its edges,
 # with no induced view to compute.
 node_vec_is_full <- function(x) {
-  identical(attr(x, "node_id"), seq_len(attr(x, "graph")$n_nodes()))
+  identical(attr(x, "node_id"), seq_len(graph_of(x)$n_nodes()))
 }
 
 # The node_vec's own graph: the subgraph `graph` induces on `node_id`,
@@ -234,7 +234,7 @@ node_vec_is_full <- function(x) {
 # cached: the objects are immutable values, and an environment attribute to
 # cache into would break identical() and serialisation.
 node_vec_compact <- function(x) {
-  graph <- attr(x, "graph")
+  graph <- graph_of(x)
   if (is.null(graph) || node_vec_is_full(x)) {
     return(x)
   }
@@ -254,7 +254,7 @@ node_vec_compact <- function(x) {
 # operations that relabel nodes without touching the graph: assigning plain
 # values with `[<-`, and vctrs casts. Keeps the graph identity.
 node_vec_with_values <- function(x, values) {
-  graph <- attr(x, "graph")
+  graph <- graph_of(x)
   if (is.null(graph)) {
     return(new_node_vec(values, edges = attr(x, "edges"), directed = attr(x, "directed")))
   }
@@ -422,7 +422,7 @@ node_vec_reindex_edges <- function(n, idx, edges) {
   # otherwise means "select columns", not "select rows".
   val <- slice_rows(strip_node_vec(x), idx)
 
-  graph <- attr(x, "graph")
+  graph <- graph_of(x)
   if (!is.null(graph)) {
     # Ordinary case: keep the whole graph and select positions in it, like
     # an edge_vec slice. The induced subgraph is only worked out when the
@@ -599,7 +599,7 @@ nodes.node_vec <- function(x, ...) {
 #' @export
 edges.node_vec <- function(x, ...) {
   x <- node_vec_compact(x)
-  graph <- attr(x, "graph")
+  graph <- graph_of(x)
   if (!is.null(graph)) {
     # Free reorientation (_dev/RUST_BACKEND.md §2.3) for a node_vec that
     # covers its whole graph: its `edges` attribute is already aligned 1:1
@@ -637,7 +637,7 @@ edges.node_vec <- function(x, ...) {
 # copy (new_node_vec() strips them back out again once the caller is done).
 node_vec_full_edges <- function(x) {
   x <- node_vec_compact(x)
-  graph <- attr(x, "graph")
+  graph <- graph_of(x)
   if (is.null(graph)) {
     return(attr(x, "edges"))
   }
@@ -682,9 +682,9 @@ c.node_vec <- function(...) {
 #
 # The rule:
 #
-# 1. Inputs are grouped by graph: the same `graph` external pointer
-#    (identical(), i.e. the same address) and the same `edges` attribute
-#    table. Different graphs are always a disjoint union.
+# 1. Inputs are grouped by graph: the same `graph` uid (same_graph(),
+#    which unlike the pointer's address survives a reload) and the same
+#    `edges` attribute table. Different graphs are always a disjoint union.
 # 2. Within one graph, inputs are taken in order of their first row, and
 #    each joins the first copy of the graph that none of its positions are
 #    already used in, or else starts a new copy. A copy is one selection
@@ -729,7 +729,7 @@ node_vec_assemble <- function(srcs, src, row) {
   values <- slice_rows(combine_values(parts), order(unlist(rows_of, use.names = FALSE)))
 
   # Each row's position in its input's graph (NA if missing or hyperedge).
-  graphs <- lapply(srcs, attr, "graph")
+  graphs <- lapply(srcs, graph_of)
   pos <- rep(NA_integer_, n)
   for (j in seq_len(k)) {
     if (!is.null(graphs[[j]]) && length(rows_of[[j]]) > 0L) {
@@ -767,7 +767,7 @@ node_vec_assemble <- function(srcs, src, row) {
     for (b in seq_along(copies)) {
       r <- copies[[b]]$src
       if (!is.null(copies[[b]]$used) &&
-          identical(graphs[[r]], graphs[[j]]) &&
+          same_graph(graphs[[r]], graphs[[j]]) &&
           identical(attr(srcs[[r]], "edges"), attr(srcs[[j]], "edges")) &&
           !any(copies[[b]]$used[p])) {
         target <- b

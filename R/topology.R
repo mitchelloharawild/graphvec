@@ -27,7 +27,7 @@ backend_of <- function(x) {
   if (!inherits(x, "node_vec") && !inherits(x, "edge_vec")) {
     check_node_or_edge_vec(x)
   }
-  graph <- attr(x, "graph")
+  graph <- graph_of(x)
   if (is.null(graph)) {
     check_no_hyperedges()
   }

@@ -330,7 +330,7 @@ vec_proxy_compare.edge_vec <- function(x, ...) {
   # As the order proxy, then the graph, so edges of different graphs never
   # compare as equal either.
   fields <- edge_vec_order_fields(x)
-  uid <- rep(attr(x, "graph")$uid(), length(x))
+  uid <- rep(graph_of(x)$uid(), length(x))
   uid[is.na(attr(x, "edge_id"))] <- NA
   vctrs::vec_proxy_compare(vctrs::new_data_frame(c(fields, list(.graph = uid)), n = length(x)))
 }
@@ -352,7 +352,7 @@ vec_ptype2.edge_vec.edge_vec <- function(x, y, ...) {
 
 vec_cast.edge_vec.edge_vec <- function(x, to, ...) {
   check_same_directed_cast(x, to, ...)
-  graph <- attr(x, "graph")
+  graph <- graph_of(x)
   if (!is.null(graph)) {
     # Only the node values' type changes, never the graph, so a cast edge_vec
     # still shares its graph with the rest of it when combined (vctrs casts

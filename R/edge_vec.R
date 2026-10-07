@@ -114,7 +114,7 @@ edge_vec_data <- strip_edge_vec
 # `graph` for the ordinary case (never stored a second time), or read
 # directly off the fields for the hyperedge case.
 edge_vec_endpoints <- function(x) {
-  graph <- attr(x, "graph")
+  graph <- graph_of(x)
   if (is.null(graph)) {
     fields <- edge_vec_data(x)
     return(list(from = fields[["from"]], to = fields[["to"]]))
@@ -129,7 +129,7 @@ edge_vec_endpoints <- function(x) {
 # ([.data.frame/rbind()/as_tibble()/as.igraph() etc.) or the full from/to/
 # attrs shape (c()'s hyperedge up-casting).
 edge_vec_fields_df <- function(x) {
-  graph <- attr(x, "graph")
+  graph <- graph_of(x)
   if (is.null(graph)) {
     return(edge_fields_df(edge_vec_data(x)))
   }
@@ -290,7 +290,7 @@ pillar_shaft.edge_vec <- function(x, ...) {
   }
 
   idx <- seq_len(length(x))[i]
-  graph <- attr(x, "graph")
+  graph <- graph_of(x)
 
   if (!is.null(graph)) {
     # No topology remap needed (_dev/RUST_BACKEND.md §2.2): the same graph
@@ -378,7 +378,7 @@ as.list.edge_vec <- function(x, ...) {
 
 #' @export
 length.edge_vec <- function(x) {
-  graph <- attr(x, "graph")
+  graph <- graph_of(x)
   if (!is.null(graph)) {
     length(attr(x, "edge_id"))
   } else {
@@ -388,8 +388,8 @@ length.edge_vec <- function(x) {
 
 # Combining edge_vecs groups the inputs by graph:
 #
-# - Inputs with the same backing graph (the same `graph` external pointer,
-#   compared with identical(), and the same `nodes`) share it: their edges
+# - Inputs with the same backing graph (the same `graph` uid, see
+#   same_graph(), and the same `nodes`) share it: their edges
 #   keep pointing at the same nodes, with no offset and one node table. So
 #   `c(e, e)`, `c(e[2], e)`, a no-op rows_patch() or `x[2] <- x[2]` never
 #   copy the nodes, and positions stay comparable, which is what edge
@@ -417,7 +417,7 @@ c.edge_vec <- function(...) {
   }
 
   # Group the inputs by graph; `reps` holds the first input of each group.
-  graphs <- lapply(xs, attr, "graph")
+  graphs <- lapply(xs, graph_of)
   group <- rep(NA_integer_, length(xs))
   reps <- integer()
   agnostic <- integer()
@@ -431,7 +431,7 @@ c.edge_vec <- function(...) {
     if (!is.null(g)) {
       for (r in seq_along(reps)) {
         x_r <- xs[[reps[[r]]]]
-        if (identical(graphs[[reps[[r]]]], g) && identical(attr(x_r, "nodes"), attr(xs[[j]], "nodes"))) {
+        if (same_graph(graphs[[reps[[r]]]], g) && identical(attr(x_r, "nodes"), attr(xs[[j]], "nodes"))) {
           hit <- r
           break
         }
@@ -549,7 +549,7 @@ edges.edge_vec <- function(x, ...) {
 #' @rdname reorient
 #' @export
 nodes.edge_vec <- function(x, ...) {
-  graph <- attr(x, "graph")
+  graph <- graph_of(x)
   if (!is.null(graph) && identical(attr(x, "edge_id"), seq_len(graph$n_edges()))) {
     # Free reorientation (_dev/RUST_BACKEND.md §2.3): x still covers every
     # edge of `graph`, in `graph`'s own order (nothing sliced away), so its
@@ -744,7 +744,7 @@ edge_vec_order_fields <- function(x) {
 }
 
 # The per-edge fields that make two edges equal. For an ordinary edge_vec:
-# its graph (the backend's uid(), the same identity as the `graph` pointer),
+# its graph (the backend's uid(), its graph identity; see same_graph()),
 # the node positions in each role, then the edge attributes. So two edges
 # are equal exactly when they are the same graph's edges between the same
 # nodes (positions, in order, even when undirected) with the same
@@ -753,7 +753,7 @@ edge_vec_order_fields <- function(x) {
 # every field. Hyperedges have no graph identity and keep comparing by value
 # (edge_vec_value_fields()).
 edge_vec_equal_fields <- function(x) {
-  graph <- attr(x, "graph")
+  graph <- graph_of(x)
   if (is.null(graph)) {
     return(edge_vec_value_fields(x))
   }

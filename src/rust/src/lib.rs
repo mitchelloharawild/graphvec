@@ -1,4 +1,5 @@
 use extendr_api::prelude::*;
+use extendr_ffi::{R_ExternalPtrProtected, R_SetExternalPtrAddr, R_SetExternalPtrProtected};
 use rustworkx_core::petgraph::csr::{Csr, NodeIndex as CsrNodeIndex};
 use rustworkx_core::petgraph::graph::{EdgeIndex, Graph, NodeIndex};
 use rustworkx_core::petgraph::matrix_graph::{MatrixGraph, NodeIndex as MatrixNodeIndex};
@@ -9,14 +10,98 @@ use rustworkx_core::petgraph::visit::{
 use rustworkx_core::petgraph::{Directed, Direction, EdgeType, Undirected};
 use std::collections::hash_map::RandomState;
 use std::collections::HashSet;
+use std::hash::{BuildHasher, Hasher};
+use std::os::raw::c_void;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 // Source of `GraphBackend::uid`: one fresh, never-reused number per graph
-// built in this R session (see `uid()`).
+// built in this R session (see `uid()`), counting up from a random,
+// per-session starting point so that graphs from different sessions (one
+// saved with saveRDS(), one built after readRDS()) don't share a uid
+// either. The randomness is std's own (`RandomState`'s OS-seeded keys), so
+// R's RNG state (`.Random.seed`) is never touched. Kept to 53 bits, so a
+// uid fits an R double exactly.
 static NEXT_UID: AtomicU64 = AtomicU64::new(1);
+static UID_BASE: AtomicU64 = AtomicU64::new(0);
+const UID_MASK: u64 = (1 << 53) - 1;
 
 fn next_uid() -> u64 {
-    NEXT_UID.fetch_add(1, Ordering::Relaxed)
+    let mut base = UID_BASE.load(Ordering::Relaxed);
+    if base == 0 {
+        let random = RandomState::new().build_hasher().finish() | 1;
+        base = match UID_BASE.compare_exchange(0, random, Ordering::Relaxed, Ordering::Relaxed) {
+            Ok(_) => random,
+            Err(current) => current,
+        };
+    }
+    base.wrapping_add(NEXT_UID.fetch_add(1, Ordering::Relaxed)) & UID_MASK
+}
+
+/// Record the `list(n, from, to, directed, uid)` a `GraphBackend` was built
+/// from in its external pointer's protected slot, which (unlike the Rust
+/// graph the pointer addresses) survives `serialize()`/`saveRDS()`, so that
+/// `graphvec_backend_revive()` can rebuild the graph after a reload. The
+/// uid is also set as a `uid` attribute, which `identical()` compares
+/// (unlike the protected slot): every reloaded pointer is null until it's
+/// rebuilt, so without it any two reloaded graphs would be `identical()`.
+/// @noRd
+#[extendr]
+fn graphvec_backend_set_source(mut graph: Robj, source: List) -> std::result::Result<(), String> {
+    if !graph.is_external_pointer() {
+        return Err("`graph` must be a `GraphBackend`.".to_string());
+    }
+    let uid = source.dollar("uid").map_err(|e| e.to_string())?;
+    unsafe { R_SetExternalPtrProtected(graph.get(), source.get()) };
+    graph.set_attrib("uid", uid).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Rebuild, in place, the Rust graph behind a `GraphBackend` external
+/// pointer that came back null from `unserialize()`/`readRDS()` (or a
+/// callr/future worker), from the source `graphvec_backend_set_source()`
+/// recorded, keeping its uid. In place, so every R object sharing the
+/// pointer sees the rebuilt graph. A live pointer, or one without a
+/// recorded source, is left as it is.
+///
+/// The rebuilt graph is an ordinary extendr `GraphBackend` external
+/// pointer of its own, whose address `graph` borrows; it's kept alive (and
+/// is eventually freed, by its own finalizer) through `graph`'s protected
+/// slot, so `graph` itself needs no finalizer and nothing here depends on
+/// how extendr lays out the memory behind the address.
+/// @noRd
+#[extendr]
+fn graphvec_backend_revive(graph: Robj) -> std::result::Result<(), String> {
+    if !graph.is_external_pointer() {
+        return Err("`graph` must be a `GraphBackend`.".to_string());
+    }
+    let sexp = unsafe { graph.get() };
+    if !unsafe { extendr_api::R_ExternalPtrAddr(sexp) }.is_null() {
+        return Ok(());
+    }
+    let source = unsafe { Robj::from_sexp(R_ExternalPtrProtected(sexp)) };
+    let source = match List::try_from(source) {
+        Ok(source) if source.len() >= 5 => source,
+        _ => return Ok(()),
+    };
+    let field = |i: usize| source.elt(i).map_err(|e| e.to_string());
+    let n = i32::try_from(field(0)?).map_err(|e| e.to_string())?;
+    let from = Vec::<i32>::try_from(field(1)?).map_err(|e| e.to_string())?;
+    let to = Vec::<i32>::try_from(field(2)?).map_err(|e| e.to_string())?;
+    let directed = bool::try_from(field(3)?).map_err(|e| e.to_string())?;
+    let uid = f64::try_from(field(4)?).map_err(|e| e.to_string())?;
+
+    let mut backend = GraphBackend::new(n, from, to, directed)?;
+    backend.uid = uid as u64;
+    let fresh = Robj::from(backend);
+    let mut values: Vec<Robj> = (0..5).map(|i| source.elt(i).unwrap()).collect();
+    values.push(fresh.clone());
+    let mut kept = List::from_names_and_values(["n", "from", "to", "directed", "uid", "backend"], values)
+        .map_err(|e| e.to_string())?;
+    unsafe {
+        R_SetExternalPtrAddr(sexp, fresh.external_ptr_addr::<c_void>());
+        R_SetExternalPtrProtected(sexp, kept.get_mut());
+    }
+    Ok(())
 }
 
 // One `Graph` instantiation, generic over `Ty: EdgeType`. `N`/`E` are both
@@ -1286,12 +1371,13 @@ impl GraphBackend {
 
     /// A number unique to this graph among every graph built in the R
     /// session, never reused (unlike a memory address, which can be once a
-    /// graph is garbage collected). A graph's identity at the R level is its
-    /// external pointer, compared with `identical()`; `uid()` is the same
-    /// identity as a plain value, for the places that need one to compare
-    /// across vectors, e.g. the `graph` column of an `edge_vec`'s vctrs
-    /// equality proxy (`R/vctrs.R`). A double, so it fits an R numeric
-    /// exactly (2^53 graphs is out of reach).
+    /// graph is garbage collected), and starting from a random point per
+    /// session so it doesn't collide with a graph saved from another one.
+    /// This is a graph's identity: two R objects are of the same graph
+    /// exactly when their `GraphBackend`s have the same `uid()`, including
+    /// after a `saveRDS()`/`readRDS()` round trip, which rebuilds the graph
+    /// behind a new address but keeps its uid (`graphvec_backend_revive()`).
+    /// A double, so it fits an R numeric exactly (it's kept to 53 bits).
     fn uid(&self) -> f64 {
         self.uid as f64
     }
@@ -1573,6 +1659,8 @@ impl GraphBackend {
 extendr_module! {
     mod graphvec;
     impl GraphBackend;
+    fn graphvec_backend_set_source;
+    fn graphvec_backend_revive;
 }
 
 #[cfg(test)]
@@ -1608,6 +1696,7 @@ mod tests {
         let b = GraphBackend::new(2, vec![1], vec![2], true).unwrap();
         assert_ne!(a.uid(), b.uid());
         assert_eq!(a.uid(), a.uid());
+        assert!(a.uid() < 2f64.powi(53) && a.uid() == a.uid().trunc());
     }
 
     // An endpoint outside `1..=n` (0, negative, `NA` as `i32::MIN`, or past

@@ -83,6 +83,12 @@
   `edge_incident()` and `node_incident()` now error on an `i` outside the
   graph's nodes (or edges, for `node_incident()`) instead of quietly
   returning an empty or `NA` result.
+* A `node_vec` or `edge_vec` now works after `saveRDS()`/`readRDS()`,
+  `serialize()`/`unserialize()` or in a callr/future worker, where its
+  graph used to be lost: `node_degree()` and `edges()` errored and an
+  `edge_vec` couldn't print. The graph is rebuilt on first use and keeps
+  its identity, so vectors saved from the same graph still are the same
+  graph after loading, and different graphs never compare equal.
 * `nodes()` and the topology functions (`node_degree()`,
   `node_neighbors()`, ...) on an `edge_vec` with a missing edge (e.g. from
   `vec_init()`, `lag()` or a join) no longer fail in the graph backend; the

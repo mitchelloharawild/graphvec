@@ -5,6 +5,31 @@
 #' @useDynLib graphvec, .registration = TRUE
 NULL
 
+#' Record the `list(n, from, to, directed, uid)` a `GraphBackend` was built
+#' from in its external pointer's protected slot, which (unlike the Rust
+#' graph the pointer addresses) survives `serialize()`/`saveRDS()`, so that
+#' `graphvec_backend_revive()` can rebuild the graph after a reload. The
+#' uid is also set as a `uid` attribute, which `identical()` compares
+#' (unlike the protected slot): every reloaded pointer is null until it's
+#' rebuilt, so without it any two reloaded graphs would be `identical()`.
+#' @noRd
+graphvec_backend_set_source <- function(graph, source) .Call(wrap__graphvec_backend_set_source, graph, source)
+
+#' Rebuild, in place, the Rust graph behind a `GraphBackend` external
+#' pointer that came back null from `unserialize()`/`readRDS()` (or a
+#' callr/future worker), from the source `graphvec_backend_set_source()`
+#' recorded, keeping its uid. In place, so every R object sharing the
+#' pointer sees the rebuilt graph. A live pointer, or one without a
+#' recorded source, is left as it is.
+#'
+#' The rebuilt graph is an ordinary extendr `GraphBackend` external
+#' pointer of its own, whose address `graph` borrows; it's kept alive (and
+#' is eventually freed, by its own finalizer) through `graph`'s protected
+#' slot, so `graph` itself needs no finalizer and nothing here depends on
+#' how extendr lays out the memory behind the address.
+#' @noRd
+graphvec_backend_revive <- function(graph) .Call(wrap__graphvec_backend_revive, graph)
+
 #' The shared topology backing a `node_vec`/`edge_vec` pair (non-hyperedge
 #' case only -- see `_dev/RUST_BACKEND.md`). Wraps one of several physical
 #' `Repr` variants, auto-selected at construction from graph shape
@@ -37,12 +62,13 @@ NULL
 #'\subsection{Method `uid`}{
 #'A number unique to this graph among every graph built in the R
 #'session, never reused (unlike a memory address, which can be once a
-#'graph is garbage collected). A graph's identity at the R level is its
-#'external pointer, compared with `identical()`; `uid()` is the same
-#'identity as a plain value, for the places that need one to compare
-#'across vectors, e.g. the `graph` column of an `edge_vec`'s vctrs
-#'equality proxy (`R/vctrs.R`). A double, so it fits an R numeric
-#'exactly (2^53 graphs is out of reach).
+#'graph is garbage collected), and starting from a random point per
+#'session so it doesn't collide with a graph saved from another one.
+#'This is a graph's identity: two R objects are of the same graph
+#'exactly when their `GraphBackend`s have the same `uid()`, including
+#'after a `saveRDS()`/`readRDS()` round trip, which rebuilds the graph
+#'behind a new address but keeps its uid (`graphvec_backend_revive()`).
+#'A double, so it fits an R numeric exactly (it's kept to 53 bits).
 #'}
 #'
 #'\subsection{Method `repr_name`}{
