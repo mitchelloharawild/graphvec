@@ -885,3 +885,12 @@ test_that("a factor node_vec keeps its own levels, in plots too", {
   b <- expect_silent(ggplot2::ggplot_build(p))
   expect_equal(b$layout$panel_params[[1]]$x$get_labels(), c("C", "B", "A"))
 })
+
+test_that("node values don't carry the origin attribute of combined copies", {
+  x <- node_vec(c("a", "b", "c"), c(1L, 2L), c(2L, 3L))
+  expect_null(attributes(node_vec_data(vctrs::vec_c(x, x))))
+  expect_null(attributes(node_vec_data(c(x, x))))
+  expect_null(attributes(node_values(x[c(1, 1)])))
+  d <- node_vec(data.frame(v = c("a", "b")), 1L, 2L)
+  expect_named(attributes(node_vec_data(vctrs::vec_c(d, d))), c("names", "row.names", "class"), ignore.order = TRUE)
+})
