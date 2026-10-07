@@ -129,3 +129,17 @@ test_that("edge_multiplicity() gives NA for a missing edge and doesn't group mis
   expect_equal(n_edges(e), 5L)
   expect_equal(sum(node_degree(e)), 6L)
 })
+
+test_that("edge_multiplicity() groups parallel, reversed undirected and loop edges", {
+  from <- c(1L, 2L, 1L, 3L, 3L, 2L, 1L)
+  to <- c(2L, 1L, 2L, 3L, 3L, 3L, 3L)
+  d <- node_vec(x = c("A", "B", "C"), from = from, to = to)
+  expect_equal(edge_multiplicity(d), c(2L, 1L, 2L, 2L, 2L, 1L, 1L))
+  u <- node_vec(x = c("A", "B", "C"), from = from, to = to, directed = FALSE)
+  expect_equal(edge_multiplicity(u), c(3L, 3L, 3L, 2L, 2L, 1L, 1L))
+  # Missing edges in between don't shift the counts of the others.
+  e <- edges(u)
+  x <- c(e[1], vctrs::vec_init(e, 1), e[c(2, 6)], vctrs::vec_init(e, 1))
+  expect_equal(edge_multiplicity(x), c(2L, NA, 2L, 1L, NA))
+})
+

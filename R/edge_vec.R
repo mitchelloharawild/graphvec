@@ -684,19 +684,7 @@ names.edge_vec <- function(x) {
 # edge_vec_equal_fields()).
 #' @export
 duplicated.edge_vec <- function(x, incomparables = FALSE, ...) {
-  fields <- edge_vec_equal_fields(x)
-  # Base duplicated() can't compare a list (hyperedge) column, so key each
-  # node set by its deparsed values instead.
-  fields <- lapply(fields, function(col) {
-    if (is.list(col) && !is.data.frame(col)) vapply(col, function(v) paste(deparse(v), collapse = ""), character(1)) else col
-  })
-  key <- do.call(cbind, lapply(fields, function(col) {
-    if (is.data.frame(col)) as.data.frame(col) else data.frame(col, stringsAsFactors = FALSE)
-  }))
-  if (length(key) == 0L) {
-    return(logical(length(x)))
-  }
-  duplicated(key, incomparables = incomparables, ...)
+  duplicated_equal(x, incomparables = incomparables, ...)
 }
 
 #' @export

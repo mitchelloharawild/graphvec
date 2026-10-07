@@ -589,7 +589,7 @@ as.data.frame.node_vec <- function(x, row.names = NULL, optional = FALSE, ...,
 # unique.node_vec() drops.
 #' @export
 duplicated.node_vec <- function(x, incomparables = FALSE, ...) {
-  duplicated(node_vec_key_df(x), incomparables = incomparables, ...)
+  duplicated_equal(x, incomparables = incomparables, ...)
 }
 
 # `==` and `!=` between node_vecs compare nodes as vctrs::vec_equal() and
@@ -641,14 +641,7 @@ xtfrm.node_vec <- function(x) {
 
 #' @export
 anyDuplicated.node_vec <- function(x, incomparables = FALSE, ...) {
-  anyDuplicated(node_vec_key_df(x), incomparables = incomparables, ...)
-}
-
-# node_vec_equal_fields() as one flat data frame, for base duplicated().
-node_vec_key_df <- function(x) {
-  keys <- flatten_keys(node_vec_equal_fields(x))
-  names(keys) <- paste0("k", seq_along(keys))
-  as.data.frame(keys)
+  first_duplicate(duplicated(x, incomparables = incomparables, ...), ...)
 }
 
 # Registered dynamically for pillar via zzz.R; abbreviated type header, e.g. "N[chr]".

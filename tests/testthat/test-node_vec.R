@@ -913,3 +913,22 @@ test_that("`[` on an edge_vec takes a character subscript as a missing edge", {
   e <- edge_vec(c(1L, 2L), c(2L, 1L), nodes = c("A", "B"))
   expect_true(is.na(e["x"]))
 })
+
+test_that("duplicated() on a node_vec keys repeated positions, missing nodes and missing values", {
+  g <- node_vec(c("A", NA, "A", NaN), 1:2, 2:3)
+  # Equal values at different positions aren't duplicates, nor are NA and
+  # NaN values; repeats of one position are.
+  expect_equal(duplicated(g), c(FALSE, FALSE, FALSE, FALSE))
+  x <- g[c(2, 1, 2, 3, 1, 4)]
+  expect_equal(duplicated(x), c(FALSE, FALSE, TRUE, FALSE, TRUE, FALSE))
+  expect_equal(duplicated(x, fromLast = TRUE), c(TRUE, TRUE, FALSE, FALSE, FALSE, FALSE))
+  expect_equal(anyDuplicated(x), 3L)
+  expect_equal(anyDuplicated(x, fromLast = TRUE), 2L)
+  # Missing nodes are duplicates of one another only.
+  m <- vctrs::vec_c(g[1], vctrs::vec_init(g, 2), g[2])
+  expect_equal(duplicated(m), c(FALSE, FALSE, TRUE, FALSE))
+  # Nodes of separately built graphs never duplicate one another.
+  h <- node_vec(c("A", NA, "A", NaN), 1:2, 2:3)
+  expect_equal(duplicated(c(g, h)), rep(FALSE, 8))
+})
+

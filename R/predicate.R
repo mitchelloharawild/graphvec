@@ -81,17 +81,17 @@ edge_multiplicity <- function(x) {
   ok <- !(is.na(ends$from) | is.na(ends$to))
   from <- ends$from[ok]
   to <- ends$to[ok]
-  key <- if (directed) {
-    paste(from, to, sep = "->")
-  } else {
-    paste(pmin(from, to), pmax(from, to), sep = "--")
+  if (!directed) {
+    lo <- pmin(from, to)
+    to <- pmax(from, to)
+    from <- lo
   }
-  # `match(key, key)` maps every edge to its group's first occurrence, so
-  # tabulating those indices counts each group once -- O(M) hashing, without
-  # table()'s factor construction and level sort.
-  group <- match(key, key)
+  # One group id per (from, to) pair, so tabulating the ids counts each
+  # group once -- O(M) hashing, without string keys or table()'s factor
+  # construction and level sort.
+  group <- vctrs::vec_group_id(vctrs::new_data_frame(list(from = from, to = to)))
   out <- rep(NA_integer_, length(ok))
-  out[ok] <- tabulate(group, nbins = length(key))[group]
+  out[ok] <- tabulate(group, nbins = attr(group, "n"))[group]
   out
 }
 

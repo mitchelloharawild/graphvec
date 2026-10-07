@@ -99,6 +99,17 @@ element_position <- function(x, i) {
   pos
 }
 
+# duplicated() as vctrs::vec_equal(na_equal = TRUE) compares elements (by
+# their vctrs::vec_proxy_equal()), via one integer group id each: O(n)
+# hashing, without base duplicated.data.frame()'s per-row string keys. As
+# for a data frame, `incomparables` isn't supported.
+duplicated_equal <- function(x, incomparables = FALSE, fromLast = FALSE, ...) {
+  if (!isFALSE(incomparables)) {
+    .NotYetUsed("incomparables != FALSE")
+  }
+  duplicated(vctrs::vec_group_id(x), fromLast = fromLast)
+}
+
 # The value anyDuplicated() returns given duplicated()'s result: the
 # position of the first duplicate, scanning from the end with `fromLast`,
 # or 0 if there is none.
