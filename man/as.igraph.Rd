@@ -26,12 +26,24 @@ An \code{\link[igraph:igraph]{igraph::igraph()}} object.
 }
 \description{
 Methods for converting \code{node_vec}, \code{agg_vec}, \code{agg_df}, and \code{edge_vec}
-objects to \code{\link[igraph:igraph]{igraph::igraph()}} objects using \code{\link[igraph:graph_from_edgelist]{igraph::graph_from_edgelist()}}.
+objects to \code{\link[igraph:igraph]{igraph::igraph()}} objects, keeping their node values and edge
+attributes.
 }
 \details{
+The vertices are the nodes, in order, and carry the node values as vertex
+attributes, following igraph's convention: a vector of node values
+becomes the \code{name} attribute, and each column of a data frame of node
+values becomes an attribute of the same name. The edges are in order
+too, with each edge attribute column as an igraph edge attribute. Values
+keep their type (a factor stays a factor, a date a date). A \code{node_vec}
+slice converts to the subgraph its nodes induce, and an \code{edge_vec} to
+every node of its graph, with the edges of the slice.
+
 An \code{agg_vec} or \code{agg_df} is converted as the graph \code{\link[=nodes]{nodes()}} gives it, so
 \code{as.igraph(x)} is the same as \code{as.igraph(nodes(x))}: each row links to
-the rows that aggregate it (see \code{\link[=agg_df]{agg_df()}}).
+the rows that aggregate it (see \code{\link[=agg_df]{agg_df()}}), and each column is a vertex
+attribute holding the column's \code{agg_vec} (named \code{value} for an
+\code{agg_vec}).
 
 igraph has no concept of a hyperedge (an edge with more than one node in
 its \code{from} or \code{to} role). Converting a \code{node_vec}/\code{edge_vec} with a

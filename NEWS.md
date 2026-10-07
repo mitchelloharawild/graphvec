@@ -134,6 +134,13 @@
   rather than an older row-order model where each value only joined the
   `<aggregated>` values just before it, a value with none before it had no
   parent, and consecutive `<aggregated>` values were a hyperedge error.
+* `as.igraph()` now keeps node values and edge attributes, rather than
+  dropping them. Following igraph's convention, a vector of node values
+  becomes the `name` vertex attribute and each column of a data frame of
+  node values a vertex attribute of its own, keeping its type; edge
+  attribute columns become igraph edge attributes. An `agg_vec` or
+  `agg_df` gives its columns (`value` for an `agg_vec`) as vertex
+  attributes.
 
 ## Breaking changes
 
