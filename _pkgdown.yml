@@ -34,6 +34,7 @@ reference:
   contents:
   - nodes
   - edges
+  - node_values
   - is_aggregated
 
 - title: Interoperability

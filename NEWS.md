@@ -48,6 +48,9 @@
 
 ## New features
 
+* New `node_values()` gives a `node_vec`'s plain values (an atomic vector
+  or a data frame), without its graph or the nodes' identity, for comparing
+  nodes by value explicitly: `node_values(n) %in% c("A", "B")`.
 * `agg_vec`, `node_vec` and `edge_vec` now work with vctrs, so they can be
   used as tibble columns, as tsibble keys, and in dplyr verbs such as
   `filter()`, `arrange()`, `group_by()` and `bind_rows()`. vctrs is now

@@ -730,3 +730,24 @@ test_that("node_vec() errors on an edge attribute named like a misspelt option",
   expect_equal(edges(g)$weight, 2)
   expect_false(attr(g, "directed"))
 })
+
+test_that("node_values() gives a node_vec's plain values", {
+  n <- node_vec(factor(c("A", "B", "A")), 1:2, 2:3)
+  expect_identical(node_values(n), factor(c("A", "B", "A")))
+  expect_identical(node_values(n[3:1]), factor(c("A", "B", "A")))
+  expect_identical(node_values(c(n, n)), factor(rep(c("A", "B", "A"), 2)))
+  expect_equal(node_values(n) %in% "A", c(TRUE, FALSE, TRUE))
+
+  d <- data.frame(id = 1:2, lab = c("a", "b"))
+  expect_identical(node_values(node_vec(d, 1L, 2L)), d)
+  h <- node_vec(c("A", "B", "C"), from = list(1:2), to = list(3L))
+  expect_identical(node_values(h), c("A", "B", "C"))
+
+  # Plain values are already values.
+  expect_identical(node_values(c("A", "B")), c("A", "B"))
+  expect_identical(node_values(d), d)
+
+  e <- edges(n)
+  expect_error(node_values(e), "nodes\\(x\\)")
+  expect_error(node_values(agg_vec(c("A", NA))), "format")
+})
