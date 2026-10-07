@@ -43,8 +43,9 @@
 * `==` and `!=` between two `node_vec`s now compare nodes as `vec_equal()`
   and `duplicated()` do, by graph, position and value, rather than by
   value alone: `n == n[3:1]` is no longer `TRUE` for different nodes with
-  the same label. Comparing with a plain value (`n == "A"`) and other
-  operators still use the node values.
+  the same label. Comparing a `node_vec` with a plain value (`n == "A"`)
+  is now an error, as are `<`, arithmetic and every other operator, as for
+  an `edge_vec`: use `node_values(n) == "A"` to compare node values.
 * On R >= 4.3, `match()` and `%in%` on `node_vec`s now agree with
   `vec_match()` and `vec_in()`, matching nodes by graph, position and value
   rather than by value alone. A node never matches a plain value, so
@@ -74,11 +75,12 @@
   so an extension package defining e.g. `scale_x_node()` or
   `scale_colour_edge()` provides their default scales. Otherwise they get
   a discrete scale labelled by `format()`, in sort order, with
-  `<aggregated>` as a level of its own; an atomic `node_vec` instead uses
-  the scale of its values (e.g. continuous for numeric nodes). The
-  discrete x and y scales of an `edge_vec`, `agg_vec` or data-frame
-  `node_vec` are the new `scale_x_graphvec()` and `scale_y_graphvec()`,
-  which ggplot2 only finds by itself when graphvec is attached. `levels()`
+  `<aggregated>` as a level of its own. That includes numeric `node_vec`s,
+  which have no arithmetic: plot `node_values(n)` for a continuous scale.
+  Their discrete x and y scales are the new `scale_x_graphvec()` and
+  `scale_y_graphvec()`, which ggplot2 only finds by itself when graphvec
+  is attached (character `node_vec`s and non-position aesthetics also
+  work without it). `levels()`
   on any of them gives these labels. ggplot2 is not a hard dependency.
 * Added `[[`, `[<-`, `[[<-` and `as.list()` methods for `agg_vec` and
   `edge_vec`, so assignment (including `df$col[i] <- value`) and

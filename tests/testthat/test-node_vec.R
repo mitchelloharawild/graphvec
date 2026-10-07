@@ -360,10 +360,16 @@ test_that("== and != on node_vecs compare as vec_equal() does", {
   x <- c(n, vctrs::vec_init(n, 1))
   expect_equal(x == x, c(TRUE, TRUE, TRUE, NA))
 
-  # Against a plain value, and for other operators, the node values compare.
-  expect_equal(n == "A", c(TRUE, FALSE, TRUE))
-  expect_equal("A" != n, c(FALSE, TRUE, FALSE))
-  expect_equal(n < "B", c(TRUE, FALSE, TRUE))
+  # A node is never equal to a plain value, and nodes have no order or
+  # arithmetic: compare their values for that.
+  expect_snapshot(error = TRUE, {
+    n == "A"
+    "A" != n
+    n < n
+    n + 1
+    !n
+  })
+  expect_equal(node_values(n) == "A", c(TRUE, FALSE, TRUE))
 
   # Data-frame values compare row-wise.
   d <- node_vec(data.frame(id = 1:2, lab = c("a", "b")), 1L, 2L)
@@ -570,7 +576,7 @@ test_that("[[ and as.list() give single-node node_vecs", {
   n <- node_vec(c(a = "A", b = "B", c = "A"), 1:2, 2:3)
   expect_equal(n[[2]], n[2])
   expect_s3_class(n[[2]], "node_vec")
-  expect_true(n[[2]] == "B")
+  expect_true(node_values(n[[2]]) == "B")
   expect_equal(n[["b"]], n[2])
   expect_equal(as.list(n), list(a = n[1], b = n[2], c = n[3]))
   expect_equal(vapply(n, format, character(1)), c(a = "A", b = "B", c = "A"))
@@ -620,7 +626,7 @@ test_that("[[<- assigns a single node, like [<-", {
   expect_equal(edge_pairs(x), edge_pairs(nd))
 })
 
-test_that("atomic node_vecs plot with the scale of their values", {
+test_that("atomic node_vecs plot with a discrete scale", {
   skip_if_not_installed("ggplot2")
   df <- data.frame(y = 1:3)
   df$v <- node_vec(c("A", "B", "C"), 1:2, 2:3)
@@ -629,18 +635,23 @@ test_that("atomic node_vecs plot with the scale of their values", {
   expect_s3_class(b$layout$panel_scales_x[[1]], "ScaleDiscretePosition")
   expect_equal(b$layout$panel_params[[1]]$x$get_labels(), c("A", "B", "C"))
 
-  df$v <- node_vec(c(10, 20.5, 30), 1:2, 2:3)
+  # Numeric nodes too, in value order; node_values() plots them continuously.
+  df$v <- node_vec(c(20.5, 10, 30), 1:2, 2:3)
   p <- ggplot2::ggplot(df, ggplot2::aes(v, y)) + ggplot2::geom_point()
   b <- expect_silent(ggplot2::ggplot_build(p))
+  expect_s3_class(b$layout$panel_scales_x[[1]], "ScaleDiscretePosition")
+  expect_equal(b$layout$panel_params[[1]]$x$get_labels(), c("10", "20.5", "30"))
+  p <- ggplot2::ggplot(df, ggplot2::aes(node_values(v), y)) + ggplot2::geom_point()
+  b <- expect_silent(ggplot2::ggplot_build(p))
   expect_s3_class(b$layout$panel_scales_x[[1]], "ScaleContinuousPosition")
-  expect_equal(b$data[[1]]$x, c(10, 20.5, 30))
+  expect_equal(b$data[[1]]$x, c(20.5, 10, 30))
 })
 
 test_that("node_vecs plot with a discrete scale labelled by format()", {
   skip_if_not_installed("ggplot2")
   # Each graph vector names its own scale type first, for extension packages.
-  expect_equal(ggplot2::scale_type(node_vec(c("A", "B"))), c("node", "discrete"))
-  expect_equal(ggplot2::scale_type(node_vec(c(1, 2))), c("node", "continuous"))
+  expect_equal(ggplot2::scale_type(node_vec(c("A", "B"))), c("node", "graphvec", "discrete"))
+  expect_equal(ggplot2::scale_type(node_vec(c(1, 2))), c("node", "graphvec", "discrete"))
   expect_equal(
     ggplot2::scale_type(node_vec(data.frame(lab = c("A", "B")))),
     c("node", "graphvec", "discrete")

@@ -17,15 +17,16 @@ scale_y_graphvec(...)
 A ggplot2 scale.
 }
 \description{
-The default x and y scales for an \code{edge_vec}, an \code{agg_vec} or a
-data-frame-backed \code{node_vec} in a ggplot2 plot: a discrete scale with
+The default x and y scales for a \code{node_vec}, \code{edge_vec} or \code{agg_vec} in
+a ggplot2 plot: a discrete scale with
 one position per label, as \code{\link[=format]{format()}} gives it (so \verb{<aggregated>} is a
 level of its own), in the vector's sort order. ggplot2 picks them
 itself when graphvec is attached, unless an extension package provides
 \code{scale_x_node()}, \code{scale_x_edge()} or \code{scale_x_agg()} (and the \code{y}
 versions), which take precedence. Other aesthetics (colour, fill, shape,
-...) and atomic \code{node_vec}s use ggplot2's own scales, with the same
-labels.
+...) use ggplot2's own discrete scales, with the same labels. Numeric
+node values are discrete too: plot \code{node_values(x)} for a continuous
+scale.
 }
 \examples{
 if (requireNamespace("ggplot2", quietly = TRUE)) {

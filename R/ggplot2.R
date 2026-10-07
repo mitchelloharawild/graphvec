@@ -4,7 +4,9 @@
 # functions it names in order. Each graph vector names its own type first
 # ("node", "edge" or "agg"), so an extension package that defines e.g.
 # scale_x_node() takes over, then falls back to a discrete scale labelled by
-# format() (or, for atomic node values, the scale of those values):
+# format(). That includes numeric node_vecs: nodes have no arithmetic or
+# order of their own (Ops.node_vec()), so a continuous scale of their values
+# is plotted from node_values():
 #
 # * Non-position discrete scales (colour, fill, shape, ...) train on
 #   levels(x) whenever it isn't NULL (scales:::clevels()) and map with
@@ -13,20 +15,15 @@
 #   sort(unique(x)) would keep the graph vector class, whose identity never
 #   matches a plain label.)
 # * Discrete position scales only treat character, logical and factor data as
-#   discrete (ggplot2's is_discrete()), so a list-backed graph vector (an
-#   edge_vec, agg_vec or data-frame node_vec) goes through
+#   discrete (ggplot2's is_discrete()), so any other graph vector (an
+#   edge_vec, agg_vec, or a numeric or data-frame node_vec) goes through
 #   scale_x_graphvec()/scale_y_graphvec() first, which turn it into its labels
 #   before training. ggplot2 finds those by name, so only when graphvec is
 #   attached.
 
-# Registered dynamically for ggplot2 via zzz.R. Atomic node values keep their
-# own scale (discrete for character nodes, continuous for numeric ones).
+# Registered dynamically for ggplot2 via zzz.R.
 scale_type.node_vec <- function(x) {
-  values <- node_vec_data(x)
-  if (is.data.frame(values)) {
-    return(c("node", "graphvec", "discrete"))
-  }
-  c("node", ggplot2::scale_type(values))
+  c("node", "graphvec", "discrete")
 }
 
 # Registered dynamically for ggplot2 via zzz.R.
@@ -68,15 +65,16 @@ droplevels.agg_vec <- function(x, ...) x
 
 #' Discrete position scales for graph vectors
 #'
-#' The default x and y scales for an `edge_vec`, an `agg_vec` or a
-#' data-frame-backed `node_vec` in a ggplot2 plot: a discrete scale with
+#' The default x and y scales for a `node_vec`, `edge_vec` or `agg_vec` in
+#' a ggplot2 plot: a discrete scale with
 #' one position per label, as [format()] gives it (so `<aggregated>` is a
 #' level of its own), in the vector's sort order. ggplot2 picks them
 #' itself when graphvec is attached, unless an extension package provides
 #' `scale_x_node()`, `scale_x_edge()` or `scale_x_agg()` (and the `y`
 #' versions), which take precedence. Other aesthetics (colour, fill, shape,
-#' ...) and atomic `node_vec`s use ggplot2's own scales, with the same
-#' labels.
+#' ...) use ggplot2's own discrete scales, with the same labels. Numeric
+#' node values are discrete too: plot `node_values(x)` for a continuous
+#' scale.
 #'
 #' @param ... Passed on to [ggplot2::scale_x_discrete()] or
 #'   [ggplot2::scale_y_discrete()].

@@ -65,11 +65,13 @@ Two nodes are equal when they are (copies of) the same node of the same
 graph, with the same value. This is what \code{==}, \code{\link[=duplicated]{duplicated()}},
 \code{\link[=unique]{unique()}}, \code{vctrs::vec_equal()} and joins use, so \code{x[1]} equals the
 first node of \code{x} (or of \code{c(x, x)}), but not another node with the same
-label, nor a node of a separately built node_vec. Comparing with a plain
-value (\code{x == "A"}) compares the node values, but \code{match()} and \code{\%in\%}
-(on R >= 4.3) never match a node to a plain value: use
-\code{node_values(x) \%in\% "A"} (see \code{\link[=node_values]{node_values()}}). Hyperedge node_vecs
-have no graph identity and compare by value.
+label, nor a node of a separately built node_vec. A node is never equal
+to a plain value: \code{x == "A"} is an error, and \code{match()} and \code{\%in\%} (on
+R >= 4.3) find no match. Compare the values explicitly instead, with
+\code{node_values(x) == "A"} or \code{node_values(x) \%in\% "A"} (see
+\code{\link[=node_values]{node_values()}}). Nodes have no order or arithmetic of their own either,
+so \code{<}, \code{+} and the other operators error, as for an \code{edge_vec}.
+Hyperedge node_vecs have no graph identity and compare by value.
 }
 
 \examples{

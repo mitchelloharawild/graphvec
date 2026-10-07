@@ -50,11 +50,13 @@
 #' graph, with the same value. This is what `==`, [duplicated()],
 #' [unique()], `vctrs::vec_equal()` and joins use, so `x[1]` equals the
 #' first node of `x` (or of `c(x, x)`), but not another node with the same
-#' label, nor a node of a separately built node_vec. Comparing with a plain
-#' value (`x == "A"`) compares the node values, but `match()` and `%in%`
-#' (on R >= 4.3) never match a node to a plain value: use
-#' `node_values(x) %in% "A"` (see [node_values()]). Hyperedge node_vecs
-#' have no graph identity and compare by value.
+#' label, nor a node of a separately built node_vec. A node is never equal
+#' to a plain value: `x == "A"` is an error, and `match()` and `%in%` (on
+#' R >= 4.3) find no match. Compare the values explicitly instead, with
+#' `node_values(x) == "A"` or `node_values(x) %in% "A"` (see
+#' [node_values()]). Nodes have no order or arithmetic of their own either,
+#' so `<`, `+` and the other operators error, as for an `edge_vec`.
+#' Hyperedge node_vecs have no graph identity and compare by value.
 #'
 #' @examples
 #'
@@ -578,16 +580,27 @@ duplicated.node_vec <- function(x, incomparables = FALSE, ...) {
 
 # `==` and `!=` between node_vecs compare nodes as vctrs::vec_equal() and
 # duplicated() do (see node_vec_equal_fields()), recycling as vctrs does; a
-# missing node gives NA. Against a plain value they compare node values, and
-# every other operator acts on the values too, as before.
+# missing node gives NA. A node is never equal to a plain value, so
+# comparing with one is an error, pointing to node_values(). As for an
+# edge_vec, every other operator errors too: nodes have no order or
+# arithmetic of their own, only their values do.
 #' @export
 Ops.node_vec <- function(e1, e2) {
-  if (.Generic %in% c("==", "!=") && !missing(e2) &&
-      inherits(e1, "node_vec") && inherits(e2, "node_vec")) {
-    eq <- vctrs::vec_equal(e1, e2)
-    return(if (.Generic == "==") eq else !eq)
+  hint <- c(i = "Use {.fn node_values} (or {.fn format}) to work with the node values.")
+  if (!.Generic %in% c("==", "!=") || missing(e2)) {
+    cli::cli_abort(c(
+      "{.code {(.Generic)}} is not supported for {.cls node_vec}; only {.code ==} and {.code !=} between {.cls node_vec}s are.",
+      hint
+    ), call = NULL)
   }
-  NextMethod()
+  if (!inherits(e1, "node_vec") || !inherits(e2, "node_vec")) {
+    cli::cli_abort(c(
+      "Can't compare a {.cls node_vec} with a plain value: nodes compare by graph identity.",
+      hint
+    ), call = NULL)
+  }
+  eq <- vctrs::vec_equal(e1, e2)
+  if (.Generic == "==") eq else !eq
 }
 
 # Exact keys for base match() and %in% (R >= 4.3), one per node, agreeing
