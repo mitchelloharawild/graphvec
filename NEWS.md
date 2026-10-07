@@ -89,6 +89,12 @@
   `edge_vec` couldn't print. The graph is rebuilt on first use and keeps
   its identity, so vectors saved from the same graph still are the same
   graph after loading, and different graphs never compare equal.
+* `nodes()` and `edges()` on an `agg_df` no longer add false parent edges
+  when values run together across columns (e.g. `x:yz:q` as a child of
+  `xy:z:<aggregated>`), and now tell `<aggregated>`, a genuine `NA` and the
+  string `"NA"` apart, and compare doubles exactly rather than as printed
+  (so `0.1 + 0.2` is not `0.3`). vctrs is now imported rather than
+  suggested.
 * `nodes()` and the topology functions (`node_degree()`,
   `node_neighbors()`, ...) on an `edge_vec` with a missing edge (e.g. from
   `vec_init()`, `lag()` or a join) no longer fail in the graph backend; the

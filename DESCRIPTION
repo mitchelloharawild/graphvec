@@ -24,7 +24,8 @@ Description: Extends vectors to include graph relationships between their
 License: MIT + file LICENSE
 Imports:
     cli,
-    tibble
+    tibble,
+    vctrs
 Suggests: 
     callr,
     crayon,
@@ -38,7 +39,6 @@ Suggests:
     testthat (>= 3.0.0),
     tidyr,
     tsibble,
-    vctrs,
     waldo
 Config/testthat/edition: 3
 Encoding: UTF-8

@@ -102,19 +102,26 @@ agg_lattice_edges <- function(x) {
 
   n <- length(x)
   agg_mat <- vapply(cols, agg_vec_is_agg, logical(n))
-  # Per-column key strings: "" where aggregated, formatted value otherwise.
+  # Per-column integer keys, grouping on the (aggregated, value) pair so an
+  # aggregated cell, a genuine NA and each value are all distinct, and
+  # values compare exactly (no character conversion).
   key_mat <- vapply(seq_len(p), function(k) {
-    ifelse(agg_mat[, k], "", as.character(agg_vec_expand(cols[[k]])))
-  }, character(n))
+    as.integer(vctrs::vec_group_id(vctrs::new_data_frame(list(
+      agg = agg_mat[, k], value = agg_vec_expand(cols[[k]])
+    ))))
+  }, integer(n))
 
-  # Cumulative left-to-right and right-to-left pastes, so the row key for
-  # "every column except j" is one paste0() of the two halves.
-  empty <- rep("", n)
+  # Cumulative left-to-right and right-to-left key combinations, so the row
+  # key for "every column except j" is the pair of the two halves.
+  combine <- function(a, b) {
+    as.integer(vctrs::vec_group_id(vctrs::new_data_frame(list(a = a, b = b))))
+  }
+  empty <- rep(1L, n)
   left <- right <- vector("list", p + 1L)
   left[[1L]] <- empty
   right[[p + 1L]] <- empty
-  for (k in seq_len(p)) left[[k + 1L]] <- paste0(left[[k]], key_mat[, k])
-  for (k in rev(seq_len(p))) right[[k]] <- paste0(key_mat[, k], right[[k + 1L]])
+  for (k in seq_len(p)) left[[k + 1L]] <- combine(left[[k]], key_mat[, k])
+  for (k in rev(seq_len(p))) right[[k]] <- combine(key_mat[, k], right[[k + 1L]])
 
   edges <- vector("list", p)
   for (j in seq_len(p)) {
@@ -122,10 +129,13 @@ agg_lattice_edges <- function(x) {
     is_child <- !is_parent
     if (!any(is_parent) || !any(is_child)) next
 
-    row_key <- paste0(left[[j]], right[[j + 1L]])
+    row_key <- vctrs::new_data_frame(list(l = left[[j]], r = right[[j + 1L]]))
     child_rows <- which(is_child)
     parent_rows <- which(is_parent)
-    m <- match(row_key[child_rows], row_key[parent_rows])
+    m <- vctrs::vec_match(
+      vctrs::vec_slice(row_key, child_rows),
+      vctrs::vec_slice(row_key, parent_rows)
+    )
     matched <- !is.na(m)
     edges[[j]] <- data.frame(from = child_rows[matched], to = parent_rows[m[matched]])
   }

@@ -83,3 +83,53 @@ test_that("nodes()/edges() on an agg_df form the crossed aggregation lattice", {
   expected <- expected[order(expected[, 1], expected[, 2]), ]
   expect_equal(observed, expected, ignore_attr = TRUE)
 })
+
+test_that("agg_df parent inference doesn't collide keys across columns", {
+  # x:yz:q is not a child of xy:z:<aggregated>, though their unseparated
+  # keys ("xyz") once matched.
+  a <- agg_vec(c("x", "xy"))
+  b <- agg_vec(c("yz", "z"))
+  c <- agg_vec(c("q", NA), aggregated = c(FALSE, TRUE))
+  expect_length(edges(agg_df(a = a, b = b, c = c)), 0L)
+})
+
+test_that("agg_df parent inference tells aggregated, NA and \"NA\" apart", {
+  # Each child row has the parent with its own `x`, and only that one. NA
+  # and "NA" format alike, so check positions.
+  x <- agg_vec(
+    c(NA, NA, "NA", NA, NA, "NA"),
+    aggregated = c(TRUE, FALSE, FALSE, TRUE, FALSE, FALSE)
+  )
+  y <- agg_vec(
+    c("P", "P", "P", NA, NA, NA),
+    aggregated = c(FALSE, FALSE, FALSE, TRUE, TRUE, TRUE)
+  )
+  skip_if_not_installed("igraph")
+  expected <- cbind(
+    from = c(2L, 3L, 1L, 5L, 6L, 2L, 3L),
+    to =   c(1L, 1L, 4L, 4L, 4L, 5L, 6L)
+  )
+  observed <- igraph::as_edgelist(igraph::as.igraph(nodes(agg_df(x = x, y = y))), names = FALSE)
+  observed <- observed[order(observed[, 1], observed[, 2]), ]
+  expected <- expected[order(expected[, 1], expected[, 2]), ]
+  expect_equal(observed, expected, ignore_attr = TRUE)
+})
+
+test_that("agg_df parent inference compares doubles exactly", {
+  # 0.1 + 0.2 and 0.3 print alike but differ, so each child has only the
+  # parent with its own exact value.
+  x <- agg_vec(c(0.1 + 0.2, 0.3, 0.1 + 0.2, 0.3))
+  y <- agg_vec(c(NA, NA, 1, 2), aggregated = c(TRUE, TRUE, FALSE, FALSE))
+  skip_if_not_installed("igraph")
+  observed <- igraph::as_edgelist(igraph::as.igraph(nodes(agg_df(x = x, y = y))), names = FALSE)
+  expect_equal(observed, cbind(c(3L, 4L), c(1L, 2L)), ignore_attr = TRUE)
+})
+
+test_that("agg_vec parent inference keeps a genuine NA as a child", {
+  # A genuine NA is a disaggregated value, so it still links to the total.
+  v <- agg_vec(c(NA, NA, "NA"), aggregated = c(TRUE, FALSE, FALSE))
+  expect_equal(format(edges(v)), c("[NA]->[<aggregated>]", "[NA]->[<aggregated>]"))
+  skip_if_not_installed("igraph")
+  observed <- igraph::as_edgelist(igraph::as.igraph(nodes(v)), names = FALSE)
+  expect_equal(observed, cbind(c(2L, 3L), c(1L, 1L)), ignore_attr = TRUE)
+})
