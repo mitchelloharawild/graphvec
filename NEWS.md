@@ -179,6 +179,11 @@
   `format(e)[i]`, as matching edges across graphs by `format(e)` needs.
   `format(e)` now gives `"[A]->[BBB]" "[C]->[A]"` rather than
   `"[A]->[BBB]" "[C]->[A  ]"`; printing still aligns the labels as a whole.
+* `[` on a named `node_vec` now selects nodes by name (`x["a"]`), as `[[`
+  already did, rather than returning a missing node, and `x["a"] <- value`
+  with a `node_vec` `value` now replaces the named node rather than
+  appending one. An unknown name still gives a missing node, as for base
+  vectors.
 * `edge_multiplicity()` now gives `NA` for a missing edge (e.g. from
   `vec_init()`) and leaves it out of the grouping, rather than counting
   missing edges as parallel to each other, and `edge_is_multi()` is `NA`

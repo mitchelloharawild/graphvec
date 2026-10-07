@@ -330,7 +330,7 @@ pillar_shaft.edge_vec <- function(x, ...) {
     return(x)
   }
 
-  idx <- seq_len(length(x))[i]
+  idx <- subscript_positions(x, i)
   graph <- graph_of(x)
 
   if (!is.null(graph)) {

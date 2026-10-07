@@ -452,7 +452,7 @@ node_vec_reindex_edges <- function(n, idx, edges) {
   }
 
   n <- length(x)
-  idx <- seq_len(n)[i]
+  idx <- subscript_positions(x, i)
 
   if (anyDuplicated(idx, incomparables = NA)) {
     # A repeated node is a separate copy of the graph (node_vec_assemble()
@@ -500,7 +500,7 @@ node_vec_reindex_edges <- function(n, idx, edges) {
   }
   if (inherits(value, "node_vec")) {
     n <- length(x)
-    pos <- seq_along(x)
+    pos <- stats::setNames(seq_along(x), names(x)) # so a name finds its node
     pos[i] <- n + seq_along(value)
     from_value <- !is.na(pos) & pos > n
     src <- ifelse(from_value, 2L, 1L)

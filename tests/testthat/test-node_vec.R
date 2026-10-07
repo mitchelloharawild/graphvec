@@ -894,3 +894,22 @@ test_that("node values don't carry the origin attribute of combined copies", {
   d <- node_vec(data.frame(v = c("a", "b")), 1L, 2L)
   expect_named(attributes(node_vec_data(vctrs::vec_c(d, d))), c("names", "row.names", "class"), ignore.order = TRUE)
 })
+
+test_that("`[` and `[<-` select a named node_vec's nodes by name", {
+  x <- node_vec(c(a = "A", b = "B", c = "C"), 1L, 2L)
+  expect_equal(node_values(x["a"]), c(a = "A"))
+  expect_equal(node_values(x[c("b", "a")]), c(b = "B", a = "A"))
+  expect_equal(n_edges(x[c("b", "a")]), 1L)
+  # As for a base vector, an unknown name selects a missing node.
+  expect_equal(unname(node_values(x[c("a", "zz")])), c("A", NA))
+
+  y <- x
+  y["a"] <- x[3]
+  expect_length(y, 3L)
+  expect_equal(unname(node_values(y)), c("C", "B", "C"))
+})
+
+test_that("`[` on an edge_vec takes a character subscript as a missing edge", {
+  e <- edge_vec(c(1L, 2L), c(2L, 1L), nodes = c("A", "B"))
+  expect_true(is.na(e["x"]))
+})

@@ -71,6 +71,16 @@ check_scalar_index <- function(i) {
   }
 }
 
+# The positions `[` selects with `i`, as for a base vector: a name selects
+# the first element with that name, and an unknown name, `NA` or a position
+# past the end gives a missing (`NA`) position.
+subscript_positions <- function(x, i) {
+  if (is.character(i)) {
+    return(match(i, names(x), incomparables = c(NA, "")))
+  }
+  seq_len(length(x))[i]
+}
+
 # Extracting with `[[` also needs an existing element, as for base vectors,
 # rather than `[`'s missing value or empty result. Returns the element's
 # position, matching a name to its first position as base `[[` does.
