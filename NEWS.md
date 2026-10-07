@@ -159,7 +159,8 @@
   other operators error. `anyDuplicated()` on an `edge_vec` or `agg_vec`
   now finds duplicates as `duplicated()` does, rather than returning 0.
   On R >= 4.3, `match()` and `%in%` on an `agg_vec`, or an `edge_vec` with
-  edge attributes, now agree with `vec_match()` and `vec_in()`.
+  edge attributes, now agree with `vec_match()` and `vec_in()`; for an
+  `edge_vec` without edge attributes, use `vec_match()` and `vec_in()`.
 * `==` on an `agg_vec` no longer treats a genuine `NA` as equal to
   `<aggregated>`: `<aggregated>` only equals `<aggregated>`, and missing
   values compare as `NA`, as for base vectors (`!=` likewise).

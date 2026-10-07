@@ -44,6 +44,8 @@
 #' two separately built edge_vecs never match, even with identical labels:
 #' to match those by label, compare `format(e)` explicitly, e.g.
 #' `dplyr::mutate(df, key = format(e))` before joining `by = "key"`.
+#' Base [match()] and `%in%` only work on an edge_vec with edge attributes
+#' (on R >= 4.3); `vctrs::vec_match()` and `vctrs::vec_in()` work on any.
 #' Edge_vecs sort by the node values at each end (then the edge
 #' attributes, then node positions to break ties). Hyperedges have no
 #' graph identity: they compare by node values and always combine as a

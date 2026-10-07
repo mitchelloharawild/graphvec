@@ -574,6 +574,18 @@ test_that("match() and %in% on edge_vecs agree with vec_match()", {
   expect_equal(match(h, h), c(1L, 2L, 1L))
 })
 
+test_that("vec_match() and vec_in() work on edge_vecs without edge attributes", {
+  # Base match() can't: such an edge_vec is a zero-column list.
+  e <- edges(node_vec(c("A", "B", NA), 1:2, 2:3))
+  expect_equal(vctrs::vec_match(e[2], e), 2L)
+  expect_equal(vctrs::vec_match(e[c(2, 1, 2)], e), c(2L, 1L, 2L))
+  expect_equal(vctrs::vec_in(e, e), c(TRUE, TRUE))
+  expect_equal(vctrs::vec_in(e, e[2]), c(FALSE, TRUE))
+  # Edges of a separately built graph never match.
+  f <- edges(node_vec(c("A", "B", NA), 1:2, 2:3))
+  expect_equal(vctrs::vec_match(f, e), c(NA_integer_, NA_integer_))
+})
+
 test_that("edge_vec() errors on an edge attribute named like a misspelt option", {
   expect_snapshot(error = TRUE, {
     edge_vec(1L, 2L, node = c("a", "b"))
