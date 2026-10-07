@@ -645,3 +645,12 @@ test_that("node queries error on positions outside the graph", {
   expect_error(attr(d, "graph")$degree(3L, "out"), "between 1 and 2")
   expect_error(attr(d, "graph")$has_edge(1L, 3L), "between 1 and 2")
 })
+
+test_that("node_vec() errors on an edge attribute named like a misspelt option", {
+  expect_snapshot(error = TRUE, node_vec(c("A", "B"), 1L, 2L, directd = FALSE))
+  # `nodes` isn't an option of node_vec(), so it's an ordinary attribute.
+  g <- node_vec(c("A", "B"), 1L, 2L, nodes = 1, weight = 2, directed = FALSE)
+  expect_equal(edges(g)$nodes, 1)
+  expect_equal(edges(g)$weight, 2)
+  expect_false(attr(g, "directed"))
+})

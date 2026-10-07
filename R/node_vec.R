@@ -61,6 +61,7 @@
 #'
 #' @export
 node_vec <- function(x = list(), from = integer(), to = integer(), ..., directed = TRUE) {
+  check_dots_options(...names(), "directed")
   stopifnot(is.atomic(x) || is.list(x))
   stopifnot(is.logical(directed), length(directed) == 1)
   stopifnot(!is.na(directed))

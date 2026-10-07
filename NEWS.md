@@ -78,6 +78,10 @@
   node data; without node data an `edge_vec` still takes its node count
   from the largest position. `NA` at both ends is still a missing edge in
   an `edge_vec`, but an error in a `node_vec`.
+* `node_vec()`, `edge_vec()` and `new_edge_vec()` now error on an edge
+  attribute named like a misspelling of `nodes` or `directed` (e.g.
+  `directd = FALSE` or `node = ...`), suggesting the intended option,
+  rather than silently keeping it as an edge attribute.
 * `node_neighbors()`, `node_parents()`, `node_children()`,
   `edge_incident()` and `node_incident()` now error on an `i` outside the
   graph's nodes (or edges, for `node_incident()`) instead of quietly

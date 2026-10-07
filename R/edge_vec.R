@@ -69,6 +69,7 @@
 #'
 #' @export
 edge_vec <- function(from = integer(), to = integer(), ..., nodes = data.frame(), directed = TRUE) {
+  check_dots_options(...names(), c("nodes", "directed"))
   fields <- new_edge_attrs(from, to, ...)
 
   stopifnot(is_valid_incidence(fields$from))
@@ -92,6 +93,38 @@ new_edge_attrs <- function(from, to, ...) {
   # which data.frame() refuses to recycle against a plain one.
   cols <- recycle_common(c(list(from = from, to = to), attrs))
   as.list(edge_fields_df(cols))
+}
+
+# Options after `...` must be spelt out in full, so a misspelt one (e.g.
+# `directd = FALSE`) would otherwise be quietly kept as an edge attribute.
+# Errors on an attribute name that, ignoring case, is a prefix of an option
+# (3+ characters), is within an insertion/deletion distance of 1 (`nodes`)
+# or 2 (`directed`) of one, or swaps two of its letters. A substitution
+# counts as 2, so common names such as `notes`, `type` or `weight` are
+# still fine.
+check_dots_options <- function(dot_names, options, call = parent.frame()) {
+  dot_names <- dot_names[!is.na(dot_names) & nzchar(dot_names)]
+  if (length(dot_names) == 0L) {
+    return(invisible(NULL))
+  }
+  nm <- tolower(dot_names)
+  dist <- utils::adist(nm, options, costs = c(ins = 1, del = 1, sub = 2))
+  sorted <- function(x) vapply(strsplit(x, ""), function(ch) paste(sort(ch), collapse = ""), "")
+  close <- sweep(dist, 2L, nchar(options) %/% 4L, `<=`) |
+    (dist <= 2 & outer(sorted(nm), sorted(options), `==`)) |
+    outer(nm, options, function(a, b) nchar(a) >= 3L & startsWith(b, a))
+  bad <- which(rowSums(close) > 0L)
+  if (length(bad) == 0L) {
+    return(invisible(NULL))
+  }
+  i <- bad[[1L]]
+  arg <- dot_names[[i]]
+  opt <- options[close[i, ]][[1L]]
+  cli::cli_abort(c(
+    "Edge attribute {.arg {arg}} looks like a misspelt option.",
+    "i" = "Did you mean {.arg {opt}}?",
+    "i" = "Edge attributes can't have names this close to {.or {.arg {options}}}."
+  ), call = call)
 }
 
 # Drops "edge_vec" from x's class and clears the nodes/directed/graph/edge_id
@@ -160,6 +193,7 @@ edge_vec_fields_df <- function(x) {
 #'
 #' @export
 new_edge_vec <- function(from = integer(), to = integer(), ..., nodes = data.frame(), directed = TRUE) {
+  check_dots_options(...names(), c("nodes", "directed"))
   fields <- new_edge_attrs(from, to, ...)
   new_edge_vec_fields(fields, nodes = nodes, directed = directed)
 }

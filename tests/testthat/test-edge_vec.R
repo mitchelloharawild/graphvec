@@ -545,3 +545,27 @@ test_that("match() and %in% on edge_vecs agree with vec_match()", {
   expect_equal(match(h, h), vctrs::vec_match(h, h))
   expect_equal(match(h, h), c(1L, 2L, 1L))
 })
+
+test_that("edge_vec() errors on an edge attribute named like a misspelt option", {
+  expect_snapshot(error = TRUE, {
+    edge_vec(1L, 2L, node = c("a", "b"))
+    edge_vec(1L, 2L, directd = FALSE)
+    new_edge_vec(1L, 2L, dir = FALSE)
+  })
+  expect_error(edge_vec(1L, 2L, Nodes = 1), class = "rlang_error")
+  expect_error(edge_vec(1L, 2L, nodse = 1), class = "rlang_error")
+  expect_error(edge_vec(1L, 2L, undirected = TRUE), class = "rlang_error")
+})
+
+test_that("edge_vec() accepts common edge attribute names", {
+  e <- edge_vec(
+    1L, 2L,
+    weight = 1, type = "a", label = "x", name = "n", id = 1L, group = "g",
+    notes = "", direction = "out",
+    nodes = c("A", "B"), directed = FALSE
+  )
+  expect_equal(e$weight, 1)
+  expect_equal(e$group, "g")
+  expect_equal(e$direction, "out")
+  expect_false(attr(e, "directed"))
+})
