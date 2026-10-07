@@ -125,6 +125,11 @@ test_that("agg_vec() requires `aggregated` to match the length of `x`", {
   expect_error(agg_vec("A", "yes"), "same length")
 })
 
+test_that("agg_vec() rejects a missing `aggregated` flag", {
+  expect_error(agg_vec(c("a", "b"), c(NA, FALSE)), "missing")
+  expect_error(agg_vec("a", NA), "missing")
+})
+
 test_that("as.character.agg_vec() returns the trimmed format", {
   v <- agg_vec(c(NA, "A", "BB"), c(TRUE, FALSE, FALSE))
   expect_equal(as.character(v), c("<aggregated>", "A", "BB"))

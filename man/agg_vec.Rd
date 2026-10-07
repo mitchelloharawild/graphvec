@@ -9,8 +9,8 @@ agg_vec(x = character(), aggregated = logical(NROW(x)))
 \arguments{
 \item{x}{The vector of values.}
 
-\item{aggregated}{A logical vector, the same length as \code{x}, to identify
-which values are \verb{<aggregated>}.}
+\item{aggregated}{A logical vector, the same length as \code{x} and with no
+missing values, to identify which values are \verb{<aggregated>}.}
 }
 \value{
 An \code{agg_vec} object.

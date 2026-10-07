@@ -52,8 +52,8 @@
 #' plot `format(x)` there.
 #'
 #' @param x The vector of values.
-#' @param aggregated A logical vector, the same length as `x`, to identify
-#'   which values are `<aggregated>`.
+#' @param aggregated A logical vector, the same length as `x` and with no
+#'   missing values, to identify which values are `<aggregated>`.
 #'
 #' @return An `agg_vec` object.
 #'
@@ -69,6 +69,9 @@ agg_vec <- function(x = character(), aggregated = logical(NROW(x))){
   if (inherits(x, "agg_vec")) x <- agg_vec_expand(x)
   if (!is.logical(aggregated) || length(aggregated) != NROW(x)) {
     stop("`aggregated` must be a logical vector the same length as `x`.", call. = FALSE)
+  }
+  if (anyNA(aggregated)) {
+    stop("`aggregated` must not contain missing values.", call. = FALSE)
   }
   is_agg <- is_agg | aggregated
   new_agg_vec(x[!is_agg], which(is_agg))
