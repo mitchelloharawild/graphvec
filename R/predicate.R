@@ -48,7 +48,9 @@ node_is_leaf <- function(x) {
 #'
 #' Multiplicity is counted among the edges `x` *currently* holds: an
 #' `edge_vec` sliced down to one of a pair of parallel edges has
-#' multiplicity 1, matching `n_edges(x)` and `length(x)`.
+#' multiplicity 1, matching `n_edges(x)` and `length(x)`. A missing edge
+#' (e.g. from `vctrs::vec_init()`) has no endpoints, so its multiplicity is
+#' `NA` and it is not parallel to any edge, not even another missing one.
 #'
 #' @param x A `node_vec` or `edge_vec`. Either orientation is accepted and
 #' reoriented internally. Hyperedges are not yet supported.
@@ -74,16 +76,23 @@ edge_is_loop <- function(x) {
 edge_multiplicity <- function(x) {
   directed <- backend_of(x)$is_directed()
   ends <- op_endpoints(x)
+  # A missing edge (e.g. from `vec_init()`) has no endpoints, so it is no
+  # edge's parallel: its multiplicity is NA and it is left out of the groups.
+  ok <- !(is.na(ends$from) | is.na(ends$to))
+  from <- ends$from[ok]
+  to <- ends$to[ok]
   key <- if (directed) {
-    paste(ends$from, ends$to, sep = "->")
+    paste(from, to, sep = "->")
   } else {
-    paste(pmin(ends$from, ends$to), pmax(ends$from, ends$to), sep = "--")
+    paste(pmin(from, to), pmax(from, to), sep = "--")
   }
   # `match(key, key)` maps every edge to its group's first occurrence, so
   # tabulating those indices counts each group once -- O(M) hashing, without
   # table()'s factor construction and level sort.
   group <- match(key, key)
-  tabulate(group, nbins = length(key))[group]
+  out <- rep(NA_integer_, length(ok))
+  out[ok] <- tabulate(group, nbins = length(key))[group]
+  out
 }
 
 #' @rdname edge_is_loop

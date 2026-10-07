@@ -232,3 +232,11 @@ test_that("as.igraph() gives an agg_vec/agg_df's columns as vertex attributes", 
   ig <- igraph::as.igraph(agg_df(Purpose = purpose, State = state))
   expect_identical(igraph::vertex_attr(ig), list(Purpose = purpose, State = state))
 })
+
+test_that("as.igraph() errors on an edge_vec with a missing edge", {
+  skip_if_not_installed("igraph")
+  ev <- edges(node_vec(c("a", "b", "c"), c(1L, 2L), c(2L, 3L)))
+  en <- c(ev, vctrs::vec_init(ev))
+  expect_error(igraph::as.igraph(en), "missing edges")
+  expect_equal(igraph::ecount(igraph::as.igraph(en[!is.na(en)])), 2L)
+})

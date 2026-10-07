@@ -26,6 +26,11 @@ The number of nodes/edges in \code{x}, kept bare rather than \code{graph_}-prefi
 with \code{length(edges(x))}: an \code{edge_vec} sliced away from its graph keeps
 the shared graph pointer but only a selection of its edges, and it is the
 selection that counts.
+
+A missing edge (e.g. from \code{vctrs::vec_init()}, \code{lag()} or a join) is
+still an element of an \code{edge_vec}, so \code{n_edges()} counts it, matching
+\code{length(x)}. It joins no nodes, though, so \code{\link[=node_degree]{node_degree()}} and the other
+node measures ignore it, and \code{\link[=nodes]{nodes()}} leaves it out of the graph.
 }
 \examples{
 g <- node_vec(x = c("A", "B", "C"), from = c(1L, 2L), to = c(2L, 3L))

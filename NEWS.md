@@ -173,6 +173,13 @@
   rather than an older row-order model where each value only joined the
   `<aggregated>` values just before it, a value with none before it had no
   parent, and consecutive `<aggregated>` values were a hyperedge error.
+* `edge_multiplicity()` now gives `NA` for a missing edge (e.g. from
+  `vec_init()`) and leaves it out of the grouping, rather than counting
+  missing edges as parallel to each other, and `edge_is_multi()` is `NA`
+  for it too. `as.igraph()` on an `edge_vec` with a missing edge now
+  errors clearly, rather than passing `NA`s to igraph. `n_edges()` still
+  counts missing edges, as elements of the `edge_vec`, while
+  `node_degree()` ignores them; both are now documented.
 * `as.igraph()` now keeps node values and edge attributes, rather than
   dropping them. Following igraph's convention, a vector of node values
   becomes the `name` vertex attribute and each column of a data frame of

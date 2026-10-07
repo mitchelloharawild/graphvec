@@ -49,6 +49,10 @@ igraph has no concept of a hyperedge (an edge with more than one node in
 its \code{from} or \code{to} role). Converting a \code{node_vec}/\code{edge_vec} with a
 hyperedge column raises an error instead of silently dropping or
 flattening the extra incidence.
+
+igraph has no missing edges either, so converting an \code{edge_vec} with a
+missing edge (e.g. from \code{vctrs::vec_init()}) raises an error: drop it
+first, e.g. with \code{x[!is.na(x)]}.
 }
 \examples{
 if (requireNamespace("igraph", quietly = TRUE)) {

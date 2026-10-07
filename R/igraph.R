@@ -30,6 +30,10 @@
 #' hyperedge column raises an error instead of silently dropping or
 #' flattening the extra incidence.
 #'
+#' igraph has no missing edges either, so converting an `edge_vec` with a
+#' missing edge (e.g. from `vctrs::vec_init()`) raises an error: drop it
+#' first, e.g. with `x[!is.na(x)]`.
+#'
 #' @examples
 #' if (requireNamespace("igraph", quietly = TRUE)) {
 #'   g <- node_vec(
@@ -118,6 +122,14 @@ igraph_from_edges <- function(from, to, n, directed, vertex_attrs = list(), edge
     cli::cli_abort(c(
       "x" = "{.pkg igraph} does not support hyperedges.",
       "i" = "Resolve the hyperedge {.field from}/{.field to} column into ordinary edges before calling {.fn as.igraph}."
+    ))
+  }
+  missing <- is.na(from) | is.na(to)
+  if (any(missing)) {
+    cli::cli_abort(c(
+      "x" = "{.pkg igraph} does not support missing edges.",
+      "i" = "{sum(missing)} edge{?s} {?is/are} missing, at position{?s} {which(missing)}.",
+      "i" = "Drop missing edges (e.g. {.code x[!is.na(x)]}) before calling {.fn as.igraph}."
     ))
   }
   g <- igraph::make_empty_graph(n = n, directed = directed)

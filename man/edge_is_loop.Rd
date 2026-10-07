@@ -32,7 +32,9 @@ O(M).
 \details{
 Multiplicity is counted among the edges \code{x} \emph{currently} holds: an
 \code{edge_vec} sliced down to one of a pair of parallel edges has
-multiplicity 1, matching \code{n_edges(x)} and \code{length(x)}.
+multiplicity 1, matching \code{n_edges(x)} and \code{length(x)}. A missing edge
+(e.g. from \code{vctrs::vec_init()}) has no endpoints, so its multiplicity is
+\code{NA} and it is not parallel to any edge, not even another missing one.
 }
 \examples{
 g <- node_vec(x = c("A", "B", "C"), from = c(1L, 1L, 3L), to = c(2L, 2L, 3L))

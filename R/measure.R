@@ -51,6 +51,11 @@ node_degree <- function(x, mode = c("all", "out", "in")) {
 #' the shared graph pointer but only a selection of its edges, and it is the
 #' selection that counts.
 #'
+#' A missing edge (e.g. from `vctrs::vec_init()`, `lag()` or a join) is
+#' still an element of an `edge_vec`, so `n_edges()` counts it, matching
+#' `length(x)`. It joins no nodes, though, so [node_degree()] and the other
+#' node measures ignore it, and [nodes()] leaves it out of the graph.
+#'
 #' @param x A `node_vec` or `edge_vec`. Either orientation is accepted and
 #' reoriented internally. Hyperedges are not yet supported.
 #'

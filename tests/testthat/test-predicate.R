@@ -118,3 +118,14 @@ test_that("predicates reject a non-graph input and hyperedges", {
   expect_error(graph_is_directed(h), "hyperedges")
   expect_error(graph_has_loops(h), "hyperedges")
 })
+
+test_that("edge_multiplicity() gives NA for a missing edge and doesn't group missing edges", {
+  ev <- edges(node_vec(c("a", "b", "c"), c(1L, 2L), c(2L, 3L)))
+  e <- c(ev, ev[1], vctrs::vec_init(ev, 2))
+  expect_equal(edge_multiplicity(e), c(2L, 1L, 2L, NA, NA))
+  expect_equal(edge_is_multi(e), c(TRUE, FALSE, TRUE, NA, NA))
+  expect_equal(edge_multiplicity(vctrs::vec_init(ev, 2)), c(NA_integer_, NA_integer_))
+  # n_edges() still counts missing edges as elements; degree ignores them.
+  expect_equal(n_edges(e), 5L)
+  expect_equal(sum(node_degree(e)), 6L)
+})
