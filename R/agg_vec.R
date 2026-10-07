@@ -221,11 +221,14 @@ c.agg_vec <- function(...) {
     if(!e1_agg) e1 <- x else e2 <- x
   }
 
-  x1 <- agg_vec_expand(e1)
-  x2 <- agg_vec_expand(e2)
-  val_eq <- (x1 == x2) | (is.na(x1) & is.na(x2))
-  val_eq[is.na(val_eq)] <- FALSE
-  (agg_vec_is_agg(e1) & agg_vec_is_agg(e2)) | val_eq
+  # `<aggregated>` equals itself and nothing else; otherwise the values are
+  # compared as base does, so a genuine NA gives NA (never `<aggregated>`).
+  agg1 <- agg_vec_is_agg(e1)
+  agg2 <- agg_vec_is_agg(e2)
+  out <- agg_vec_expand(e1) == agg_vec_expand(e2)
+  out[agg1 | agg2] <- FALSE
+  out[agg1 & agg2] <- TRUE
+  out
 }
 
 #' @export
@@ -257,6 +260,26 @@ duplicated.agg_vec <- function(x, incomparables = FALSE, ...) {
   dup[is_agg] <- duplicated(is_agg[is_agg])
   dup[!is_agg] <- duplicated(vals[!is_agg], incomparables = incomparables, ...)
   dup
+}
+
+#' @export
+anyDuplicated.agg_vec <- function(x, incomparables = FALSE, ...) {
+  first_duplicate(duplicated(x, incomparables = incomparables, ...), ...)
+}
+
+# Exact keys for base match() and %in% (R >= 4.3), agreeing with
+# vctrs::vec_match(): `<aggregated>` only matches itself, never the string
+# "<aggregated>" or a missing value, and values match exactly rather than as
+# printed.
+# base has no mtfrm() generic before R 4.3, so it's only registered there;
+# match() then falls back to its default.
+#' @rawNamespace if (getRversion() >= "4.3.0") S3method(mtfrm, agg_vec)
+#' @exportS3Method NULL
+mtfrm.agg_vec <- function(x) {
+  key <- paste0("V", key_column(agg_vec_expand(x)))
+  key[agg_vec_is_agg(x)] <- "A"
+  key[is.na(x)] <- NA_character_
+  key
 }
 
 #' @export

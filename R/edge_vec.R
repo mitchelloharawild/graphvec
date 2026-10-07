@@ -666,6 +666,40 @@ duplicated.edge_vec <- function(x, incomparables = FALSE, ...) {
 }
 
 #' @export
+anyDuplicated.edge_vec <- function(x, incomparables = FALSE, ...) {
+  first_duplicate(duplicated(x, incomparables = incomparables, ...), ...)
+}
+
+# `==` and `!=` compare edges as vctrs::vec_equal() does (see
+# edge_vec_equal_fields()), recycling as vctrs does; a missing edge gives NA.
+# Edges have no order or arithmetic, so every other operator errors.
+#' @export
+Ops.edge_vec <- function(e1, e2) {
+  if (!.Generic %in% c("==", "!=") || missing(e2)) {
+    cli::cli_abort(
+      "{.code {(.Generic)}} is not supported for {.cls edge_vec}; only {.code ==} and {.code !=} are.",
+      call = NULL
+    )
+  }
+  eq <- vctrs::vec_equal(e1, e2)
+  if (.Generic == "==") eq else !eq
+}
+
+# Exact keys for base match() and %in% (R >= 4.3), one per edge, agreeing
+# with vctrs::vec_match(): built from edge_vec_equal_fields(), so edges
+# match by graph and node positions (and edge attributes). A missing edge
+# matches only missing edges.
+# base has no mtfrm() generic before R 4.3, so it's only registered there;
+# match() then falls back to its default.
+#' @rawNamespace if (getRversion() >= "4.3.0") S3method(mtfrm, edge_vec)
+#' @exportS3Method NULL
+mtfrm.edge_vec <- function(x) {
+  key <- equality_key(edge_vec_equal_fields(x), length(x))
+  key[is.na(x)] <- NA_character_
+  key
+}
+
+#' @export
 unique.edge_vec <- function(x, incomparables = FALSE, ...) {
   x[!duplicated(x, incomparables = incomparables, ...)]
 }

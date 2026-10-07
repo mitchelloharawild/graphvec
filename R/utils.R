@@ -88,3 +88,70 @@ element_position <- function(x, i) {
   }
   pos
 }
+
+# The value anyDuplicated() returns given duplicated()'s result: the
+# position of the first duplicate, scanning from the end with `fromLast`,
+# or 0 if there is none.
+first_duplicate <- function(dup, fromLast = FALSE, ...) {
+  pos <- which(dup)
+  if (length(pos) == 0L) {
+    return(0L)
+  }
+  if (isTRUE(fromLast)) max(pos) else min(pos)
+}
+
+# One string key per row of the per-row fields `cols` (a list of atomic
+# vectors, data frames and lists of per-row vectors), identical for two
+# rows exactly when vctrs::vec_equal(na_equal = TRUE) finds every field
+# equal. Each row is keyed on its own, so the keys of separate vectors
+# compare too, as base match() needs of mtfrm(). Every token delimits
+# itself (numbers have no `|`, `(` or `[`; strings are length-prefixed), so
+# different rows can't run together into the same key.
+equality_key <- function(cols, n) {
+  if (length(cols) == 0L) {
+    return(rep("", n))
+  }
+  do.call(paste, c(unname(lapply(cols, key_column)), sep = "|"))
+}
+
+key_column <- function(col) {
+  if (is.data.frame(col)) {
+    return(paste0("(", equality_key(as.list(col), nrow(col)), ")"))
+  }
+  if (is.list(col)) {
+    return(vapply(col, key_element, character(1)))
+  }
+  # Factors compare by label, as vctrs casts them to common levels first.
+  if (is.factor(col)) {
+    col <- as.character(col)
+  }
+  col <- vctrs::vec_proxy_equal(col)
+  if (is.data.frame(col)) {
+    return(key_column(col))
+  }
+  switch(typeof(col),
+    character = {
+      col <- enc2utf8(col)
+      ifelse(is.na(col), "NA", paste0(nchar(col, "bytes"), ":", col))
+    },
+    complex = paste0(key_number(Re(col)), "i", key_number(Im(col))),
+    # Logical, integer, double and raw all as doubles, as vctrs casts them
+    # to a common type before comparing.
+    key_number(col)
+  )
+}
+
+# A list element (e.g. a hyperedge's node set): NULL is its missing value.
+key_element <- function(v) {
+  if (is.null(v)) {
+    return("NULL")
+  }
+  paste0("[", paste(key_column(v), collapse = ","), "]")
+}
+
+# Doubles exactly, in hexadecimal: NA and NaN differ, 0 and -0 don't.
+key_number <- function(x) {
+  x <- as.double(x)
+  x[!is.na(x) & x == 0] <- 0
+  sprintf("%a", x)
+}

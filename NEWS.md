@@ -116,6 +116,15 @@
   element names, which made `vec_c()`, `bind_rows()`, joins and other vctrs
   functions fail with an internal vctrs error.
 * Tab completion after `$` on an `edge_vec` offers `from` and `to` again.
+* `==` and `!=` on an `edge_vec` now compare edges as `vec_equal()` does
+  (by graph and node positions), rather than returning an empty result;
+  other operators error. `anyDuplicated()` on an `edge_vec` or `agg_vec`
+  now finds duplicates as `duplicated()` does, rather than returning 0.
+  On R >= 4.3, `match()` and `%in%` on an `agg_vec`, or an `edge_vec` with
+  edge attributes, now agree with `vec_match()` and `vec_in()`.
+* `==` on an `agg_vec` no longer treats a genuine `NA` as equal to
+  `<aggregated>`: `<aggregated>` only equals `<aggregated>`, and missing
+  values compare as `NA`, as for base vectors (`!=` likewise).
 
 ## Breaking changes
 

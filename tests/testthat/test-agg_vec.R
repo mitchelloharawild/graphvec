@@ -78,16 +78,25 @@ test_that("`==.agg_vec` treats an aggregated position and a disaggregated positi
   expect_equal(va == vc, c(FALSE, TRUE, TRUE))
 })
 
-test_that("`==.agg_vec` compares disaggregated values normally, including matching NAs", {
+test_that("`==.agg_vec` compares disaggregated values normally, with NA for missing values", {
   vd <- agg_vec(c(NA_character_, "A", "B"), aggregated = c(FALSE, FALSE, FALSE))
   ve <- agg_vec(c(NA_character_, "A", "C"), aggregated = c(FALSE, FALSE, FALSE))
-  expect_equal(vd == ve, c(TRUE, TRUE, FALSE))
+  expect_equal(vd == ve, c(NA, TRUE, FALSE))
 })
 
-test_that("`==.agg_vec` treats a mismatched NA (one side missing, other not) as unequal", {
+test_that("`==.agg_vec` gives NA for a missing value against a non-missing one", {
   vd <- agg_vec(c(NA_character_, "A"), aggregated = c(FALSE, FALSE))
   vf <- agg_vec(c("X", "A"), aggregated = c(FALSE, FALSE))
-  expect_equal(vd == vf, c(FALSE, TRUE))
+  expect_equal(vd == vf, c(NA, TRUE))
+})
+
+test_that("`==.agg_vec` never treats a genuine NA as `<aggregated>`", {
+  expect_false(agg_vec(NA, FALSE) == agg_vec(NA, TRUE))
+  expect_true(agg_vec(NA, FALSE) != agg_vec(NA, TRUE))
+  v <- agg_vec(c(NA, NA), c(TRUE, FALSE))
+  expect_equal(v == v, c(TRUE, NA))
+  expect_equal(v != v, c(FALSE, NA))
+  expect_equal(v == NA, c(FALSE, NA))
 })
 
 test_that("`==.agg_vec` compares against a plain vector as fully disaggregated, without string-matching \"<aggregated>\"", {
@@ -178,4 +187,26 @@ test_that("an agg_vec is a single data.frame column", {
   expect_equal(format(df[2:3, ]$v), c("B", "A"))
   expect_output(print(df), "<aggregated>")
   expect_equal(names(as.data.frame(v)), "v")
+})
+
+test_that("anyDuplicated.agg_vec() agrees with duplicated()", {
+  expect_equal(anyDuplicated(agg_vec(c(NA, NA), c(TRUE, TRUE))), 2L)
+  expect_equal(anyDuplicated(agg_vec(c("a", NA, "a"), c(FALSE, TRUE, FALSE))), 3L)
+  expect_equal(anyDuplicated(agg_vec(c("a", NA), c(FALSE, TRUE))), 0L)
+  expect_equal(anyDuplicated(agg_vec(c("a", "b", "a", "b"), rep(FALSE, 4)), fromLast = TRUE), 2L)
+})
+
+test_that("match() and %in% on agg_vecs agree with vec_match()", {
+  skip_if(getRversion() < "4.3.0", "match() only uses mtfrm() from R 4.3")
+  x <- agg_vec(c(0.1 + 0.2, NA, 1, 2), c(FALSE, FALSE, TRUE, FALSE))
+  table <- agg_vec(c(0.3, NA, 5, 2), c(FALSE, FALSE, TRUE, FALSE))
+  expect_equal(match(x, table), vctrs::vec_match(x, table))
+  expect_equal(match(x, table), c(NA, 2L, 3L, 4L))
+  expect_equal(x %in% table, vctrs::vec_in(x, table))
+
+  # `<aggregated>` is not the string "<aggregated>" or a missing value.
+  s <- agg_vec(c("<aggregated>", "NA", NA, "a"), c(FALSE, FALSE, FALSE, TRUE))
+  t <- agg_vec(c("b", NA, "<aggregated>", "NA"), c(TRUE, FALSE, FALSE, FALSE))
+  expect_equal(match(s, t), vctrs::vec_match(s, t))
+  expect_equal(match(s, t), c(3L, 4L, 2L, 1L))
 })

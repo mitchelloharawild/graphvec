@@ -491,3 +491,57 @@ test_that("edge_vec errors on edge endpoints that aren't nodes", {
   expect_equal(is.na(e), c(FALSE, TRUE))
   expect_error(edge_vec(1L, NA_integer_, nodes = c("a", "b")), "only one")
 })
+
+test_that("== and != on an edge_vec compare by graph and positions", {
+  e <- edges(node_vec(c("A", "B", NA), c(1L, 2L), c(2L, 3L)))
+  expect_equal(e == e, c(TRUE, TRUE))
+  expect_equal(e != e[2], c(TRUE, FALSE))
+  expect_equal(e == e, vctrs::vec_equal(e, e))
+  # A missing edge compares as NA.
+  x <- c(e, vctrs::vec_init(e, 1))
+  expect_equal(x == x, c(TRUE, TRUE, NA))
+  # Edges of separately built graphs are never equal, whatever their labels.
+  f <- edges(node_vec(c("A", "B", NA), c(1L, 2L), c(2L, 3L)))
+  expect_equal(e == f, c(FALSE, FALSE))
+  expect_equal(e != f, c(TRUE, TRUE))
+})
+
+test_that("an edge_vec errors on operators other than == and !=", {
+  e <- edge_vec(1L, 2L, nodes = c("A", "B"))
+  expect_snapshot(error = TRUE, {
+    e < e
+    e + 1
+    !e
+  })
+})
+
+test_that("anyDuplicated.edge_vec() agrees with duplicated()", {
+  e <- edges(node_vec(c("A", "B", NA), c(1L, 2L), c(2L, 3L)))
+  expect_equal(anyDuplicated(e), 0L)
+  expect_equal(anyDuplicated(c(e, e)), 3L)
+  expect_equal(anyDuplicated(c(e, e), fromLast = TRUE), 2L)
+  h <- edge_vec(list(1:2, 2L, 1:2), list(3L, 1L, 3L), nodes = c("A", "B", "C"))
+  expect_equal(anyDuplicated(h), 3L)
+})
+
+test_that("match() and %in% on edge_vecs agree with vec_match()", {
+  skip_if(getRversion() < "4.3.0", "match() only uses mtfrm() from R 4.3")
+  # Edge attributes match exactly: 0.1 + 0.2 isn't 0.3, but -0 is 0.
+  w <- edge_vec(
+    c(1L, 1L, 2L, 1L, 1L), c(2L, 2L, 3L, 2L, 2L),
+    w = c(0.1 + 0.2, 0.3, NA, -0, 0), nodes = c("A", "B", "C")
+  )
+  table <- w[c(2, 1, 3, 5)]
+  expect_equal(match(w, table), vctrs::vec_match(w, table))
+  expect_equal(match(w, table), c(2L, 1L, 3L, 4L, 4L))
+  expect_equal(w %in% table[1:2], vctrs::vec_in(w, table[1:2]))
+
+  # Edges of a separately built graph never match.
+  v <- edge_vec(1L, 2L, w = 0.3, nodes = c("A", "B", "C"))
+  expect_equal(match(v, w), vctrs::vec_match(v, w))
+  expect_equal(match(v, w), NA_integer_)
+
+  h <- edge_vec(list(1:2, 2L, 1:2), list(3L, 1L, 3L), nodes = c("A", "B", "C"))
+  expect_equal(match(h, h), vctrs::vec_match(h, h))
+  expect_equal(match(h, h), c(1L, 2L, 1L))
+})
