@@ -129,6 +129,11 @@
 * `==` on an `agg_vec` no longer treats a genuine `NA` as equal to
   `<aggregated>`: `<aggregated>` only equals `<aggregated>`, and missing
   values compare as `NA`, as for base vectors (`!=` likewise).
+* `as.igraph()` on an `agg_vec` now gives the same graph as `nodes()`,
+  linking every disaggregated value to the first `<aggregated>` value,
+  rather than an older row-order model where each value only joined the
+  `<aggregated>` values just before it, a value with none before it had no
+  parent, and consecutive `<aggregated>` values were a hyperedge error.
 
 ## Breaking changes
 

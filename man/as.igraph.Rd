@@ -29,11 +29,14 @@ Methods for converting \code{node_vec}, \code{agg_vec}, \code{agg_df}, and \code
 objects to \code{\link[igraph:igraph]{igraph::igraph()}} objects using \code{\link[igraph:graph_from_edgelist]{igraph::graph_from_edgelist()}}.
 }
 \details{
+An \code{agg_vec} or \code{agg_df} is converted as the graph \code{\link[=nodes]{nodes()}} gives it, so
+\code{as.igraph(x)} is the same as \code{as.igraph(nodes(x))}: each row links to
+the rows that aggregate it (see \code{\link[=agg_df]{agg_df()}}).
+
 igraph has no concept of a hyperedge (an edge with more than one node in
 its \code{from} or \code{to} role). Converting a \code{node_vec}/\code{edge_vec} with a
-hyperedge column, or an \code{agg_vec} where a disaggregated value has more
-than one \verb{<aggregated>} parent, raises an error instead of silently
-dropping or flattening the extra incidence.
+hyperedge column raises an error instead of silently dropping or
+flattening the extra incidence.
 }
 \examples{
 if (requireNamespace("igraph", quietly = TRUE)) {

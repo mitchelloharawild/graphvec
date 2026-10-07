@@ -9,11 +9,14 @@
 #' @return An [igraph::igraph()] object.
 #'
 #' @details
+#' An `agg_vec` or `agg_df` is converted as the graph [nodes()] gives it, so
+#' `as.igraph(x)` is the same as `as.igraph(nodes(x))`: each row links to
+#' the rows that aggregate it (see [agg_df()]).
+#'
 #' igraph has no concept of a hyperedge (an edge with more than one node in
 #' its `from` or `to` role). Converting a `node_vec`/`edge_vec` with a
-#' hyperedge column, or an `agg_vec` where a disaggregated value has more
-#' than one `<aggregated>` parent, raises an error instead of silently
-#' dropping or flattening the extra incidence.
+#' hyperedge column raises an error instead of silently dropping or
+#' flattening the extra incidence.
 #'
 #' @examples
 #' if (requireNamespace("igraph", quietly = TRUE)) {
@@ -32,27 +35,7 @@ NULL
 #' @rdname as.igraph
 #' @exportS3Method igraph::as.igraph
 as.igraph.agg_vec <- function(x, ...) {
-  # A forest of stars: each disaggregated row's parents are every aggregated
-  # position in the maximal run of `<aggregated>` rows immediately preceding
-  # it, up to the next disaggregated row. A run of more than one aggregated
-  # position makes that child a hyperedge target (`to` becomes list-valued),
-  # since it belongs under all of them at once, not just the nearest.
-  is_agg <- is_aggregated(x)
-  n <- length(is_agg)
-  if (n == 0L) {
-    return(igraph_from_edges(from = integer(), to = integer(), n = 0L, directed = TRUE))
-  }
-
-  r <- rle(is_agg)
-  grp <- rep(seq_along(r$lengths), r$lengths) # run id per position
-  nearest_agg <- cummax(seq_len(n) * is_agg) # 0 where no aggregate precedes
-
-  from <- which(!is_agg & nearest_agg > 0L)
-  parent_run <- grp[nearest_agg[from]]
-  to <- lapply(parent_run, function(g) which(grp == g))
-  if (all(lengths(to) == 1L)) to <- as.integer(unlist(to, use.names = FALSE))
-
-  igraph_from_edges(from = from, to = to, n = n, directed = TRUE)
+  igraph::as.igraph(nodes(x))
 }
 
 #' @rdname as.igraph

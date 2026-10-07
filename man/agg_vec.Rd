@@ -42,11 +42,11 @@ cannot represent a hypergraph, that is, an aggregate whose value is
 jointly determined by one \emph{specific, tagged} group of children (a
 directed hyperedge/AND-arc), as opposed to an ordinary total reachable
 by matching key values. A well-formed \code{agg_vec} has at most one row per
-distinct combination of aggregated/disaggregated values; a duplicate
-combination (e.g. two consecutive \verb{<aggregated>} rows with no
-disaggregated row between them) can't be resolved to a single parent,
-and is reported as a hyperedge by \code{\link[igraph:as.igraph]{igraph::as.igraph()}} rather than
-silently resolved to one. For arbitrary graphs, such as explicit
+distinct combination of aggregated/disaggregated values. A duplicate
+combination isn't an error: \code{\link[=nodes]{nodes()}} (and so \code{\link[igraph:as.igraph]{igraph::as.igraph()}})
+links every disaggregated row to the first \verb{<aggregated>} row, so a
+duplicate disaggregated row gets its own edge and a later duplicate
+\verb{<aggregated>} row is left without any. For arbitrary graphs, such as explicit
 hyperedges or aggregation structures with no shared bottom series across
 pathways (divergent groups), use \code{\link[=node_vec]{node_vec()}}/\code{\link[=edge_vec]{edge_vec()}} directly
 instead.

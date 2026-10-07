@@ -26,11 +26,11 @@
 #' jointly determined by one *specific, tagged* group of children (a
 #' directed hyperedge/AND-arc), as opposed to an ordinary total reachable
 #' by matching key values. A well-formed `agg_vec` has at most one row per
-#' distinct combination of aggregated/disaggregated values; a duplicate
-#' combination (e.g. two consecutive `<aggregated>` rows with no
-#' disaggregated row between them) can't be resolved to a single parent,
-#' and is reported as a hyperedge by [igraph::as.igraph()] rather than
-#' silently resolved to one. For arbitrary graphs, such as explicit
+#' distinct combination of aggregated/disaggregated values. A duplicate
+#' combination isn't an error: [nodes()] (and so [igraph::as.igraph()])
+#' links every disaggregated row to the first `<aggregated>` row, so a
+#' duplicate disaggregated row gets its own edge and a later duplicate
+#' `<aggregated>` row is left without any. For arbitrary graphs, such as explicit
 #' hyperedges or aggregation structures with no shared bottom series across
 #' pathways (divergent groups), use [node_vec()]/[edge_vec()] directly
 #' instead.

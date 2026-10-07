@@ -20,50 +20,48 @@ test_that("as.igraph() converts agg_vec to an igraph object", {
   expect_equal(igraph::as_edgelist(ig, names = FALSE), cbind(c(2L, 3L), c(1L, 1L)))
 })
 
-test_that("as.igraph() connects agg_vec's forest of stars, one per aggregate root", {
+test_that("as.igraph() converts agg_vec as the graph nodes() gives it", {
   skip_if_not_installed("igraph")
-  # Two disjoint stars: row 1 aggregates rows 2-3, row 4 aggregates row 5.
+  # Formerly a row-order "forest of stars", which disagreed with nodes().
+  vs <- list(
+    agg_vec(c(NA, "A", NA, "B"), aggregated = c(TRUE, FALSE, TRUE, FALSE)),
+    agg_vec(c(NA, "A", "B", NA, "C"), aggregated = c(TRUE, FALSE, FALSE, TRUE, FALSE)),
+    agg_vec(c("A", NA), aggregated = c(FALSE, TRUE)),
+    agg_vec(c(NA, NA, "A", "B"), aggregated = c(TRUE, TRUE, FALSE, FALSE)),
+    agg_vec(c("A", "B"), aggregated = c(FALSE, FALSE)),
+    agg_vec()
+  )
+  for (v in vs) {
+    expect_identical(
+      igraph::as_edgelist(igraph::as.igraph(v), names = FALSE),
+      igraph::as_edgelist(igraph::as.igraph(nodes(v)), names = FALSE)
+    )
+    expect_equal(igraph::vcount(igraph::as.igraph(v)), length(v))
+  }
+})
+
+test_that("as.igraph() links every agg_vec row to the first `<aggregated>` row", {
+  skip_if_not_installed("igraph")
+  # Row order doesn't matter, and a later duplicate `<aggregated>` row (4) is
+  # left isolated rather than starting a second star.
   v <- agg_vec(
     c(NA, "A", "B", NA, "C"),
     aggregated = c(TRUE, FALSE, FALSE, TRUE, FALSE)
   )
-  ig <- igraph::as.igraph(v)
-  expect_equal(igraph::vcount(ig), 5L)
   expect_equal(
-    igraph::as_edgelist(ig, names = FALSE),
-    cbind(c(2L, 3L, 5L), c(1L, 1L, 4L))
+    igraph::as_edgelist(igraph::as.igraph(v), names = FALSE),
+    cbind(c(2L, 3L, 5L), c(1L, 1L, 1L))
   )
-})
 
-test_that("as.igraph() drops agg_vec rows with no preceding aggregate root", {
-  skip_if_not_installed("igraph")
   v <- agg_vec(c("A", NA), aggregated = c(FALSE, TRUE))
-  ig <- igraph::as.igraph(v)
-  expect_equal(igraph::vcount(ig), 2L)
-  expect_equal(igraph::ecount(ig), 0L)
-})
+  expect_equal(igraph::as_edgelist(igraph::as.igraph(v), names = FALSE), cbind(1L, 2L))
 
-test_that("as.igraph() gives every consecutive `<aggregated>` value as a child's parent (a hyperedge)", {
-  skip_if_not_installed("igraph")
-  # Two aggregate rows (1, 2) with no child between them are both parents of
-  # the children that follow (3, 4) -- order among the aggregates shouldn't
-  # matter, and this can't be expressed as an ordinary igraph edge list.
+  # Consecutive `<aggregated>` rows are no longer a hyperedge error.
   v <- agg_vec(c(NA, NA, "A", "B"), aggregated = c(TRUE, TRUE, FALSE, FALSE))
-  expect_error(igraph::as.igraph(v), class = "rlang_error")
-})
-
-test_that("as.igraph() still converts a lone `<aggregated>` value to ordinary edges", {
-  skip_if_not_installed("igraph")
-  # Regression guard: only a *run* of more than one aggregate should trip the
-  # hyperedge path -- a single aggregate followed later by another (with
-  # children in between) must stay two ordinary single-parent stars.
-  v <- agg_vec(
-    c(NA, "A", NA, "B"),
-    aggregated = c(TRUE, FALSE, TRUE, FALSE)
+  expect_equal(
+    igraph::as_edgelist(igraph::as.igraph(v), names = FALSE),
+    cbind(c(3L, 4L), c(1L, 1L))
   )
-  ig <- igraph::as.igraph(v)
-  expect_equal(igraph::ecount(ig), 2L)
-  expect_equal(igraph::as_edgelist(ig, names = FALSE), cbind(c(2L, 4L), c(1L, 3L)))
 })
 
 test_that("as.igraph() errors on a hyperedge node_vec/edge_vec (igraph has no hyperedge concept)", {
