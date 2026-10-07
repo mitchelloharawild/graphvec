@@ -80,8 +80,9 @@
   Their discrete x and y scales are the new `scale_x_graphvec()` and
   `scale_y_graphvec()`, which ggplot2 only finds by itself when graphvec
   is attached (character `node_vec`s and non-position aesthetics also
-  work without it). `levels()`
-  on any of them gives these labels. ggplot2 is not a hard dependency.
+  work without it). `levels()` on any of them gives these labels, except
+  that a factor `node_vec` keeps its own levels (and `droplevels()` drops
+  its unused ones). ggplot2 is not a hard dependency.
 * Added `[[`, `[<-`, `[[<-` and `as.list()` methods for `agg_vec` and
   `edge_vec`, so assignment (including `df$col[i] <- value`) and
   `purrr::map()`/`lapply()` work element-wise. Assigning an `agg_vec`

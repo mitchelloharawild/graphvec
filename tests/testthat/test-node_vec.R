@@ -818,3 +818,24 @@ test_that("node_values() gives a node_vec's plain values", {
   expect_error(node_values(e), "nodes\\(x\\)")
   expect_error(node_values(agg_vec(c("A", NA))), "format")
 })
+
+test_that("a factor node_vec keeps its own levels, in plots too", {
+  n <- node_vec(factor(c("B", "A"), levels = c("C", "B", "A")), 1L, 2L)
+  expect_equal(levels(n), c("C", "B", "A"))
+  d <- droplevels(n)
+  expect_equal(levels(d), c("B", "A"))
+  expect_equal(d == n, c(TRUE, TRUE))
+  expect_equal(edge_pairs(d), edge_pairs(n))
+  expect_equal(levels(node_vec(c("B", "A"))), c("A", "B"))
+
+  skip_if_not_installed("ggplot2")
+  df <- data.frame(y = 1:2)
+  df$n <- n
+  p <- ggplot2::ggplot(df, ggplot2::aes(n, y, colour = n)) + ggplot2::geom_point()
+  b <- expect_silent(ggplot2::ggplot_build(p))
+  expect_equal(b$layout$panel_params[[1]]$x$get_labels(), c("B", "A"))
+  expect_equal(b$plot$scales$get_scales("colour")$get_labels(), c("B", "A"))
+  p <- p + ggplot2::scale_x_discrete(drop = FALSE)
+  b <- expect_silent(ggplot2::ggplot_build(p))
+  expect_equal(b$layout$panel_params[[1]]$x$get_labels(), c("C", "B", "A"))
+})

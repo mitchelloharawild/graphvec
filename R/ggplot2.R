@@ -44,8 +44,13 @@ graph_vec_levels <- function(x) {
   unique(as.character(sort(x[!is.na(x)])))
 }
 
+# A node_vec of values with levels of their own (a factor) keeps them, as it
+# keeps behaving like what it wraps.
 #' @export
-levels.node_vec <- function(x) graph_vec_levels(x)
+levels.node_vec <- function(x) {
+  lev <- levels(node_vec_data(x))
+  if (is.null(lev)) graph_vec_levels(x) else lev
+}
 
 #' @export
 levels.edge_vec <- function(x) graph_vec_levels(x)
@@ -53,9 +58,15 @@ levels.edge_vec <- function(x) graph_vec_levels(x)
 #' @export
 levels.agg_vec <- function(x) graph_vec_levels(x)
 
-# The levels are only ever those in use, so there are none to drop.
+# Otherwise the levels are only ever those in use, so there are none to drop.
 #' @export
-droplevels.node_vec <- function(x, ...) x
+droplevels.node_vec <- function(x, ...) {
+  values <- node_vec_data(x)
+  if (is.null(levels(values))) {
+    return(x)
+  }
+  node_vec_with_values(x, droplevels(values, ...))
+}
 
 #' @export
 droplevels.edge_vec <- function(x, ...) x
