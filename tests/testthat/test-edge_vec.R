@@ -196,6 +196,14 @@ test_that("c.edge_vec() pads a missing edge attribute with NA when combining edg
   expect_equal(u$weight, c(5, NA))
 })
 
+test_that("c.edge_vec() combines edges with attributes and an edge_vec with no edges", {
+  e <- edges(node_vec(c("A", "B", "C"), c(1L, 2L), c(2L, 3L), weight = c(1, 2)))
+  z <- edge_vec(nodes = "z")
+  expect_equal(c(e, z)$weight, c(1, 2))
+  expect_equal(c(z, e)$weight, c(1, 2))
+  expect_equal(format(c(e, z)), format(e))
+})
+
 test_that("c.edge_vec() rejects combining edge_vec objects with different `directed`", {
   e <- edge_vec(from = 1L, to = 2L, nodes = data.frame(label = c("A", "B")))
   expect_error(c(e, edge_vec(directed = FALSE)), "directed")

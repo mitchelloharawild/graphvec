@@ -442,6 +442,19 @@ test_that("c.node_vec() pads a missing edge attribute with NA when combining nod
   expect_equal(attr(u, "edges")$weight, c(5, NA))
 })
 
+test_that("c.node_vec() combines a graph with edge attributes and one with no edges", {
+  g <- node_vec(c("A", "B", "C"), c(1L, 2L), c(2L, 3L), weight = c(1, 2))
+  u <- c(g, node_vec("Z"))
+  expect_equal(format(u), c("A", "B", "C", "Z"))
+  expect_equal(attr(u, "edges")$weight, c(1, 2))
+  expect_equal(attr(c(node_vec("Z"), g), "edges")$weight, c(1, 2))
+  expect_equal(vctrs::vec_c(g, node_vec("Z")), u)
+
+  skip_if_not_installed("dplyr")
+  b <- dplyr::bind_rows(tibble::tibble(g = g), tibble::tibble(g = node_vec("Z")))
+  expect_equal(b$g, u)
+})
+
 test_that("rep.node_vec() makes disjoint copies of the graph, as c() does", {
   g <- node_vec(x = c("A", "B", "A"), from = 1:2, to = 2:3, weight = c(1, 2))
   r <- rep(g, 2)

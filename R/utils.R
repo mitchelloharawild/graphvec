@@ -24,7 +24,7 @@ combine_values <- function(xs) {
 rbind_fill <- function(dfs) {
   all_names <- unique(unlist(lapply(dfs, names)))
   dfs <- lapply(dfs, function(d) {
-    for (nm in setdiff(all_names, names(d))) d[[nm]] <- NA
+    for (nm in setdiff(all_names, names(d))) d[[nm]] <- rep(NA, nrow(d))
     d[all_names]
   })
   do.call(rbind, dfs)

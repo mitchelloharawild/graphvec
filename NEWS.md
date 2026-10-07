@@ -163,6 +163,9 @@
 * `==` on an `agg_vec` no longer treats a genuine `NA` as equal to
   `<aggregated>`: `<aggregated>` only equals `<aggregated>`, and missing
   values compare as `NA`, as for base vectors (`!=` likewise).
+* `c()`, `vec_c()` and `bind_rows()` of a `node_vec` or `edge_vec` with
+  edge attributes and one with no edges no longer error with "replacement
+  has 1 row, data has 0".
 * `as.igraph()` on an `agg_vec` now gives the same graph as `nodes()`,
   linking every disaggregated value to the first `<aggregated>` value,
   rather than an older row-order model where each value only joined the
