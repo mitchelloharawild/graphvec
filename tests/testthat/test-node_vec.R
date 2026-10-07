@@ -376,6 +376,42 @@ test_that("== and != on node_vecs compare as vec_equal() does", {
   expect_equal(h == h[3:1], vctrs::vec_equal(h, h[3:1]))
 })
 
+test_that("match() and %in% on node_vecs agree with vec_match()", {
+  skip_if(getRversion() < "4.3.0", "match() only uses mtfrm() from R 4.3")
+  n <- node_vec(c("A", "B", "A", NA), 1:2, 2:3)
+  # Nodes match by identity and value, not label.
+  expect_equal(match(n, n[4:1]), vctrs::vec_match(n, n[4:1]))
+  expect_equal(match(n, n[4:1]), 4:1)
+  expect_equal(n %in% n[3], vctrs::vec_in(n, n[3]))
+  expect_equal(n %in% n[3], c(FALSE, FALSE, TRUE, FALSE))
+  # Copies match the node they copy; a node of a separately built graph or
+  # a relabelled node doesn't.
+  expect_equal(match(c(n, n), n), rep(1:4, 2))
+  expect_equal(match(node_vec(c("A", "B", "A", NA), 1:2, 2:3), n), rep(NA_integer_, 4))
+  r <- n
+  r[2] <- "Z"
+  expect_equal(match(r, n), c(1L, NA, 3L, 4L))
+  # A missing node matches only missing nodes.
+  x <- c(n, vctrs::vec_init(n, 1))
+  expect_equal(match(x, x[5:1]), vctrs::vec_match(x, x[5:1]))
+  expect_equal(match(x[5], n), NA_integer_)
+
+  d <- node_vec(data.frame(id = 1:2, lab = c("a", "b")), 1L, 2L)
+  expect_equal(match(d, d[2:1]), c(2L, 1L))
+
+  # Hyperedge node_vecs match by value.
+  h <- node_vec(c("A", "B", "A"), from = list(1:2), to = list(3L))
+  expect_equal(match(h, h), vctrs::vec_match(h, h))
+  expect_equal(match(h, h), c(1L, 2L, 1L))
+
+  # A node never matches a plain value; node_values() matches by value.
+  expect_equal(match(n, "A"), rep(NA_integer_, 4))
+  expect_equal(n %in% c("A", "B"), rep(FALSE, 4))
+  expect_equal(match("A", n), NA_integer_)
+  expect_equal(node_values(n) %in% c("A", "B"), c(TRUE, TRUE, TRUE, FALSE))
+  expect_error(vctrs::vec_match(n, "A"), "combine")
+})
+
 test_that("c.node_vec() is a disjoint union: values concatenate, second graph's edges are offset", {
   g1 <- node_vec(x = c("A", "B"), from = 1L, to = 2L)
   g2 <- node_vec(x = c("X", "Y"), from = 1L, to = 2L)
@@ -620,12 +656,15 @@ test_that("node_vecs plot with a discrete scale labelled by format()", {
   expect_equal(b$data[[1]]$colour, scales::hue_pal()(3)[3:1])
 
   # A character node_vec in colour and shape, too; repeated labels share a
-  # level.
+  # level. ggplot2 groups by node, so the two "A"s are separate groups.
   df$n <- node_vec(c("B", "A", "A"), 1:2, 2:3)
   p <- ggplot2::ggplot(df, ggplot2::aes(y, y, colour = n, shape = n)) + ggplot2::geom_point()
   b <- expect_silent(ggplot2::ggplot_build(p))
   expect_equal(b$plot$scales$get_scales("shape")$get_labels(), c("A", "B"))
   expect_equal(b$data[[1]]$colour, scales::hue_pal()(2)[c(2, 1, 1)])
+  if (getRversion() >= "4.3.0") {
+    expect_equal(b$data[[1]]$group, c(3L, 1L, 2L), ignore_attr = TRUE)
+  }
 })
 
 test_that("a data-frame-backed node_vec is a single data.frame column", {

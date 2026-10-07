@@ -51,8 +51,10 @@
 #' [unique()], `vctrs::vec_equal()` and joins use, so `x[1]` equals the
 #' first node of `x` (or of `c(x, x)`), but not another node with the same
 #' label, nor a node of a separately built node_vec. Comparing with a plain
-#' value (`x == "A"`) compares the node values. Hyperedge node_vecs have no
-#' graph identity and compare by value.
+#' value (`x == "A"`) compares the node values, but `match()` and `%in%`
+#' (on R >= 4.3) never match a node to a plain value: use
+#' `node_values(x) %in% "A"` (see [node_values()]). Hyperedge node_vecs
+#' have no graph identity and compare by value.
 #'
 #' @examples
 #'
@@ -586,6 +588,20 @@ Ops.node_vec <- function(e1, e2) {
     return(if (.Generic == "==") eq else !eq)
   }
   NextMethod()
+}
+
+# Exact keys for base match() and %in% (R >= 4.3), one per node, agreeing
+# with vctrs::vec_match(): built from node_vec_equal_fields(), so nodes
+# match by identity and value (a hyperedge node_vec's by value alone). A
+# missing node matches only missing nodes.
+# base has no mtfrm() generic before R 4.3, so it's only registered there;
+# match() then falls back to its default.
+#' @rawNamespace if (getRversion() >= "4.3.0") S3method(mtfrm, node_vec)
+#' @exportS3Method NULL
+mtfrm.node_vec <- function(x) {
+  key <- equality_key(node_vec_equal_fields(x), length(x))
+  key[vctrs::vec_detect_missing(x)] <- NA_character_
+  key
 }
 
 # Ranks for order()/sort()/dplyr::desc() by node value (data frame values

@@ -45,6 +45,11 @@
   value alone: `n == n[3:1]` is no longer `TRUE` for different nodes with
   the same label. Comparing with a plain value (`n == "A"`) and other
   operators still use the node values.
+* On R >= 4.3, `match()` and `%in%` on `node_vec`s now agree with
+  `vec_match()` and `vec_in()`, matching nodes by graph, position and value
+  rather than by value alone. A node never matches a plain value, so
+  `match(n, "A")` and `n %in% "A"` find nothing: compare
+  `node_values(n)` for that. Hyperedge `node_vec`s still match by value.
 
 ## New features
 
