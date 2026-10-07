@@ -38,10 +38,9 @@ reference:
   - is_aggregated
 
 - title: Interoperability
-  desc: Use graph vectors with igraph and ggplot2.
+  desc: Convert graph vectors to other graph representations.
   contents:
   - as.igraph
-  - scale_x_graphvec
 
 - title: Graph operations
   desc: >

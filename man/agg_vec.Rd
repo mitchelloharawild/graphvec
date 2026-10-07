@@ -51,6 +51,16 @@ hyperedges or aggregation structures with no shared bottom series across
 pathways (divergent groups), use \code{\link[=node_vec]{node_vec()}}/\code{\link[=edge_vec]{edge_vec()}} directly
 instead.
 }
+\section{Plotting with ggplot2}{
+
+An \code{agg_vec}'s ggplot2 \link[ggplot2:scale_type]{scale type} is \code{"agg"},
+then \code{"discrete"}, so an extension package can supply default
+\verb{scale_*_agg()} scales. Without one, colour, fill, shape and the like
+get ggplot2's discrete scales, labelled by \code{\link[=format]{format()}} with
+\verb{<aggregated>} as the last level; the x and y positions don't work, so
+plot \code{format(x)} there.
+}
+
 \examples{
 agg_vec(
   x = c(NA, "A", "B"),

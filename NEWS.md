@@ -70,19 +70,22 @@
   `vec_order()`, `dplyr::arrange()`, `order()` and `sort()`.
 * Added `as.character()`, `unique()`, `duplicated()` and `rep()` methods for
   `agg_vec`, and a `rep()` method for `edge_vec`.
-* `agg_vec`, `node_vec` and `edge_vec` can be used in ggplot2 plots. Their
-  `scale_type()` names their own type first (`"agg"`, `"node"`, `"edge"`),
-  so an extension package defining e.g. `scale_x_node()` or
-  `scale_colour_edge()` provides their default scales. Otherwise they get
-  a discrete scale labelled by `format()`, in sort order, with
-  `<aggregated>` as a level of its own. That includes numeric `node_vec`s,
-  which have no arithmetic: plot `node_values(n)` for a continuous scale.
-  Their discrete x and y scales are the new `scale_x_graphvec()` and
-  `scale_y_graphvec()`, which ggplot2 only finds by itself when graphvec
-  is attached (character `node_vec`s and non-position aesthetics also
-  work without it). `levels()` on any of them gives these labels, except
-  that a factor `node_vec` keeps its own levels (and `droplevels()` drops
-  its unused ones). ggplot2 is not a hard dependency.
+* `agg_vec`, `node_vec` and `edge_vec` can be used in ggplot2 plots
+  rather than erroring. Their `scale_type()` names their own type first
+  (`"agg"`, `"node"`, `"edge"`), so an extension package defining e.g.
+  `scale_x_node()` or `scale_colour_edge()` provides their default scales.
+  Otherwise an `edge_vec` or `agg_vec` gets ggplot2's discrete scales,
+  labelled by `format()` in sort order (with `<aggregated>` as the last
+  level), which work for colour, fill, shape and the like but not for the
+  x and y positions: plot `format(x)` there. A `node_vec` takes the scale
+  type of its values, so character, factor and logical nodes get discrete
+  scales on every aesthetic, and dates and date-times get date scales.
+  Numeric (and data-frame) nodes have no arithmetic, so get discrete
+  scales rather than continuous ones, and don't work on x and y: plot
+  `node_values(n)` there. `levels()` on any graph vector gives the labels
+  its discrete scales show, except that a factor `node_vec` keeps its own
+  levels (and `droplevels()` drops its unused ones). ggplot2 is not a hard
+  dependency.
 * Added `[[`, `[<-`, `[[<-` and `as.list()` methods for `agg_vec` and
   `edge_vec`, so assignment (including `df$col[i] <- value`) and
   `purrr::map()`/`lapply()` work element-wise. Assigning an `agg_vec`

@@ -626,56 +626,89 @@ test_that("[[<- assigns a single node, like [<-", {
   expect_equal(edge_pairs(x), edge_pairs(nd))
 })
 
-test_that("atomic node_vecs plot with a discrete scale", {
+test_that("a node_vec's ggplot2 scale type is \"node\", then its values'", {
   skip_if_not_installed("ggplot2")
-  df <- data.frame(y = 1:3)
-  df$v <- node_vec(c("A", "B", "C"), 1:2, 2:3)
-  p <- ggplot2::ggplot(df, ggplot2::aes(v, y)) + ggplot2::geom_point()
-  b <- expect_silent(ggplot2::ggplot_build(p))
-  expect_s3_class(b$layout$panel_scales_x[[1]], "ScaleDiscretePosition")
-  expect_equal(b$layout$panel_params[[1]]$x$get_labels(), c("A", "B", "C"))
-
-  # Numeric nodes too, in value order; node_values() plots them continuously.
-  df$v <- node_vec(c(20.5, 10, 30), 1:2, 2:3)
-  p <- ggplot2::ggplot(df, ggplot2::aes(v, y)) + ggplot2::geom_point()
-  b <- expect_silent(ggplot2::ggplot_build(p))
-  expect_s3_class(b$layout$panel_scales_x[[1]], "ScaleDiscretePosition")
-  expect_equal(b$layout$panel_params[[1]]$x$get_labels(), c("10", "20.5", "30"))
-  p <- ggplot2::ggplot(df, ggplot2::aes(node_values(v), y)) + ggplot2::geom_point()
-  b <- expect_silent(ggplot2::ggplot_build(p))
-  expect_s3_class(b$layout$panel_scales_x[[1]], "ScaleContinuousPosition")
-  expect_equal(b$data[[1]]$x, c(20.5, 10, 30))
+  st <- function(x) ggplot2::scale_type(node_vec(x))
+  expect_equal(st(c("A", "B")), c("node", "discrete"))
+  expect_equal(st(factor(c("A", "B"))), c("node", "discrete"))
+  expect_equal(st(c(TRUE, FALSE)), c("node", "discrete"))
+  # Nodes have no arithmetic for a continuous scale, so "discrete" takes the
+  # place of "continuous", after any type the values name first; a data
+  # frame of values has no scale type of its own.
+  expect_equal(st(as.Date("2020-01-01")), c("node", "date", "discrete"))
+  expect_equal(st(as.POSIXct("2020-01-01", tz = "UTC")), c("node", "datetime", "discrete"))
+  expect_equal(st(c(1, 2)), c("node", "discrete"))
+  expect_equal(st(data.frame(lab = c("A", "B"))), c("node", "discrete"))
 })
 
-test_that("node_vecs plot with a discrete scale labelled by format()", {
+test_that("character, factor and logical node_vecs plot on any aesthetic", {
   skip_if_not_installed("ggplot2")
-  # Each graph vector names its own scale type first, for extension packages.
-  expect_equal(ggplot2::scale_type(node_vec(c("A", "B"))), c("node", "graphvec", "discrete"))
-  expect_equal(ggplot2::scale_type(node_vec(c(1, 2))), c("node", "graphvec", "discrete"))
-  expect_equal(
-    ggplot2::scale_type(node_vec(data.frame(lab = c("A", "B")))),
-    c("node", "graphvec", "discrete")
-  )
+  for (v in list(c("B", "A", "C"), factor(c("B", "A", "C")), c(TRUE, FALSE, TRUE))) {
+    df <- data.frame(y = 1:3)
+    df$v <- node_vec(v, 1:2, 2:3)
+    p <- ggplot2::ggplot(df, ggplot2::aes(v, y, colour = v)) + ggplot2::geom_point()
+    b <- expect_silent(ggplot2::ggplot_build(p))
+    labels <- sort(unique(as.character(v)))
+    expect_s3_class(b$layout$panel_scales_x[[1]], "ScaleDiscretePosition")
+    expect_equal(b$layout$panel_params[[1]]$x$get_labels(), labels)
+    expect_equal(as.numeric(b$data[[1]]$x), match(as.character(v), labels))
+    expect_equal(b$plot$scales$get_scales("colour")$get_labels(), labels)
+  }
 
+  # Repeated labels share a level, but ggplot2 groups by node, so the two
+  # "A"s are separate groups.
   df <- data.frame(y = 1:3)
-  df$n <- node_vec(data.frame(id = 3:1, lab = c("C", "B", "A")), 1:2, 2:3)
-  p <- ggplot2::ggplot(df, ggplot2::aes(n, y, colour = n)) + ggplot2::geom_point()
-  b <- expect_silent(ggplot2::ggplot_build(p))
-  expect_equal(b$layout$panel_params[[1]]$x$get_labels(), c("1:A", "2:B", "3:C"))
-  expect_equal(as.numeric(b$data[[1]]$x), c(3, 2, 1))
-  expect_equal(b$plot$scales$get_scales("colour")$get_labels(), c("1:A", "2:B", "3:C"))
-  expect_equal(b$data[[1]]$colour, scales::hue_pal()(3)[3:1])
-
-  # A character node_vec in colour and shape, too; repeated labels share a
-  # level. ggplot2 groups by node, so the two "A"s are separate groups.
   df$n <- node_vec(c("B", "A", "A"), 1:2, 2:3)
   p <- ggplot2::ggplot(df, ggplot2::aes(y, y, colour = n, shape = n)) + ggplot2::geom_point()
   b <- expect_silent(ggplot2::ggplot_build(p))
   expect_equal(b$plot$scales$get_scales("shape")$get_labels(), c("A", "B"))
-  expect_equal(b$data[[1]]$colour, scales::hue_pal()(2)[c(2, 1, 1)])
+  expect_equal(b$data[[1]]$colour, b$plot$scales$get_scales("colour")$map(c("B", "A", "A")))
   if (getRversion() >= "4.3.0") {
     expect_equal(b$data[[1]]$group, c(3L, 1L, 2L), ignore_attr = TRUE)
   }
+})
+
+test_that("date and date-time node_vecs plot with date scales", {
+  skip_if_not_installed("ggplot2")
+  dates <- as.Date("2020-01-01") + c(2, 0, 1)
+  times <- as.POSIXct("2020-01-01", tz = "UTC") + c(2, 0, 1) * 3600
+  for (v in list(dates, times)) {
+    df <- data.frame(y = 1:3)
+    df$v <- node_vec(v, 1:2, 2:3)
+    p <- ggplot2::ggplot(df, ggplot2::aes(v, y, colour = v)) + ggplot2::geom_point()
+    b <- expect_silent(ggplot2::ggplot_build(p))
+    expect_equal(b$data[[1]]$x, as.numeric(v))
+    expect_equal(b$data[[1]]$y, 1:3)
+    expect_length(unique(b$data[[1]]$colour), 3L)
+  }
+  expect_s3_class(b$layout$panel_scales_x[[1]], "ScaleContinuousDatetime")
+})
+
+test_that("numeric and data-frame node_vecs plot as discrete colours, not positions", {
+  skip_if_not_installed("ggplot2")
+  df <- data.frame(y = 1:3)
+  df$v <- node_vec(c(20.5, 10, 30), 1:2, 2:3)
+  df$d <- node_vec(data.frame(id = 3:1, lab = c("C", "B", "A")), 1:2, 2:3)
+
+  p <- ggplot2::ggplot(df, ggplot2::aes(y, y, colour = v, fill = d)) + ggplot2::geom_point()
+  b <- expect_silent(ggplot2::ggplot_build(p))
+  expect_equal(b$plot$scales$get_scales("colour")$get_labels(), c("10", "20.5", "30"))
+  expect_equal(b$data[[1]]$colour, b$plot$scales$get_scales("colour")$map(c("20.5", "10", "30")))
+  expect_equal(b$plot$scales$get_scales("fill")$get_labels(), c("1:A", "2:B", "3:C"))
+  expect_equal(b$data[[1]]$fill, b$plot$scales$get_scales("fill")$map(c("3:C", "2:B", "1:A")))
+
+  # Neither works as a position; plot their values or labels instead.
+  p <- ggplot2::ggplot(df, ggplot2::aes(v, y)) + ggplot2::geom_point()
+  expect_error(ggplot2::ggplot_build(p))
+  p <- ggplot2::ggplot(df, ggplot2::aes(d, y)) + ggplot2::geom_point()
+  expect_error(ggplot2::ggplot_build(p))
+  p <- ggplot2::ggplot(df, ggplot2::aes(node_values(v), y)) + ggplot2::geom_point()
+  b <- expect_silent(ggplot2::ggplot_build(p))
+  expect_s3_class(b$layout$panel_scales_x[[1]], "ScaleContinuousPosition")
+  expect_equal(b$data[[1]]$x, c(20.5, 10, 30))
+  p <- ggplot2::ggplot(df, ggplot2::aes(format(d), y)) + ggplot2::geom_point()
+  b <- expect_silent(ggplot2::ggplot_build(p))
+  expect_equal(b$layout$panel_params[[1]]$x$get_labels(), c("1:A", "2:B", "3:C"))
 })
 
 test_that("a data-frame-backed node_vec is a single data.frame column", {

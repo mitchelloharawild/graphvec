@@ -74,6 +74,22 @@ so \code{<}, \code{+} and the other operators error, as for an \code{edge_vec}.
 Hyperedge node_vecs have no graph identity and compare by value.
 }
 
+\section{Plotting with ggplot2}{
+
+A \code{node_vec}'s ggplot2 \link[ggplot2:scale_type]{scale type} is \code{"node"},
+then the scale types of its values with \code{"discrete"} in place of
+\code{"continuous"} (\code{"discrete"} for data-frame values), so an extension
+package can supply default \verb{scale_*_node()} scales. Without one, ggplot2
+uses its own scales: character, factor and logical nodes get discrete
+scales, labelled by their values (a factor's in level order), and dates
+and date-times get date scales. Nodes have no arithmetic, so numeric
+nodes (and data-frame ones) get discrete scales instead of continuous ones:
+these work for colour, fill, shape and the like, labelled by \code{\link[=format]{format()}},
+but not for the x and y positions. Plot \code{node_values(x)} there for a
+continuous scale, or \code{format(x)} for a discrete one. Points are grouped
+by node, so two nodes with the same label are separate groups.
+}
+
 \examples{
 
 g <- node_vec(

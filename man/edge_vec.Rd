@@ -70,6 +70,15 @@ graph identity: they compare by node values and always combine as a
 disjoint union.
 }
 
+\section{Plotting with ggplot2}{
+
+An \code{edge_vec}'s ggplot2 \link[ggplot2:scale_type]{scale type} is \code{"edge"},
+then \code{"discrete"}, so an extension package can supply default
+\verb{scale_*_edge()} scales. Without one, colour, fill, shape and the like
+get ggplot2's discrete scales, labelled by \code{\link[=format]{format()}}; the x and y
+positions don't work, so plot \code{format(e)} there.
+}
+
 \examples{
 g <- edge_vec(
   from = c(1L, 2L, 1L, 3L),

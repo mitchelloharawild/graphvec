@@ -170,17 +170,23 @@ test_that("[[ and as.list() give single-element agg_vecs", {
   expect_equal(vapply(v, format, character(1)), c("<aggregated>", "A", "B"))
 })
 
-test_that("agg_vecs plot with a discrete scale, <aggregated> as a level", {
+test_that("agg_vecs plot as discrete colours, <aggregated> last, not positions", {
   skip_if_not_installed("ggplot2")
-  expect_equal(ggplot2::scale_type(agg_vec("A")), c("agg", "graphvec", "discrete"))
+  expect_equal(ggplot2::scale_type(agg_vec("A")), c("agg", "discrete"))
   df <- data.frame(y = 1:3)
   df$k <- agg_vec(c(NA, "B", "A"), c(TRUE, FALSE, FALSE))
   expect_equal(levels(df$k), c("A", "B", "<aggregated>"))
-  p <- ggplot2::ggplot(df, ggplot2::aes(k, y, fill = k)) + ggplot2::geom_col()
+  p <- ggplot2::ggplot(df, ggplot2::aes(y, y, fill = k)) + ggplot2::geom_col()
   b <- expect_silent(ggplot2::ggplot_build(p))
-  expect_equal(b$layout$panel_params[[1]]$x$get_labels(), c("A", "B", "<aggregated>"))
-  expect_equal(as.numeric(b$data[[1]]$x), c(3, 2, 1))
   expect_equal(b$plot$scales$get_scales("fill")$get_labels(), c("A", "B", "<aggregated>"))
+  expect_equal(b$data[[1]]$fill, b$plot$scales$get_scales("fill")$map(c("<aggregated>", "B", "A")))
+
+  # Not as a position: plot the labels instead.
+  p <- ggplot2::ggplot(df, ggplot2::aes(k, y)) + ggplot2::geom_col()
+  expect_error(ggplot2::ggplot_build(p))
+  p <- ggplot2::ggplot(df, ggplot2::aes(format(k), y)) + ggplot2::geom_col()
+  b <- expect_silent(ggplot2::ggplot_build(p))
+  expect_setequal(b$layout$panel_params[[1]]$x$get_labels(), c("A", "B", "<aggregated>"))
 })
 
 test_that("an agg_vec is a single data.frame column", {

@@ -49,6 +49,13 @@
 #' graph identity: they compare by node values and always combine as a
 #' disjoint union.
 #'
+#' @section Plotting with ggplot2:
+#' An `edge_vec`'s ggplot2 [scale type][ggplot2::scale_type()] is `"edge"`,
+#' then `"discrete"`, so an extension package can supply default
+#' `scale_*_edge()` scales. Without one, colour, fill, shape and the like
+#' get ggplot2's discrete scales, labelled by [format()]; the x and y
+#' positions don't work, so plot `format(e)` there.
+#'
 #' @examples
 #' g <- edge_vec(
 #'   from = c(1L, 2L, 1L, 3L),

@@ -43,6 +43,14 @@
 #' Harinarayan, V., Rajaraman, A., & Ullman, J. D. (1996). Implementing
 #' Data Cubes Efficiently. *SIGMOD*.
 #'
+#' @section Plotting with ggplot2:
+#' An `agg_vec`'s ggplot2 [scale type][ggplot2::scale_type()] is `"agg"`,
+#' then `"discrete"`, so an extension package can supply default
+#' `scale_*_agg()` scales. Without one, colour, fill, shape and the like
+#' get ggplot2's discrete scales, labelled by [format()] with
+#' `<aggregated>` as the last level; the x and y positions don't work, so
+#' plot `format(x)` there.
+#'
 #' @param x The vector of values.
 #' @param aggregated A logical vector, the same length as `x`, to identify
 #'   which values are `<aggregated>`.
