@@ -128,15 +128,6 @@ type_sum.agg_vec <- function(x, ...) {
   paste0(pillar::type_sum(agg_vec_values(x)), "*")
 }
 
-# Registered dynamically for ggplot2 via zzz.R. There's no scale for an
-# agg_vec, so give a helpful error rather than ggplot2's default.
-scale_type.agg_vec <- function(x) {
-  stop(
-    "Cannot add an aggregated vector to a plot, use format() to plot with your aggregations.",
-    call. = FALSE
-  )
-}
-
 #' @export
 length.agg_vec <- function(x) {
   length(agg_vec_values(x)) + length(attr(x, "agg_pos"))

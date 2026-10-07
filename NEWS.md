@@ -64,12 +64,17 @@
   `vec_order()`, `dplyr::arrange()`, `order()` and `sort()`.
 * Added `as.character()`, `unique()`, `duplicated()` and `rep()` methods for
   `agg_vec`, and a `rep()` method for `edge_vec`.
-* Adding an `agg_vec` to a ggplot2 plot now gives an error suggesting
-  `format()`, rather than defaulting to a continuous scale. ggplot2 is not
-  a hard dependency.
-* An atomic `node_vec` in a ggplot2 plot now uses the scale of its values
-  (e.g. discrete for character nodes). Adding a data-frame `node_vec` or an
-  `edge_vec` gives an error suggesting `format()`.
+* `agg_vec`, `node_vec` and `edge_vec` can be used in ggplot2 plots. Their
+  `scale_type()` names their own type first (`"agg"`, `"node"`, `"edge"`),
+  so an extension package defining e.g. `scale_x_node()` or
+  `scale_colour_edge()` provides their default scales. Otherwise they get
+  a discrete scale labelled by `format()`, in sort order, with
+  `<aggregated>` as a level of its own; an atomic `node_vec` instead uses
+  the scale of its values (e.g. continuous for numeric nodes). The
+  discrete x and y scales of an `edge_vec`, `agg_vec` or data-frame
+  `node_vec` are the new `scale_x_graphvec()` and `scale_y_graphvec()`,
+  which ggplot2 only finds by itself when graphvec is attached. `levels()`
+  on any of them gives these labels. ggplot2 is not a hard dependency.
 * Added `[[`, `[<-`, `[[<-` and `as.list()` methods for `agg_vec` and
   `edge_vec`, so assignment (including `df$col[i] <- value`) and
   `purrr::map()`/`lapply()` work element-wise. Assigning an `agg_vec`

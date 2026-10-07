@@ -613,20 +613,6 @@ type_sum.node_vec <- function(x, ...) {
   paste0("N[", pillar::type_sum(node_vec_data(x), ...), "]")
 }
 
-# Registered dynamically for ggplot2 via zzz.R. Atomic node values are
-# plottable, so use their scale; data-frame node values have no scale, so
-# give a helpful error rather than ggplot2's default.
-scale_type.node_vec <- function(x) {
-  x <- node_vec_data(x)
-  if (is.data.frame(x)) {
-    stop(
-      "Cannot add a data-frame-backed node vector to a plot, use format() to plot with your nodes.",
-      call. = FALSE
-    )
-  }
-  ggplot2::scale_type(x)
-}
-
 #' @rdname reorient
 #' @export
 nodes.node_vec <- function(x, ...) {

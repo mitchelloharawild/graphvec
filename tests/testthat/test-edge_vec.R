@@ -339,15 +339,18 @@ test_that(".DollarNames() completes from, to and edge attributes", {
   expect_equal(utils::.DollarNames(h, ""), c("from", "to"))
 })
 
-test_that("edge_vec can't be plotted without format()", {
+test_that("edge_vecs plot with a discrete scale labelled by format()", {
   skip_if_not_installed("ggplot2")
+  expect_equal(ggplot2::scale_type(edge_vec(1L, 2L)), c("edge", "graphvec", "discrete"))
   df <- data.frame(y = 1:2)
-  df$e <- edge_vec(1:2, 2:3, nodes = c("A", "B", "C"))
-  p <- ggplot2::ggplot(df, ggplot2::aes(e, y)) + ggplot2::geom_point()
-  expect_error(ggplot2::ggplot_build(p), "use format\\(\\)")
-  p <- ggplot2::ggplot(df, ggplot2::aes(format(e), y)) + ggplot2::geom_point()
-  b <- ggplot2::ggplot_build(p)
+  df$e <- edge_vec(2:1, 3:2, nodes = c("A", "B", "C"))
+  p <- ggplot2::ggplot(df, ggplot2::aes(e, y, fill = e)) + ggplot2::geom_col()
+  b <- expect_silent(ggplot2::ggplot_build(p))
   expect_equal(b$layout$panel_params[[1]]$x$get_labels(), c("[A]->[B]", "[B]->[C]"))
+  expect_equal(as.numeric(b$data[[1]]$x), c(2, 1))
+  expect_equal(b$plot$scales$get_scales("fill")$get_labels(), c("[A]->[B]", "[B]->[C]"))
+  expect_equal(b$data[[1]]$fill, scales::hue_pal()(2)[2:1])
+  expect_equal(levels(df$e), c("[A]->[B]", "[B]->[C]"))
 })
 
 test_that("is.na() and anyNA() give one value per edge", {

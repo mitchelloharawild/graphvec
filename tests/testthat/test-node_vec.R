@@ -600,15 +600,32 @@ test_that("atomic node_vecs plot with the scale of their values", {
   expect_equal(b$data[[1]]$x, c(10, 20.5, 30))
 })
 
-test_that("data-frame node_vecs can't be plotted without format()", {
+test_that("node_vecs plot with a discrete scale labelled by format()", {
   skip_if_not_installed("ggplot2")
+  # Each graph vector names its own scale type first, for extension packages.
+  expect_equal(ggplot2::scale_type(node_vec(c("A", "B"))), c("node", "discrete"))
+  expect_equal(ggplot2::scale_type(node_vec(c(1, 2))), c("node", "continuous"))
+  expect_equal(
+    ggplot2::scale_type(node_vec(data.frame(lab = c("A", "B")))),
+    c("node", "graphvec", "discrete")
+  )
+
   df <- data.frame(y = 1:3)
-  df$n <- node_vec(data.frame(lab = c("A", "B", "C")), 1:2, 2:3)
-  p <- ggplot2::ggplot(df, ggplot2::aes(n, y)) + ggplot2::geom_point()
-  expect_error(ggplot2::ggplot_build(p), "use format\\(\\)")
-  p <- ggplot2::ggplot(df, ggplot2::aes(format(n), y)) + ggplot2::geom_point()
-  b <- ggplot2::ggplot_build(p)
-  expect_equal(b$layout$panel_params[[1]]$x$get_labels(), c("A", "B", "C"))
+  df$n <- node_vec(data.frame(id = 3:1, lab = c("C", "B", "A")), 1:2, 2:3)
+  p <- ggplot2::ggplot(df, ggplot2::aes(n, y, colour = n)) + ggplot2::geom_point()
+  b <- expect_silent(ggplot2::ggplot_build(p))
+  expect_equal(b$layout$panel_params[[1]]$x$get_labels(), c("1:A", "2:B", "3:C"))
+  expect_equal(as.numeric(b$data[[1]]$x), c(3, 2, 1))
+  expect_equal(b$plot$scales$get_scales("colour")$get_labels(), c("1:A", "2:B", "3:C"))
+  expect_equal(b$data[[1]]$colour, scales::hue_pal()(3)[3:1])
+
+  # A character node_vec in colour and shape, too; repeated labels share a
+  # level.
+  df$n <- node_vec(c("B", "A", "A"), 1:2, 2:3)
+  p <- ggplot2::ggplot(df, ggplot2::aes(y, y, colour = n, shape = n)) + ggplot2::geom_point()
+  b <- expect_silent(ggplot2::ggplot_build(p))
+  expect_equal(b$plot$scales$get_scales("shape")$get_labels(), c("A", "B"))
+  expect_equal(b$data[[1]]$colour, scales::hue_pal()(2)[c(2, 1, 1)])
 })
 
 test_that("a data-frame-backed node_vec is a single data.frame column", {

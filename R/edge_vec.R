@@ -624,15 +624,6 @@ type_sum.edge_vec <- function(x, ...) {
   paste0("E[", abbr, "]")
 }
 
-# Registered dynamically for ggplot2 via zzz.R. There's no scale for an
-# edge_vec, so give a helpful error rather than ggplot2's default.
-scale_type.edge_vec <- function(x) {
-  stop(
-    "Cannot add an edge vector to a plot, use format() to plot with your edges.",
-    call. = FALSE
-  )
-}
-
 #' @importFrom utils .DollarNames
 #' @export
 rep.edge_vec <- function(x, ...) {
