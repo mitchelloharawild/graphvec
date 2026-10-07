@@ -465,7 +465,6 @@ test_that("edge_vec duplicates are by graph and positions, not labels", {
 })
 
 test_that("an edge_vec with a missing edge works with nodes() and topology", {
-  skip_if_not_installed("vctrs")
   e <- edge_vec(c(1L, 2L), c(2L, 3L), w = 1:2, nodes = c("A", "B", "C"))
   x <- vctrs::vec_c(e, vctrs::vec_init(e, 1))
   expect_equal(is.na(x), c(FALSE, FALSE, TRUE))

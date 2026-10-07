@@ -1,5 +1,3 @@
-skip_if_not_installed("vctrs")
-
 # -- agg_vec --------------------------------------------------------------
 
 test_that("agg_vec is a vctrs vector", {

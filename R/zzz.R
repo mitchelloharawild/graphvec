@@ -15,7 +15,6 @@
   register_s3_method("igraph", "as.igraph", "edge_vec")
   register_s3_method("waldo", "compare_proxy", "node_vec")
   register_s3_method("waldo", "compare_proxy", "edge_vec")
-  register_vctrs_methods()
   invisible()
 }
 

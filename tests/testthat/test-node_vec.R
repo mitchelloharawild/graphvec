@@ -280,9 +280,8 @@ test_that("node_vec() excludes \"data.frame\" from a data-frame-backed x's layer
 test_that("a data-frame-backed node_vec can be embedded as a tibble column", {
   # A data-frame-backed node_vec is list-typed, so vctrs::obj_is_vector()
   # (which tibble::tibble() requires) only accepts it through the
-  # dynamically registered vec_proxy.node_vec().
+  # registered vec_proxy.node_vec().
   skip_if_not_installed("tibble")
-  skip_if_not_installed("vctrs")
   g <- node_vec(
     x = data.frame(name = c("A", "B", "C"), size = c(10, 4, 7)),
     from = 1L, to = 2L
@@ -430,7 +429,6 @@ test_that("[<- with a node_vec swaps in its nodes and their edges", {
   x[2:3] <- m
   expect_equal(format(x), c("A", "X", "Y"))
   expect_equal(format(edges(x)), "[X]->[Y]")
-  skip_if_not_installed("vctrs")
   expect_equal(x, vctrs::vec_assign(n, 2:3, m))
 
   nd <- node_vec(data.frame(id = 1:3), from = 1:2, to = 2:3)

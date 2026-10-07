@@ -1,48 +1,36 @@
 # vctrs compatibility methods
 #
-# vctrs is only suggested, so none of these are exported: they're registered
-# dynamically by register_vctrs_methods() (via zzz.R) whenever vctrs is
-# loaded, and may call vctrs:: freely since they can only run once it is.
+# vctrs is imported, so these are registered as ordinary S3 methods in
+# NAMESPACE.
 
 # Base vector classes an agg_vec's values can be combined/cast with, in
-# either order. Hard-coded rather than read from vctrs' exports so that
-# loading graphvec doesn't also load vctrs.
+# either order. Each gets the same four methods, registered by
+# agg_vec_vctrs_namespace() below.
 agg_vec_vctrs_types <- c(
   "logical", "integer", "double", "complex", "character", "raw",
   "factor", "ordered", "Date", "POSIXct", "POSIXlt", "difftime"
 )
 
-# nocov start
-register_vctrs_methods <- function() {
-  for (cls in c("agg_vec", "node_vec", "edge_vec")) {
-    register_s3_method("vctrs", "vec_proxy", cls)
-    register_s3_method("vctrs", "vec_restore", cls)
-    register_s3_method("vctrs", "vec_proxy_equal", cls)
-    register_s3_method("vctrs", "vec_ptype_abbr", cls)
-    # Same-class methods stop vctrs falling back to c() (see _dev/vector.md §8).
-    register_s3_method("vctrs", "vec_ptype2", paste0(cls, ".", cls))
-    register_s3_method("vctrs", "vec_cast", paste0(cls, ".", cls))
-  }
-  register_s3_method("vctrs", "vec_proxy_compare", "agg_vec")
-  register_s3_method("vctrs", "vec_proxy_compare", "node_vec")
-  register_s3_method("vctrs", "vec_proxy_order", "node_vec")
-  register_s3_method("vctrs", "vec_proxy_compare", "edge_vec")
-  register_s3_method("vctrs", "vec_proxy_order", "edge_vec")
-
-  for (type in agg_vec_vctrs_types) {
-    register_s3_method("vctrs", "vec_ptype2", paste0("agg_vec.", type), fun = vec_ptype2_agg_vec_other)
-    register_s3_method("vctrs", "vec_ptype2", paste0(type, ".agg_vec"), fun = vec_ptype2_other_agg_vec)
-    register_s3_method("vctrs", "vec_cast", paste0("agg_vec.", type), fun = vec_cast_to_agg_vec)
-    register_s3_method("vctrs", "vec_cast", paste0(type, ".agg_vec"), fun = vec_cast_from_agg_vec)
-  }
+# NAMESPACE directives registering the agg_vec <-> base vector methods for
+# every type in agg_vec_vctrs_types, all sharing one function per direction.
+agg_vec_vctrs_namespace <- function() {
+  c(
+    sprintf("S3method(vctrs::vec_ptype2,agg_vec.%s,vec_ptype2_agg_vec_other)", agg_vec_vctrs_types),
+    sprintf("S3method(vctrs::vec_ptype2,%s.agg_vec,vec_ptype2_other_agg_vec)", agg_vec_vctrs_types),
+    sprintf("S3method(vctrs::vec_cast,agg_vec.%s,vec_cast_to_agg_vec)", agg_vec_vctrs_types),
+    sprintf("S3method(vctrs::vec_cast,%s.agg_vec,vec_cast_from_agg_vec)", agg_vec_vctrs_types)
+  )
 }
-# nocov end
+
+#' @evalNamespace agg_vec_vctrs_namespace()
+NULL
 
 # -- agg_vec -------------------------------------------------------------
 #
 # Nothing is shared between rows, so the proxy is just the expanded form:
 # one row per element, its value (NA if aggregated) and its aggregated flag.
 
+#' @exportS3Method vctrs::vec_proxy
 vec_proxy.agg_vec <- function(x, ...) {
   vctrs::new_data_frame(
     list(x = agg_vec_expand(x), agg = agg_vec_is_agg(x)),
@@ -50,12 +38,14 @@ vec_proxy.agg_vec <- function(x, ...) {
   )
 }
 
+#' @exportS3Method vctrs::vec_restore
 vec_restore.agg_vec <- function(x, to, ...) {
   # vec_init() fills `agg` with NA: an unaggregated missing value.
   is_agg <- x$agg %in% TRUE
   new_agg_vec(vctrs::vec_slice(x$x, !is_agg), which(is_agg))
 }
 
+#' @exportS3Method vctrs::vec_proxy_equal
 vec_proxy_equal.agg_vec <- function(x, ...) {
   vals <- agg_vec_expand(x)
   is_agg <- agg_vec_is_agg(x)
@@ -94,6 +84,7 @@ fill_proxy <- function(x, where) {
   x
 }
 
+#' @exportS3Method vctrs::vec_proxy_compare
 vec_proxy_compare.agg_vec <- function(x, ...) {
   vals <- agg_vec_expand(x)
   is_agg <- agg_vec_is_agg(x)
@@ -107,6 +98,7 @@ vec_proxy_compare.agg_vec <- function(x, ...) {
   vctrs::new_data_frame(list(agg = agg, x = proxy), n = length(x))
 }
 
+#' @exportS3Method vctrs::vec_ptype_abbr
 vec_ptype_abbr.agg_vec <- function(x, ...) {
   paste0(vctrs::vec_ptype_abbr(agg_vec_values(x)), "*")
 }
@@ -135,6 +127,7 @@ agg_vec_cast_values <- function(vals, to, ...) {
   vctrs::vec_cast(vals, to, ...)
 }
 
+#' @exportS3Method vctrs::vec_ptype2
 vec_ptype2.agg_vec.agg_vec <- function(x, y, ...) {
   new_agg_vec_ptype(vctrs::vec_ptype2(agg_vec_values_ptype2(x), agg_vec_values_ptype2(y), ...))
 }
@@ -147,6 +140,7 @@ vec_ptype2_other_agg_vec <- function(x, y, ...) {
   new_agg_vec_ptype(vctrs::vec_ptype2(x, agg_vec_values_ptype2(y), ...))
 }
 
+#' @exportS3Method vctrs::vec_cast
 vec_cast.agg_vec.agg_vec <- function(x, to, ...) {
   new_agg_vec(agg_vec_cast_values(agg_vec_values(x), agg_vec_values(to), ...), attr(x, "agg_pos"))
 }
@@ -242,10 +236,12 @@ check_same_directed_cast <- function(x, to, x_arg = "", to_arg = "", ...) {
 
 # -- node_vec
 
+#' @exportS3Method vctrs::vec_proxy
 vec_proxy.node_vec <- function(x, ...) {
   vec_proxy_graph_ref(x)
 }
 
+#' @exportS3Method vctrs::vec_restore
 vec_restore.node_vec <- function(x, to, ...) {
   vec_restore_graph_ref(x, to, node_vec_assemble)
 }
@@ -257,29 +253,35 @@ vec_restore.node_vec <- function(x, to, ...) {
 # on format(n). Joins combine needles and haystack before comparing, which
 # makes disjoint-union copies of nodes on both sides; the copies keep their
 # origin, so they still match.
+#' @exportS3Method vctrs::vec_proxy_equal
 vec_proxy_equal.node_vec <- function(x, ...) {
   vctrs::vec_proxy_equal(vctrs::new_data_frame(node_vec_equal_fields(x), n = length(x)))
 }
 
 # Ordered by value, then by identity as a tie-break, so only equal nodes tie.
 # Same fields as xtfrm.node_vec(), so base and vctrs sorting agree.
+#' @exportS3Method vctrs::vec_proxy_order
 vec_proxy_order.node_vec <- function(x, ...) {
   vctrs::vec_proxy_order(vctrs::new_data_frame(node_vec_order_fields(x), n = length(x)))
 }
 
+#' @exportS3Method vctrs::vec_proxy_compare
 vec_proxy_compare.node_vec <- function(x, ...) {
   vctrs::vec_proxy_compare(vctrs::new_data_frame(node_vec_order_fields(x), n = length(x)))
 }
 
+#' @exportS3Method vctrs::vec_ptype_abbr
 vec_ptype_abbr.node_vec <- function(x, ...) {
   paste0("N[", vctrs::vec_ptype_abbr(node_vec_data(x)), "]")
 }
 
+#' @exportS3Method vctrs::vec_ptype2
 vec_ptype2.node_vec.node_vec <- function(x, y, ...) {
   check_same_directed(x, y, ...)
   node_vec_with_values(x[integer()], vctrs::vec_ptype2(node_vec_data(x), node_vec_data(y), ...))
 }
 
+#' @exportS3Method vctrs::vec_cast
 vec_cast.node_vec.node_vec <- function(x, to, ...) {
   check_same_directed_cast(x, to, ...)
   # Casting only changes the node values' type, never the graph, so a cast
@@ -290,10 +292,12 @@ vec_cast.node_vec.node_vec <- function(x, to, ...) {
 
 # -- edge_vec
 
+#' @exportS3Method vctrs::vec_proxy
 vec_proxy.edge_vec <- function(x, ...) {
   vec_proxy_graph_ref(x)
 }
 
+#' @exportS3Method vctrs::vec_restore
 vec_restore.edge_vec <- function(x, to, ...) {
   vec_restore_graph_ref(x, to, edge_vec_assemble)
 }
@@ -305,6 +309,7 @@ vec_restore.edge_vec <- function(x, to, ...) {
 # format(e). Comparing within a combined vector (joins combine needles and
 # haystack first) works because c() shares the graph between inputs of the
 # same graph instead of offsetting their positions.
+#' @exportS3Method vctrs::vec_proxy_equal
 vec_proxy_equal.edge_vec <- function(x, ...) {
   vctrs::vec_proxy_equal(vctrs::new_data_frame(edge_vec_equal_fields(x), n = length(x)))
 }
@@ -314,6 +319,7 @@ vec_proxy_equal.edge_vec <- function(x, ...) {
 # tie. A hyperedge role sorts its node sets lexicographically, by rank
 # within `x`, so this only orders a single vector (which is all vec_order()
 # needs). Same fields as xtfrm.edge_vec(), so base and vctrs sorting agree.
+#' @exportS3Method vctrs::vec_proxy_order
 vec_proxy_order.edge_vec <- function(x, ...) {
   fields <- edge_vec_order_fields(x)
   vctrs::vec_proxy_order(vctrs::new_data_frame(fields, n = length(x)))
@@ -322,6 +328,7 @@ vec_proxy_order.edge_vec <- function(x, ...) {
 # Ranks within one vector can't compare two vectors, so hyperedges have no
 # comparison proxy (vec_compare() is the only caller; ordering uses the
 # order proxy above).
+#' @exportS3Method vctrs::vec_proxy_compare
 vec_proxy_compare.edge_vec <- function(x, ...) {
   ends <- edge_vec_endpoints(x)
   if (is.list(ends$from) || is.list(ends$to)) {
@@ -335,12 +342,14 @@ vec_proxy_compare.edge_vec <- function(x, ...) {
   vctrs::vec_proxy_compare(vctrs::new_data_frame(c(fields, list(.graph = uid)), n = length(x)))
 }
 
+#' @exportS3Method vctrs::vec_ptype_abbr
 vec_ptype_abbr.edge_vec <- function(x, ...) {
   nodes <- attr(x, "nodes")
   abbr <- if (is.data.frame(nodes)) "df" else vctrs::vec_ptype_abbr(nodes)
   paste0("E[", abbr, "]")
 }
 
+#' @exportS3Method vctrs::vec_ptype2
 vec_ptype2.edge_vec.edge_vec <- function(x, y, ...) {
   check_same_directed(x, y, ...)
   new_edge_vec_fields(
@@ -350,6 +359,7 @@ vec_ptype2.edge_vec.edge_vec <- function(x, y, ...) {
   )
 }
 
+#' @exportS3Method vctrs::vec_cast
 vec_cast.edge_vec.edge_vec <- function(x, to, ...) {
   check_same_directed_cast(x, to, ...)
   graph <- graph_of(x)

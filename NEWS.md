@@ -35,9 +35,8 @@
 
 * `agg_vec`, `node_vec` and `edge_vec` now work with vctrs, so they can be
   used as tibble columns, as tsibble keys, and in dplyr verbs such as
-  `filter()`, `arrange()`, `group_by()` and `bind_rows()`. The vctrs
-  methods are registered when vctrs is loaded, so vctrs is not a hard
-  dependency.
+  `filter()`, `arrange()`, `group_by()` and `bind_rows()`. vctrs is now
+  imported, so these methods are always registered.
 * `vec_c()` and `bind_rows()` combine `node_vec`s and `edge_vec`s the same
   way as `c()` (see Breaking changes).
 * `agg_vec` combines with character (and other base vectors) in either
