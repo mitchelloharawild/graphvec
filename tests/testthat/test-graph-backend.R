@@ -79,3 +79,9 @@ test_that("induced_subgraph() treats 0 as \"no source\"", {
   remap <- g$induced_subgraph(c(0L, 2L))
   expect_length(remap$from, 0L)
 })
+
+test_that("GraphBackend errors rather than crashing on bad endpoints", {
+  for (bad in c(0L, -1L, NA_integer_, 3L)) {
+    expect_error(GraphBackend$new(2L, bad, 1L, TRUE), "between 1 and 2")
+  }
+})

@@ -159,7 +159,16 @@ check_weights_length <- function(weights, m, arg = "weights") {
 # `i` otherwise (the package's list_of<integer> shape, `_dev/DESIGN.md`
 # §4.4). Dispatching on `length(i)` is what lets `node_neighbors(x, i)`
 # vectorise for free without a separate name (`_dev/OPERATIONS.md` §3.1).
-query_selection <- function(i, fn) {
+# Every element of `i` must be one of the `n` positions being queried
+# (`what`: "node" or "edge").
+query_selection <- function(i, fn, n, what = "node") {
   i <- as.integer(i)
+  bad <- is.na(i) | i < 1L | i > n
+  if (any(bad)) {
+    cli::cli_abort(c(
+      "{.arg i} must be {what} positions between 1 and {n}.",
+      "x" = "Found {.val {utils::head(unique(i[bad]), 5L)}}."
+    ), call = NULL)
+  }
   if (length(i) == 1L) fn(i) else lapply(i, fn)
 }

@@ -71,6 +71,18 @@
 
 ## Bug fixes
 
+* `node_vec()`, `edge_vec()` and their `new_*()` constructors now error on
+  an edge endpoint that isn't a node position, rather than crashing R (0,
+  negative or `NA`), dropping the edge from a `node_vec`, or growing an
+  `edge_vec`'s graph past its node data. A position must be in
+  `1:length(x)` for a `node_vec`, or `1:NROW(nodes)` for an `edge_vec` with
+  node data; without node data an `edge_vec` still takes its node count
+  from the largest position. `NA` at both ends is still a missing edge in
+  an `edge_vec`, but an error in a `node_vec`.
+* `node_neighbors()`, `node_parents()`, `node_children()`,
+  `edge_incident()` and `node_incident()` now error on an `i` outside the
+  graph's nodes (or edges, for `node_incident()`) instead of quietly
+  returning an empty or `NA` result.
 * `nodes()` and the topology functions (`node_degree()`,
   `node_neighbors()`, ...) on an `edge_vec` with a missing edge (e.g. from
   `vec_init()`, `lag()` or a join) no longer fail in the graph backend; the

@@ -616,3 +616,34 @@ test_that("node_vecs of different graphs combine as a disjoint union in row orde
   expect_equal(format(x), c("A", "B", "X", "Y", "C"))
   expect_equal(format(edges(x)), c("[A]->[B]", "[B]->[C]", "[Y]->[X]"))
 })
+
+test_that("node_vec errors on edge endpoints that aren't nodes", {
+  for (bad in c(0L, -1L, 3L)) {
+    expect_error(node_vec(c("A", "B"), from = bad, to = 1L), "between 1 and 2")
+    expect_error(node_vec(c("A", "B"), from = 1L, to = bad), "between 1 and 2")
+    expect_error(
+      new_node_vec(c("A", "B"), edges = data.frame(from = bad, to = 1L)),
+      "between 1 and 2"
+    )
+  }
+  expect_error(node_vec(c("A", "B"), from = NA_integer_, to = NA_integer_), "missing")
+  expect_error(node_vec(c("A", "B"), from = 1L, to = NA_integer_), "missing")
+  expect_error(node_vec(character(), from = 1L, to = 1L), "between 1 and 0")
+})
+
+test_that("node queries error on positions outside the graph", {
+  d <- node_vec(c("a", "b"), c(1L, 1L), c(1L, 2L))
+  for (bad in list(0, 5, -1, NA)) {
+    expect_error(node_neighbors(d, bad), "between 1 and 2")
+    expect_error(edge_incident(d, bad), "between 1 and 2")
+    expect_error(node_incident(d, bad), "between 1 and 2")
+  }
+  expect_error(node_neighbors(d, c(1, 5)), "between 1 and 2")
+  expect_equal(node_neighbors(d, 1:2), list(1:2, integer()))
+  e <- edges(d)
+  expect_error(node_neighbors(e, 3), "between 1 and 2")
+  expect_error(node_incident(e, 3), "edge positions between 1 and 2")
+  expect_error(attr(d, "graph")$neighbors(0L, "out"), "between 1 and 2")
+  expect_error(attr(d, "graph")$degree(3L, "out"), "between 1 and 2")
+  expect_error(attr(d, "graph")$has_edge(1L, 3L), "between 1 and 2")
+})

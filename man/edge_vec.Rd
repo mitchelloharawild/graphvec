@@ -28,8 +28,10 @@ itself, so they slice, replicate, and reorient with the edges they belong
 to (see \code{\link[=nodes]{nodes()}}/\code{\link[=edges]{edges()}}).}
 
 \item{nodes}{Vector of node data (any vector, including a data
-frame of node attributes). Its size should be at least the maximum value
-in \code{from} and \code{to}.}
+frame of node attributes). Every \code{from}/\code{to} position must be one of its
+elements (rows). The default, a zero-column data frame, means no node
+data: the nodes are then every position up to the largest one in \code{from}
+and \code{to}.}
 
 \item{directed}{A single logical value: is incidence ordered (\code{from} -> \code{to})
 or symmetric?}

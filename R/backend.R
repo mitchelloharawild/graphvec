@@ -6,19 +6,36 @@
 # from/to) never touch this file -- they keep the pure-R
 # `edges`/`nodes`-attribute representation exactly as before.
 
-# Build a GraphBackend from 1-based from/to positions. `n` is grown to cover
-# the highest position `from`/`to` reference: neither node_vec() nor
-# edge_vec() has ever validated that from/to stay in range of x/nodes (no
-# test relies on an out-of-range reference erroring, and several construct
-# an edge_vec with a shorter/empty `nodes` than `from`/`to` implies), so a
-# hard Rust-side bounds panic here would be a new, stricter failure mode
-# this phase isn't meant to introduce.
+# Build a GraphBackend on `n` nodes from 1-based from/to positions. Every
+# position must be a node, `1..n`: the constructors check that first with
+# check_edge_positions(), and the Rust side errors on anything that gets
+# past them rather than indexing out of range.
 graphvec_backend_new <- function(n, from, to, directed) {
-  from <- as.integer(from)
-  to <- as.integer(to)
-  max_ref <- suppressWarnings(max(c(from, to), 0L, na.rm = TRUE))
-  n <- max(as.integer(n), max_ref, na.rm = TRUE)
-  GraphBackend$new(n, from, to, as.logical(directed))
+  GraphBackend$new(as.integer(n), as.integer(from), as.integer(to), as.logical(directed))
+}
+
+# Errors unless every non-missing `from`/`to` position is a node of a graph
+# on `n` nodes, i.e. in `1..n`. `n = Inf` (an edge_vec without node data,
+# whose node count is inferred from the positions themselves) checks only
+# that they're positive. Missing positions are left to the caller: a
+# missing edge in an edge_vec, but an error in a node_vec.
+check_edge_positions <- function(from, to, n) {
+  pos <- c(from, to)
+  bad <- unique(pos[!is.na(pos) & (pos < 1L | pos > n)])
+  if (length(bad) == 0L) {
+    return(invisible(NULL))
+  }
+  bad <- utils::head(bad, 5L)
+  if (is.infinite(n)) {
+    cli::cli_abort(c(
+      "{.arg from} and {.arg to} must be positive node positions.",
+      "x" = "Found {.val {bad}}."
+    ), call = NULL)
+  }
+  cli::cli_abort(c(
+    "{.arg from} and {.arg to} must be node positions between 1 and {n}.",
+    "x" = "Found {.val {bad}}."
+  ), call = NULL)
 }
 
 # Induced-subgraph remap, translating R's NA_integer_ "no source" sentinel

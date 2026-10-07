@@ -39,7 +39,7 @@ node_neighbors <- function(x, i, mode = c("out", "in", "all")) {
   mode <- match.arg(mode)
   graph <- op_graph(x)
   neighbors <- graph$neighbors
-  query_selection(i, function(pos) sort(neighbors(pos, mode)))
+  query_selection(i, function(pos) sort(neighbors(pos, mode)), graph$n_nodes())
 }
 
 #' @rdname node_neighbors
@@ -89,7 +89,7 @@ edge_incident <- function(x, i, mode = c("out", "in", "all")) {
     out <- if (mode != "in") which(ends$from == pos) else integer()
     inn <- if (mode != "out") which(ends$to == pos) else integer()
     sort(c(out, inn))
-  })
+  }, graph$n_nodes())
 }
 
 #' Endpoint nodes of an edge
@@ -114,7 +114,7 @@ edge_incident <- function(x, i, mode = c("out", "in", "all")) {
 #' @export
 node_incident <- function(x, i) {
   ends <- op_endpoints(x)
-  query_selection(i, function(pos) c(ends$from[pos], ends$to[pos]))
+  query_selection(i, function(pos) c(ends$from[pos], ends$to[pos]), length(ends$from), "edge")
 }
 
 #' Edge endpoints, edge-aligned

@@ -15,8 +15,10 @@
 #' itself, so they slice, replicate, and reorient with the edges they belong
 #' to (see [nodes()]/[edges()]).
 #' @param nodes Vector of node data (any vector, including a data
-#' frame of node attributes). Its size should be at least the maximum value
-#' in `from` and `to`.
+#' frame of node attributes). Every `from`/`to` position must be one of its
+#' elements (rows). The default, a zero-column data frame, means no node
+#' data: the nodes are then every position up to the largest one in `from`
+#' and `to`.
 #' @param directed A single logical value: is incidence ordered (`from` -> `to`)
 #' or symmetric?
 #'
@@ -169,8 +171,9 @@ new_edge_vec_fields <- function(fields, nodes = data.frame(), directed = TRUE) {
   # No node data (a zero-column data frame) still has a node count: every
   # position the edges reference. This is what c() offsets by, so combining
   # edge_vecs of different graphs without node data is a disjoint union like
-  # any other.
-  if (is.data.frame(nodes) && ncol(nodes) == 0L) {
+  # any other. With node data, every position must be one of its rows.
+  infer_nodes <- is.data.frame(nodes) && ncol(nodes) == 0L
+  if (infer_nodes) {
     n_nodes <- max(NROW(nodes), unlist(fields[c("from", "to")], use.names = FALSE), 0L, na.rm = TRUE)
     nodes <- data.frame(row.names = seq_len(n_nodes))
   }
@@ -201,6 +204,7 @@ new_edge_vec_fields <- function(fields, nodes = data.frame(), directed = TRUE) {
     stop("An edge can't have only one of `from` and `to` missing.", call. = FALSE)
   }
   present <- !missing_from
+  check_edge_positions(from, to, if (infer_nodes) Inf else NROW(nodes))
   graph <- graphvec_backend_new(NROW(nodes), from[present], to[present], directed)
   edge_id <- rep(NA_integer_, n_edges)
   edge_id[present] <- seq_len(sum(present))

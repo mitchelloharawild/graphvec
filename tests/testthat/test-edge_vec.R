@@ -476,3 +476,19 @@ test_that("an edge_vec with a missing edge works with nodes() and topology", {
   expect_equal(node_neighbors(x, 2, mode = "all"), c(1L, 3L))
   expect_equal(edge_is_loop(x), c(FALSE, FALSE, NA))
 })
+
+test_that("edge_vec errors on edge endpoints that aren't nodes", {
+  for (bad in c(0L, -1L, 4L)) {
+    expect_error(edge_vec(bad, 1L, nodes = c("a", "b", "c")), "between 1 and 3")
+    expect_error(edge_vec(1L, bad, nodes = c("a", "b", "c")), "between 1 and 3")
+    expect_error(new_edge_vec(bad, 1L, nodes = c("a", "b", "c")), "between 1 and 3")
+  }
+  # Without node data, the node count comes from the positions themselves.
+  expect_error(edge_vec(0L, 1L), "positive")
+  expect_error(edge_vec(-1L, 1L), "positive")
+  expect_equal(n_nodes(edge_vec(1L, 5L)), 5L)
+  # Missing at both ends is a missing edge, not an error.
+  e <- edge_vec(c(1L, NA), c(2L, NA), nodes = c("a", "b"))
+  expect_equal(is.na(e), c(FALSE, TRUE))
+  expect_error(edge_vec(1L, NA_integer_, nodes = c("a", "b")), "only one")
+})

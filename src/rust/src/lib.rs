@@ -1179,15 +1179,38 @@ impl GraphBackend {
     /// in input order and never removed afterwards, so edge ids (0-based
     /// internally, 1-based at the R boundary) stay stable and match the row
     /// order of the R-side edge attribute table, for every representation.
-    fn new(n: i32, from: Vec<i32>, to: Vec<i32>, directed: bool) -> Self {
+    ///
+    /// Errors (an R error, not a crash) unless every `from`/`to` position is
+    /// in `1..=n` and the two have the same length: an `NA` arrives as
+    /// `i32::MIN`, and a position outside the graph would otherwise index
+    /// out of bounds or, at 0 or below, wrap to a huge `usize` allocation.
+    /// The R constructors check this first, with friendlier messages.
+    fn new(n: i32, from: Vec<i32>, to: Vec<i32>, directed: bool) -> std::result::Result<Self, String> {
         let n = if n > 0 { n as usize } else { 0 };
+        if from.len() != to.len() {
+            return Err(format!(
+                "`from` and `to` must have the same length, not {} and {}.",
+                from.len(),
+                to.len()
+            ));
+        }
+        if let Some(&p) = from
+            .iter()
+            .chain(to.iter())
+            .find(|&&p| p < 1 || p as usize > n)
+        {
+            let p = if p == i32::MIN { "NA".to_string() } else { p.to_string() };
+            return Err(format!(
+                "Edge endpoints must be node positions between 1 and {n}, not {p}."
+            ));
+        }
 
         if let Some(dense) = detect_dense(n, &from, &to, directed) {
-            return GraphBackend {
+            return Ok(GraphBackend {
                 repr: Repr::Dense(dense),
                 directed,
                 uid: next_uid(),
-            };
+            });
         }
 
         // `_dev/DATA.md` S3 step 5's "otherwise" catch-all splits in two
@@ -1200,11 +1223,11 @@ impl GraphBackend {
         // can -- and only falls through to `Repr::General` (unchanged, still
         // the always-correct fallback) when it does.
         if let Some(csr) = detect_csr(n, &from, &to, directed) {
-            return GraphBackend {
+            return Ok(GraphBackend {
                 repr: Repr::Csr(csr),
                 directed,
                 uid: next_uid(),
-            };
+            });
         }
 
         // `Directed`/`Undirected` picked in lockstep with `directed`, the
@@ -1226,7 +1249,7 @@ impl GraphBackend {
                 self_loops[(*f - 1) as usize] += 1;
             }
         }
-        GraphBackend {
+        Ok(GraphBackend {
             repr: Repr::General(GeneralData {
                 graph,
                 out_degree,
@@ -1235,7 +1258,7 @@ impl GraphBackend {
             }),
             directed,
             uid: next_uid(),
-        }
+        })
     }
 
     fn n_nodes(&self) -> i32 {
@@ -1302,7 +1325,7 @@ impl GraphBackend {
     /// convention above). One entry per incident edge, not deduplicated, so
     /// `degree()` can just be `neighbors().len()`.
     fn neighbors(&self, node: i32, mode: &str) -> Vec<i32> {
-        let idx = (node - 1) as usize;
+        let idx = self.node_index(node);
         if !self.directed {
             return self.undirected_neighbors_at(idx);
         }
@@ -1322,7 +1345,7 @@ impl GraphBackend {
     /// above (mode handling, panic on an invalid mode, self-loop counting)
     /// -- see this file's tests.
     fn degree(&self, node: i32, mode: &str) -> i32 {
-        let idx = (node - 1) as usize;
+        let idx = self.node_index(node);
         if !self.directed {
             return self.undirected_degree_at(idx);
         }
@@ -1336,6 +1359,8 @@ impl GraphBackend {
 
     /// Adjacency test. For an undirected graph, checks both orientations.
     fn has_edge(&self, from: i32, to: i32) -> bool {
+        self.node_index(from);
+        self.node_index(to);
         match &self.repr {
             Repr::General(g) => g.graph.has_edge(from, to),
             Repr::Dense(d) => {
@@ -1432,6 +1457,18 @@ impl GraphBackend {
 }
 
 impl GraphBackend {
+    // The 0-based index of 1-based position `node`, panicking (an R error,
+    // through extendr) on a position outside the graph rather than indexing
+    // out of bounds, or wrapping 0 or below to a huge `usize`. The R query
+    // functions check their `i` first; this is the backstop.
+    fn node_index(&self, node: i32) -> usize {
+        let n = self.n_nodes();
+        if node < 1 || node > n {
+            panic!("`node` must be a node position between 1 and {n}, not {node}.");
+        }
+        (node - 1) as usize
+    }
+
     // All edges as 1-based `(from, to)` pairs, in construction/edge-id
     // order -- the one place both `edge_endpoints()` and
     // `induced_subgraph()` read topology from, so every `Repr` variant
@@ -1567,10 +1604,22 @@ mod tests {
     // input, so two separately built graphs never compare as the same.
     #[test]
     fn uid_is_unique_per_graph() {
-        let a = GraphBackend::new(2, vec![1], vec![2], true);
-        let b = GraphBackend::new(2, vec![1], vec![2], true);
+        let a = GraphBackend::new(2, vec![1], vec![2], true).unwrap();
+        let b = GraphBackend::new(2, vec![1], vec![2], true).unwrap();
         assert_ne!(a.uid(), b.uid());
         assert_eq!(a.uid(), a.uid());
+    }
+
+    // An endpoint outside `1..=n` (0, negative, `NA` as `i32::MIN`, or past
+    // the last node) is an error, not a panic or a huge allocation.
+    #[test]
+    fn new_rejects_out_of_range_endpoints() {
+        for bad in [0, -1, i32::MIN, 3] {
+            assert!(GraphBackend::new(2, vec![bad], vec![1], true).is_err());
+            assert!(GraphBackend::new(2, vec![1], vec![bad], false).is_err());
+        }
+        assert!(GraphBackend::new(2, vec![1, 2], vec![1], true).is_err());
+        assert!(GraphBackend::new(2, vec![1, 2], vec![2, 2], true).is_ok());
     }
 
     // A `node_vec`/`edge_vec` sliced with `x[i]` relies on `edge_endpoints()`
@@ -1586,7 +1635,7 @@ mod tests {
             // (immaterial -- edge_list() is representation-independent).
             let from = vec![3, 1, 2, 1];
             let to = vec![1, 2, 3, 3];
-            let g = GraphBackend::new(3, from.clone(), to.clone(), true);
+            let g = GraphBackend::new(3, from.clone(), to.clone(), true).unwrap();
             let ends = g.edge_endpoints();
             let got_from: Vec<i32> = ends.dollar("from").unwrap().as_integer_vector().unwrap();
             let got_to: Vec<i32> = ends.dollar("to").unwrap().as_integer_vector().unwrap();
@@ -1604,7 +1653,7 @@ mod tests {
     fn self_loop_counts_once_in_undirected_degree() {
         test! {
             // Node 1 has a self-loop and one ordinary edge to node 2.
-            let g = GraphBackend::new(2, vec![1, 1], vec![1, 2], false);
+            let g = GraphBackend::new(2, vec![1, 1], vec![1, 2], false).unwrap();
             assert_eq!(g.degree(1, "all"), 2); // loop (1) + edge to 2 (1)
             assert_eq!(g.degree(2, "all"), 1);
             let mut ns = g.neighbors(1, "all");
@@ -1616,7 +1665,7 @@ mod tests {
     #[test]
     fn directed_self_loop_counts_once_per_direction() {
         test! {
-            let g = GraphBackend::new(1, vec![1], vec![1], true);
+            let g = GraphBackend::new(1, vec![1], vec![1], true).unwrap();
             assert_eq!(g.degree(1, "out"), 1);
             assert_eq!(g.degree(1, "in"), 1);
             assert_eq!(g.degree(1, "all"), 2);
@@ -1630,7 +1679,7 @@ mod tests {
     #[test]
     fn degree_matches_neighbors_len_every_mode() {
         test! {
-            let gd = GraphBackend::new(3, vec![1, 1, 2], vec![1, 2, 3], true);
+            let gd = GraphBackend::new(3, vec![1, 1, 2], vec![1, 2, 3], true).unwrap();
             for node in 1..=3 {
                 for mode in ["out", "in", "all"] {
                     assert_eq!(
@@ -1640,7 +1689,7 @@ mod tests {
                 }
             }
 
-            let gu = GraphBackend::new(3, vec![1, 1, 2], vec![1, 2, 3], false);
+            let gu = GraphBackend::new(3, vec![1, 1, 2], vec![1, 2, 3], false).unwrap();
             for node in 1..=3 {
                 // mode is ignored when undirected -- any value must agree.
                 assert_eq!(gu.degree(node, "all"), gu.neighbors(node, "all").len() as i32);
@@ -1651,11 +1700,11 @@ mod tests {
     #[test]
     fn has_edge_checks_both_orientations_when_undirected() {
         test! {
-            let g = GraphBackend::new(2, vec![1], vec![2], false);
+            let g = GraphBackend::new(2, vec![1], vec![2], false).unwrap();
             assert!(g.has_edge(1, 2));
             assert!(g.has_edge(2, 1));
 
-            let gd = GraphBackend::new(2, vec![1], vec![2], true);
+            let gd = GraphBackend::new(2, vec![1], vec![2], true).unwrap();
             assert!(gd.has_edge(1, 2));
             assert!(!gd.has_edge(2, 1));
         }
@@ -1669,7 +1718,7 @@ mod tests {
             // replica of 1, edges touching 3 vanish. Density selection then
             // picks General or Dense, immaterial here: induced_subgraph() is
             // representation-independent, see its doc comment.
-            let g = GraphBackend::new(3, vec![1, 2, 3], vec![2, 3, 1], true);
+            let g = GraphBackend::new(3, vec![1, 2, 3], vec![2, 3, 1], true).unwrap();
             let remap = g.induced_subgraph(vec![1, 1, 2]);
             let from: Vec<i32> = remap.dollar("from").unwrap().as_integer_vector().unwrap();
             let to: Vec<i32> = remap.dollar("to").unwrap().as_integer_vector().unwrap();
@@ -1689,7 +1738,7 @@ mod tests {
     #[test]
     fn induced_subgraph_treats_zero_as_no_source() {
         test! {
-            let g = GraphBackend::new(2, vec![1], vec![2], true);
+            let g = GraphBackend::new(2, vec![1], vec![2], true).unwrap();
             // New node 1 has no source (sentinel 0); new node 2 <- old node 2.
             let remap = g.induced_subgraph(vec![0, 2]);
             let from: Vec<i32> = remap.dollar("from").unwrap().as_integer_vector().unwrap();
@@ -1718,7 +1767,7 @@ mod tests {
     #[test]
     fn general_undirected_self_loop_counts_once_in_undirected_degree() {
         test! {
-            let g = GraphBackend::new(3, vec![1, 1, 1], vec![1, 2, 2], false);
+            let g = GraphBackend::new(3, vec![1, 1, 1], vec![1, 2, 2], false).unwrap();
             assert!(!g.is_dense());
             assert!(!g.is_csr());
             // loop (1) + two parallel edges to node 2 (2)
@@ -1742,7 +1791,7 @@ mod tests {
     #[test]
     fn general_undirected_has_edge_checks_both_orientations() {
         test! {
-            let g = GraphBackend::new(3, vec![1, 1, 2], vec![2, 2, 3], false);
+            let g = GraphBackend::new(3, vec![1, 1, 2], vec![2, 2, 3], false).unwrap();
             assert!(!g.is_dense());
             assert!(!g.is_csr());
             assert!(g.has_edge(1, 2));
@@ -1763,7 +1812,7 @@ mod tests {
         test! {
             let from = vec![3, 1, 2, 1, 3];
             let to = vec![1, 2, 3, 2, 1];
-            let g = GraphBackend::new(3, from.clone(), to.clone(), false);
+            let g = GraphBackend::new(3, from.clone(), to.clone(), false).unwrap();
             assert!(!g.is_dense());
             assert!(!g.is_csr());
             let ends = g.edge_endpoints();
@@ -1790,7 +1839,7 @@ mod tests {
         test! {
             let from = vec![1, 1, 1, 2, 2, 3];
             let to = vec![2, 3, 4, 3, 4, 4];
-            let g = GraphBackend::new(4, from, to, false);
+            let g = GraphBackend::new(4, from, to, false).unwrap();
             assert!(g.is_dense());
             assert_eq!(g.n_nodes(), 4);
             for node in 1..=4 {
@@ -1816,7 +1865,7 @@ mod tests {
         test! {
             let from = vec![3, 1, 4];
             let to = vec![1, 4, 2];
-            let g = GraphBackend::new(4, from.clone(), to.clone(), false);
+            let g = GraphBackend::new(4, from.clone(), to.clone(), false).unwrap();
             assert!(g.is_dense());
             let ends = g.edge_endpoints();
             let got_from: Vec<i32> = ends.dollar("from").unwrap().as_integer_vector().unwrap();
@@ -1839,7 +1888,7 @@ mod tests {
     #[test]
     fn dense_self_loop_counts_once_in_undirected_degree() {
         test! {
-            let g = GraphBackend::new(2, vec![1, 1], vec![1, 2], false);
+            let g = GraphBackend::new(2, vec![1, 1], vec![1, 2], false).unwrap();
             assert!(g.is_dense());
             assert_eq!(g.degree(1, "all"), 2); // loop (1) + edge to 2 (1)
             assert_eq!(g.degree(2, "all"), 1);
@@ -1856,7 +1905,7 @@ mod tests {
     #[test]
     fn dense_mode_semantics_match_other_variants() {
         test! {
-            let g = GraphBackend::new(3, vec![1, 1, 2], vec![2, 3, 3], true);
+            let g = GraphBackend::new(3, vec![1, 1, 2], vec![2, 3, 3], true).unwrap();
             assert!(g.is_dense());
             assert_eq!(g.degree(1, "out"), 2);
             assert_eq!(g.degree(1, "in"), 0);
@@ -1882,7 +1931,7 @@ mod tests {
     #[should_panic(expected = "`mode` must be one of \"out\", \"in\", \"all\", not \"sideways\"")]
     fn dense_neighbors_invalid_mode_panics_like_other_variants() {
         test! {
-            let g = GraphBackend::new(3, vec![1, 1, 2], vec![2, 3, 3], true);
+            let g = GraphBackend::new(3, vec![1, 1, 2], vec![2, 3, 3], true).unwrap();
             assert!(g.is_dense());
             g.neighbors(1, "sideways");
         }
@@ -1892,7 +1941,7 @@ mod tests {
     #[should_panic(expected = "`mode` must be one of \"out\", \"in\", \"all\", not \"sideways\"")]
     fn dense_degree_invalid_mode_panics_like_other_variants() {
         test! {
-            let g = GraphBackend::new(3, vec![1, 1, 2], vec![2, 3, 3], true);
+            let g = GraphBackend::new(3, vec![1, 1, 2], vec![2, 3, 3], true).unwrap();
             assert!(g.is_dense());
             g.degree(1, "sideways");
         }
@@ -1911,7 +1960,7 @@ mod tests {
         test! {
             // Triangle 1->2->3->1 (directed cycle); density = 3 / (3 choose
             // 2) = 3/3 = 1.0 > 0.3, no duplicates -- picks Dense.
-            let g = GraphBackend::new(3, vec![1, 2, 3], vec![2, 3, 1], true);
+            let g = GraphBackend::new(3, vec![1, 2, 3], vec![2, 3, 1], true).unwrap();
             assert!(g.is_dense());
             // New nodes <- old 1, 1, 2 (node 1 replicated, node 3 dropped):
             // edge 1->2 clones once per replica of 1, edges touching 3 vanish.
@@ -1934,7 +1983,7 @@ mod tests {
         test! {
             // n=2 undirected; density = 1/(2 choose 2) = 1/1 = 1.0 > 0.3,
             // no duplicates -- picks Dense.
-            let g = GraphBackend::new(2, vec![1], vec![2], false);
+            let g = GraphBackend::new(2, vec![1], vec![2], false).unwrap();
             assert!(g.is_dense());
             // New node 1 has no source (sentinel 0); new node 2 <- old node 2.
             let remap = g.induced_subgraph(vec![0, 2]);
@@ -1949,7 +1998,7 @@ mod tests {
     fn dense_enough_duplicate_free_graph_picks_dense_repr() {
         test! {
             // Complete undirected triangle: density = 3/(3 choose 2) = 1.0.
-            let g = GraphBackend::new(3, vec![1, 1, 2], vec![2, 3, 3], false);
+            let g = GraphBackend::new(3, vec![1, 1, 2], vec![2, 3, 3], false).unwrap();
             assert!(g.is_dense());
         }
     }
@@ -1972,7 +2021,7 @@ mod tests {
         test! {
             let from: Vec<i32> = (1..=10).collect();
             let to: Vec<i32> = (2..=10).chain(std::iter::once(1)).collect();
-            let g = GraphBackend::new(10, from, to, true);
+            let g = GraphBackend::new(10, from, to, true).unwrap();
             assert!(!g.is_dense());
             assert!(g.is_csr());
         }
@@ -1994,7 +2043,7 @@ mod tests {
     #[test]
     fn duplicate_edge_despite_density_falls_back_to_general_repr() {
         test! {
-            let g = GraphBackend::new(3, vec![1, 1, 2], vec![2, 2, 3], false);
+            let g = GraphBackend::new(3, vec![1, 1, 2], vec![2, 2, 3], false).unwrap();
             assert!(!g.is_dense());
             assert!(!g.is_csr());
             // Still a perfectly ordinary graph otherwise -- General answers
@@ -2024,7 +2073,7 @@ mod tests {
         test! {
             let from = vec![1, 2, 3, 4, 5, 1];
             let to = vec![2, 3, 4, 5, 6, 3];
-            let g = GraphBackend::new(8, from, to, true);
+            let g = GraphBackend::new(8, from, to, true).unwrap();
             assert!(!g.is_dense());
             assert!(g.is_csr());
             assert_eq!(g.n_nodes(), 8);
@@ -2054,7 +2103,7 @@ mod tests {
         test! {
             let from = vec![5, 1, 4, 1, 2, 3];
             let to = vec![6, 3, 5, 2, 3, 4];
-            let g = GraphBackend::new(8, from.clone(), to.clone(), true);
+            let g = GraphBackend::new(8, from.clone(), to.clone(), true).unwrap();
             assert!(g.is_csr());
             let ends = g.edge_endpoints();
             let got_from: Vec<i32> = ends.dollar("from").unwrap().as_integer_vector().unwrap();
@@ -2078,7 +2127,7 @@ mod tests {
     #[test]
     fn csr_self_loop_counts_once_in_undirected_degree() {
         test! {
-            let g = GraphBackend::new(6, vec![1, 1], vec![1, 2], false);
+            let g = GraphBackend::new(6, vec![1, 1], vec![1, 2], false).unwrap();
             assert!(g.is_csr());
             assert_eq!(g.degree(1, "all"), 2); // loop (1) + edge to 2 (1)
             assert_eq!(g.degree(2, "all"), 1);
@@ -2097,7 +2146,7 @@ mod tests {
         test! {
             let from = vec![1, 2, 3, 4, 5, 1];
             let to = vec![2, 3, 4, 5, 6, 3];
-            let g = GraphBackend::new(8, from, to, true);
+            let g = GraphBackend::new(8, from, to, true).unwrap();
             assert!(g.is_csr());
             assert_eq!(g.degree(1, "out"), 2); // 1->2, 1->3
             assert_eq!(g.degree(1, "in"), 0);
@@ -2122,7 +2171,7 @@ mod tests {
         test! {
             let from = vec![1, 2, 3, 4, 5, 1];
             let to = vec![2, 3, 4, 5, 6, 3];
-            let g = GraphBackend::new(8, from, to, true);
+            let g = GraphBackend::new(8, from, to, true).unwrap();
             assert!(g.is_csr());
             g.neighbors(1, "sideways");
         }
@@ -2134,7 +2183,7 @@ mod tests {
         test! {
             let from = vec![1, 2, 3, 4, 5, 1];
             let to = vec![2, 3, 4, 5, 6, 3];
-            let g = GraphBackend::new(8, from, to, true);
+            let g = GraphBackend::new(8, from, to, true).unwrap();
             assert!(g.is_csr());
             g.degree(1, "sideways");
         }
@@ -2155,7 +2204,7 @@ mod tests {
             // 6/28 ~= 0.214 < 0.3, duplicate-free -- picks Csr.
             let from = vec![1, 2, 3, 4, 5, 1];
             let to = vec![2, 3, 4, 5, 6, 3];
-            let g = GraphBackend::new(8, from, to, true);
+            let g = GraphBackend::new(8, from, to, true).unwrap();
             assert!(g.is_csr());
             // New nodes <- old 1, 1, 2 (node 1 replicated, node 3 dropped):
             // edge 1->2 clones once per replica of 1; edges touching 3
@@ -2183,7 +2232,7 @@ mod tests {
         test! {
             // n=6 undirected; density = 1/(6 choose 2)
             // = 1/15 ~= 0.067 < 0.3, no duplicates -- picks Csr.
-            let g = GraphBackend::new(6, vec![1], vec![2], false);
+            let g = GraphBackend::new(6, vec![1], vec![2], false).unwrap();
             assert!(g.is_csr());
             // New node 1 has no source (sentinel 0); new node 2 <- old node 2.
             let remap = g.induced_subgraph(vec![0, 2]);
@@ -2202,7 +2251,7 @@ mod tests {
         test! {
             let from = vec![1, 2, 3, 4, 5, 1];
             let to = vec![2, 3, 4, 5, 6, 3];
-            let g = GraphBackend::new(8, from, to, true);
+            let g = GraphBackend::new(8, from, to, true).unwrap();
             assert!(!g.is_dense());
             assert!(g.is_csr());
         }
@@ -2224,7 +2273,7 @@ mod tests {
         test! {
             let from = vec![1, 2, 3, 4, 5, 1, 1];
             let to = vec![2, 3, 4, 5, 6, 3, 2];
-            let g = GraphBackend::new(8, from, to, true);
+            let g = GraphBackend::new(8, from, to, true).unwrap();
             assert!(!g.is_dense());
             assert!(!g.is_csr());
             assert!(g.has_edge(1, 2));
@@ -2242,7 +2291,7 @@ mod tests {
     #[test]
     fn dense_duplicate_free_graph_picks_dense_not_csr_repr() {
         test! {
-            let g = GraphBackend::new(3, vec![1, 1, 2], vec![2, 3, 3], false);
+            let g = GraphBackend::new(3, vec![1, 1, 2], vec![2, 3, 3], false).unwrap();
             assert!(g.is_dense());
             assert!(!g.is_csr());
         }
@@ -2307,7 +2356,7 @@ mod tests {
     #[test]
     fn general_directed_supports_rustworkx_core_algorithms() {
         test! {
-            let g = GraphBackend::new(4, vec![1, 2, 3, 1, 1], vec![2, 3, 4, 2, 3], true);
+            let g = GraphBackend::new(4, vec![1, 2, 3, 1, 1], vec![2, 3, 4, 2, 3], true).unwrap();
             assert!(!g.is_dense());
             assert!(!g.is_csr());
 
@@ -2337,7 +2386,7 @@ mod tests {
     #[test]
     fn general_undirected_supports_rustworkx_core_algorithms() {
         test! {
-            let g = GraphBackend::new(4, vec![1, 2, 3, 1, 1], vec![2, 3, 4, 2, 3], false);
+            let g = GraphBackend::new(4, vec![1, 2, 3, 1, 1], vec![2, 3, 4, 2, 3], false).unwrap();
             assert!(!g.is_dense());
             assert!(!g.is_csr());
 
@@ -2366,7 +2415,7 @@ mod tests {
     #[test]
     fn dense_directed_supports_rustworkx_core_algorithms() {
         test! {
-            let g = GraphBackend::new(4, vec![1, 1, 2, 3], vec![2, 3, 3, 4], true);
+            let g = GraphBackend::new(4, vec![1, 1, 2, 3], vec![2, 3, 3, 4], true).unwrap();
             assert!(g.is_dense());
 
             let inc = directed_degree_centrality(&g, Direction::Incoming);
@@ -2391,7 +2440,7 @@ mod tests {
     #[test]
     fn dense_undirected_supports_rustworkx_core_algorithms() {
         test! {
-            let g = GraphBackend::new(4, vec![1, 1, 2, 3], vec![2, 3, 3, 4], false);
+            let g = GraphBackend::new(4, vec![1, 1, 2, 3], vec![2, 3, 3, 4], false).unwrap();
             assert!(g.is_dense());
 
             let inc = directed_degree_centrality(&g, Direction::Incoming);
@@ -2420,7 +2469,7 @@ mod tests {
     #[test]
     fn csr_directed_supports_rustworkx_core_algorithms() {
         test! {
-            let g = GraphBackend::new(8, vec![1, 2, 3, 4, 5, 1], vec![2, 3, 4, 5, 6, 3], true);
+            let g = GraphBackend::new(8, vec![1, 2, 3, 4, 5, 1], vec![2, 3, 4, 5, 6, 3], true).unwrap();
             assert!(g.is_csr());
 
             // `Some(direction)` divides by `node_count - 1` regardless of
@@ -2457,7 +2506,7 @@ mod tests {
     #[test]
     fn csr_undirected_supports_rustworkx_core_algorithms() {
         test! {
-            let g = GraphBackend::new(8, vec![1, 1, 2, 3, 4, 5], vec![1, 2, 3, 4, 5, 6], false);
+            let g = GraphBackend::new(8, vec![1, 1, 2, 3, 4, 5], vec![1, 2, 3, 4, 5, 6], false).unwrap();
             assert!(g.is_csr());
 
             let inc = directed_degree_centrality(&g, Direction::Incoming);

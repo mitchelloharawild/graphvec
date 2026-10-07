@@ -35,6 +35,12 @@ drift out of sync with the representation it feeds). Edges are added
 in input order and never removed afterwards, so edge ids (0-based
 internally, 1-based at the R boundary) stay stable and match the row
 order of the R-side edge attribute table, for every representation.
+
+Errors (an R error, not a crash) unless every \code{from}/\code{to} position is
+in \verb{1..=n} and the two have the same length: an \code{NA} arrives as
+\code{i32::MIN}, and a position outside the graph would otherwise index
+out of bounds or, at 0 or below, wrap to a huge \code{usize} allocation.
+The R constructors check this first, with friendlier messages.
 }
 
 \subsection{Method \code{uid}}{

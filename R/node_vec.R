@@ -113,7 +113,12 @@ new_node_vec <- function(x = list(), edges = data.frame(from = integer(), to = i
   # Ordinary case: topology moves into a shared GraphBackend; `edges` keeps
   # only the attribute columns (everything but from/to), aligned 1:1 with
   # the graph's edge order -- this is what removes the two-copies problem
-  # `_dev/RUST_BACKEND.md` describes.
+  # `_dev/RUST_BACKEND.md` describes. Every edge joins two of `x`'s nodes:
+  # a node_vec has no missing edges (unlike an edge_vec).
+  if (anyNA(from) || anyNA(to)) {
+    cli::cli_abort("{.arg from} and {.arg to} can't be missing in a {.cls node_vec}.", call = NULL)
+  }
+  check_edge_positions(from, to, NROW(x))
   graph <- graphvec_backend_new(NROW(x), from, to, directed)
   attrs <- edges[setdiff(names(edges), c("from", "to"))]
   new_node_vec_backend(x, graph = graph, edges = attrs, directed = directed)
