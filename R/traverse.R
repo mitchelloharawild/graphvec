@@ -38,8 +38,11 @@
 node_neighbors <- function(x, i, mode = c("out", "in", "all")) {
   mode <- match.arg(mode)
   graph <- op_graph(x)
-  neighbors <- graph$neighbors
-  query_selection(i, function(pos) sort(neighbors(pos, mode)), graph$n_nodes())
+  i <- query_positions(i, graph$n_nodes())
+  # One call for every query node, returned as a CSR pair (`ptr` offsets
+  # into `idx`) that is split into one sorted vector per node here.
+  nbrs <- graph$neighbors_many(i, mode)
+  query_result(vctrs::vec_chop(nbrs$idx, sizes = diff(nbrs$ptr)))
 }
 
 #' @rdname node_neighbors
@@ -113,8 +116,15 @@ edge_incident <- function(x, i, mode = c("out", "in", "all")) {
 #'
 #' @export
 node_incident <- function(x, i) {
-  ends <- op_endpoints(x)
-  query_selection(i, function(pos) c(ends$from[pos], ends$to[pos]), length(ends$from), "edge")
+  graph <- backend_of(x)
+  # A sliced edge_vec's positions select into its graph's edges through
+  # `edge_id` (see `op_endpoints()`); only the queried edges are read.
+  edge_id <- if (inherits(x, "edge_vec")) attr(x, "edge_id")
+  n <- if (is.null(edge_id)) graph$n_edges() else length(edge_id)
+  i <- query_positions(i, n, "edge")
+  ends <- graph$edge_endpoints(if (is.null(edge_id)) i else edge_id[i])
+  pairs <- as.vector(rbind(ends$from, ends$to))
+  query_result(vctrs::vec_chop(pairs, sizes = rep.int(2L, length(i))))
 }
 
 #' Edge endpoints, edge-aligned

@@ -161,9 +161,7 @@ edge_vec_endpoints <- function(x) {
     fields <- edge_vec_data(x)
     return(list(from = fields[["from"]], to = fields[["to"]]))
   }
-  ends <- graph$edge_endpoints()
-  id <- attr(x, "edge_id")
-  list(from = ends$from[id], to = ends$to[id])
+  graph$edge_endpoints(attr(x, "edge_id"))
 }
 
 # The fields, rewrapped as a genuine data frame with from/to reunited with

@@ -68,26 +68,22 @@ surface stays fixed no matter how many representations \code{GraphBackend}
 eventually holds.
 }
 
-\subsection{Method \code{neighbors}}{
-1-based neighbour positions of \code{node} (1-based). For an undirected
-graph \code{mode} is ignored and the undirected neighbour set is always
-returned: one entry per incident edge, a self-loop included exactly
-once (see \code{undirected_neighbors_at()}'s doc comment for why, and this
-file's tests). For a directed graph, \code{mode} is \code{"out"}, \code{"in"}, or
-\code{"all"} (both, concatenated -- a directed self-loop counts once per
-direction, so twice under \code{"all"}, unaffected by the undirected
-convention above). One entry per incident edge, not deduplicated, so
-\code{degree()} can just be \verb{neighbors().len()}.
+\subsection{Method \code{degrees}}{
+Every node's degree, in node order -- \code{degree()} (below) for each
+node in one call, so \code{node_degree()} and the node predicates cross
+the R/Rust boundary once rather than once per node. Same \code{mode} and
+self-loop semantics as \code{degree()}, which it is defined by.
 }
 
-\subsection{Method \code{degree}}{
-O(1) for \code{"out"}/\code{"in"}, and for \code{"all"} on a \emph{directed} graph (the
-construction-time caches sum directly); O(d) for the undirected case
-(see \code{undirected_degree_at()}'s doc comment for why that one can't
-stay O(1) everywhere the way the old doubled-self-loop convention
-let it). Must stay in exact agreement with \code{neighbors()}'s semantics
-above (mode handling, panic on an invalid mode, self-loop counting)
--- see this file's tests.
+\subsection{Method \code{neighbors_many}}{
+The neighbours of every node in \code{nodes} (1-based, repeats allowed),
+each in increasing order, as one CSR pair \code{list(ptr, idx)}: node
+\code{nodes[k]}'s neighbours are \code{idx[(ptr[k] + 1):ptr[k + 1]]}, with
+\code{ptr} 0-based offsets of length \code{length(nodes) + 1}. One call for
+any number of query nodes (\code{node_neighbors()} splits it into its
+list result), with the same \code{mode}, self-loop and one-entry-per-edge
+semantics as \code{neighbors()}. Sorted here because \code{neighbors()}'s own
+order depends on which \code{Repr} the graph picked.
 }
 
 \subsection{Method \code{has_edge}}{
@@ -95,9 +91,13 @@ Adjacency test. For an undirected graph, checks both orientations.
 }
 
 \subsection{Method \code{edge_endpoints}}{
-All edges as 1-based \verb{(from, to)} pairs, in construction/edge-id
-order. Backs \code{edge_vec}'s \code{format()}/\verb{$from}/\verb{$to} and \code{as.igraph()}
--- no R-side edge table is needed for topology once this exists.
+Edges as 1-based \verb{(from, to)} pairs: all of them in
+construction/edge-id order when \code{ids} is \code{NULL}, otherwise those of
+the 1-based edge ids \code{ids}, in \code{ids}' order (repeats allowed). An
+\code{NA} id is a missing edge, with \code{NA} endpoints. Backs \code{edge_vec}'s
+\code{format()}/\verb{$from}/\verb{$to} and \code{as.igraph()} -- no R-side edge table
+is needed for topology once this exists -- and lets a slice of a
+big graph read only its own edges' endpoints, O(length(ids)).
 }
 
 \subsection{Method \code{induced_subgraph}}{

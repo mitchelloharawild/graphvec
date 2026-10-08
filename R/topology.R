@@ -87,12 +87,11 @@ op_graph <- function(x) {
   }
   # A missing edge (NA edge_id, e.g. from vctrs::vec_init()) joins no
   # nodes, so it isn't an edge of the graph the operation sees.
-  edge_id <- edge_id[!is.na(edge_id)]
-  ends <- graph$edge_endpoints()
+  ends <- graph$edge_endpoints(edge_id[!is.na(edge_id)])
   graphvec_backend_new(
     graph$n_nodes(),
-    ends$from[edge_id],
-    ends$to[edge_id],
+    ends$from,
+    ends$to,
     attr(x, "directed")
   )
 }
@@ -162,6 +161,15 @@ check_weights_length <- function(weights, m, arg = "weights") {
 # Every element of `i` must be one of the `n` positions being queried
 # (`what`: "node" or "edge").
 query_selection <- function(i, fn, n, what = "node") {
+  i <- query_positions(i, n, what)
+  if (length(i) == 1L) fn(i) else lapply(i, fn)
+}
+
+# `query_selection()`'s two halves, for a query answered for every element
+# of `i` at once: `query_positions()` checks `i` and returns it as an
+# integer vector, and `query_result()` takes the list of one result per
+# element and returns its length-1 shape (a bare vector) when there is one.
+query_positions <- function(i, n, what = "node") {
   i <- as.integer(i)
   bad <- is.na(i) | i < 1L | i > n
   if (any(bad)) {
@@ -170,5 +178,9 @@ query_selection <- function(i, fn, n, what = "node") {
       "x" = "Found {.val {utils::head(unique(i[bad]), 5L)}}."
     ), call = NULL)
   }
-  if (length(i) == 1L) fn(i) else lapply(i, fn)
+  i
+}
+
+query_result <- function(out) {
+  if (length(out) == 1L) out[[1L]] else out
 }

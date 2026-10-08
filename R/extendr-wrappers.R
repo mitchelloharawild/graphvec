@@ -84,26 +84,22 @@ graphvec_backend_revive <- function(graph) .Call(wrap__graphvec_backend_revive, 
 #'eventually holds.
 #'}
 #'
-#'\subsection{Method `neighbors`}{
-#'1-based neighbour positions of `node` (1-based). For an undirected
-#'graph `mode` is ignored and the undirected neighbour set is always
-#'returned: one entry per incident edge, a self-loop included exactly
-#'once (see `undirected_neighbors_at()`'s doc comment for why, and this
-#'file's tests). For a directed graph, `mode` is `"out"`, `"in"`, or
-#'`"all"` (both, concatenated -- a directed self-loop counts once per
-#'direction, so twice under `"all"`, unaffected by the undirected
-#'convention above). One entry per incident edge, not deduplicated, so
-#'`degree()` can just be `neighbors().len()`.
+#'\subsection{Method `degrees`}{
+#'Every node's degree, in node order -- `degree()` (below) for each
+#'node in one call, so `node_degree()` and the node predicates cross
+#'the R/Rust boundary once rather than once per node. Same `mode` and
+#'self-loop semantics as `degree()`, which it is defined by.
 #'}
 #'
-#'\subsection{Method `degree`}{
-#'O(1) for `"out"`/`"in"`, and for `"all"` on a *directed* graph (the
-#'construction-time caches sum directly); O(d) for the undirected case
-#'(see `undirected_degree_at()`'s doc comment for why that one can't
-#'stay O(1) everywhere the way the old doubled-self-loop convention
-#'let it). Must stay in exact agreement with `neighbors()`'s semantics
-#'above (mode handling, panic on an invalid mode, self-loop counting)
-#'-- see this file's tests.
+#'\subsection{Method `neighbors_many`}{
+#'The neighbours of every node in `nodes` (1-based, repeats allowed),
+#'each in increasing order, as one CSR pair `list(ptr, idx)`: node
+#'`nodes[k]`'s neighbours are `idx[(ptr[k] + 1):ptr[k + 1]]`, with
+#'`ptr` 0-based offsets of length `length(nodes) + 1`. One call for
+#'any number of query nodes (`node_neighbors()` splits it into its
+#'list result), with the same `mode`, self-loop and one-entry-per-edge
+#'semantics as `neighbors()`. Sorted here because `neighbors()`'s own
+#'order depends on which `Repr` the graph picked.
 #'}
 #'
 #'\subsection{Method `has_edge`}{
@@ -111,9 +107,13 @@ graphvec_backend_revive <- function(graph) .Call(wrap__graphvec_backend_revive, 
 #'}
 #'
 #'\subsection{Method `edge_endpoints`}{
-#'All edges as 1-based `(from, to)` pairs, in construction/edge-id
-#'order. Backs `edge_vec`'s `format()`/`$from`/`$to` and `as.igraph()`
-#'-- no R-side edge table is needed for topology once this exists.
+#'Edges as 1-based `(from, to)` pairs: all of them in
+#'construction/edge-id order when `ids` is `NULL`, otherwise those of
+#'the 1-based edge ids `ids`, in `ids`' order (repeats allowed). An
+#'`NA` id is a missing edge, with `NA` endpoints. Backs `edge_vec`'s
+#'`format()`/`$from`/`$to` and `as.igraph()` -- no R-side edge table
+#'is needed for topology once this exists -- and lets a slice of a
+#'big graph read only its own edges' endpoints, O(length(ids)).
 #'}
 #'
 #'\subsection{Method `induced_subgraph`}{
@@ -164,13 +164,13 @@ GraphBackend$uid <- function() .Call(wrap__GraphBackend__uid, self)
 
 GraphBackend$repr_name <- function() .Call(wrap__GraphBackend__repr_name, self)
 
-GraphBackend$neighbors <- function(node, mode) .Call(wrap__GraphBackend__neighbors, self, node, mode)
+GraphBackend$degrees <- function(mode) .Call(wrap__GraphBackend__degrees, self, mode)
 
-GraphBackend$degree <- function(node, mode) .Call(wrap__GraphBackend__degree, self, node, mode)
+GraphBackend$neighbors_many <- function(nodes, mode) .Call(wrap__GraphBackend__neighbors_many, self, nodes, mode)
 
 GraphBackend$has_edge <- function(from, to) .Call(wrap__GraphBackend__has_edge, self, from, to)
 
-GraphBackend$edge_endpoints <- function() .Call(wrap__GraphBackend__edge_endpoints, self)
+GraphBackend$edge_endpoints <- function(ids = NULL) .Call(wrap__GraphBackend__edge_endpoints, self, ids)
 
 GraphBackend$induced_subgraph <- function(idx) .Call(wrap__GraphBackend__induced_subgraph, self, idx)
 

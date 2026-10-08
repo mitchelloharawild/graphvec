@@ -18,9 +18,9 @@ test_that("a self-loop counts once towards undirected degree", {
   # choose 2) = 2.0 > 0.3, no duplicate pairs -- picks Repr::Dense.
   g <- GraphBackend$new(2L, c(1L, 1L), c(1L, 2L), FALSE)
   expect_equal(g$repr_name(), "dense")
-  expect_equal(g$degree(1L, "all"), 2L) # loop (1) + edge to 2 (1)
-  expect_equal(g$degree(2L, "all"), 1L)
-  expect_equal(sort(g$neighbors(1L, "all")), c(1L, 2L))
+  expect_equal(g$degrees("all")[[1L]], 2L) # loop (1) + edge to 2 (1)
+  expect_equal(g$degrees("all")[[2L]], 1L)
+  expect_equal(g$neighbors_many(1L, "all")$idx, c(1L, 2L))
 })
 
 test_that("a self-loop counts once towards undirected degree (Repr::Csr)", {
@@ -31,9 +31,9 @@ test_that("a self-loop counts once towards undirected degree (Repr::Csr)", {
   # for it explicitly.
   g <- GraphBackend$new(6L, c(1L, 1L), c(1L, 2L), FALSE)
   expect_equal(g$repr_name(), "csr")
-  expect_equal(g$degree(1L, "all"), 2L)
-  expect_equal(g$degree(2L, "all"), 1L)
-  expect_equal(sort(g$neighbors(1L, "all")), c(1L, 2L))
+  expect_equal(g$degrees("all")[[1L]], 2L)
+  expect_equal(g$degrees("all")[[2L]], 1L)
+  expect_equal(g$neighbors_many(1L, "all")$idx, c(1L, 2L))
 })
 
 test_that("a self-loop counts once towards undirected degree (Repr::General)", {
@@ -42,16 +42,16 @@ test_that("a self-loop counts once towards undirected degree (Repr::General)", {
   # supplied twice.
   g <- GraphBackend$new(2L, c(1L, 1L, 1L), c(1L, 2L, 2L), FALSE)
   expect_equal(g$repr_name(), "general")
-  expect_equal(g$degree(1L, "all"), 3L) # loop (1) + two edges to 2 (2)
-  expect_equal(g$degree(2L, "all"), 2L)
-  expect_equal(sort(g$neighbors(1L, "all")), c(1L, 2L, 2L))
+  expect_equal(g$degrees("all")[[1L]], 3L) # loop (1) + two edges to 2 (2)
+  expect_equal(g$degrees("all")[[2L]], 2L)
+  expect_equal(g$neighbors_many(1L, "all")$idx, c(1L, 2L, 2L))
 })
 
 test_that("a directed self-loop counts once per direction, not doubled", {
   g <- GraphBackend$new(1L, 1L, 1L, TRUE)
-  expect_equal(g$degree(1L, "out"), 1L)
-  expect_equal(g$degree(1L, "in"), 1L)
-  expect_equal(g$degree(1L, "all"), 2L)
+  expect_equal(g$degrees("out")[[1L]], 1L)
+  expect_equal(g$degrees("in")[[1L]], 1L)
+  expect_equal(g$degrees("all")[[1L]], 2L)
 })
 
 test_that("has_edge() checks both orientations only when undirected", {

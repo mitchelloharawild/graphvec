@@ -32,12 +32,7 @@
 #' @export
 node_degree <- function(x, mode = c("all", "out", "in")) {
   mode <- match.arg(mode)
-  graph <- op_graph(x)
-  # `graph$degree` is resolved once, not once per node: `$.GraphBackend`
-  # rebuilds the closure (and rebinds `self`) on every access, so hoisting
-  # it out of the loop is what keeps this a single .Call per node.
-  degree <- graph$degree
-  vapply(seq_len(graph$n_nodes()), degree, integer(1), mode = mode)
+  op_graph(x)$degrees(mode)
 }
 
 #' Node and edge counts

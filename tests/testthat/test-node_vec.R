@@ -830,8 +830,10 @@ test_that("node queries error on positions outside the graph", {
   e <- edges(d)
   expect_error(node_neighbors(e, 3), "between 1 and 2")
   expect_error(node_incident(e, 3), "edge positions between 1 and 2")
-  expect_error(attr(d, "graph")$neighbors(0L, "out"), "between 1 and 2")
-  expect_error(attr(d, "graph")$degree(3L, "out"), "between 1 and 2")
+  expect_error(attr(d, "graph")$neighbors_many(0L, "out"), "between 1 and 2")
+  expect_error(attr(d, "graph")$neighbors_many(c(1L, 3L), "out"), "between 1 and 2")
+  expect_error(attr(d, "graph")$edge_endpoints(c(1L, 3L)), "between 1 and 2")
+  expect_error(attr(d, "graph")$edge_endpoints(0L), "between 1 and 2")
   expect_error(attr(d, "graph")$has_edge(1L, 3L), "between 1 and 2")
 })
 

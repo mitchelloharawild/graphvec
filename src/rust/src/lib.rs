@@ -207,6 +207,16 @@ impl GeneralGraph {
         }
     }
 
+    // One edge of `edge_list()`, by 0-based edge id.
+    fn edge_at(&self, i: usize) -> (i32, i32) {
+        let (a, b) = match self {
+            GeneralGraph::Directed(g) => g.edge_endpoints(EdgeIndex::new(i)),
+            GeneralGraph::Undirected(g) => g.edge_endpoints(EdgeIndex::new(i)),
+        }
+        .expect("edge index in range");
+        (a.index() as i32 + 1, b.index() as i32 + 1)
+    }
+
     // The undirected neighbour set: one entry per incident edge, a
     // self-loop included exactly once. `neighbors_undirected()` walks both
     // adjacency lists but skips a self-loop on the incoming pass -- the
@@ -1401,46 +1411,33 @@ impl GraphBackend {
         .to_string()
     }
 
-    /// 1-based neighbour positions of `node` (1-based). For an undirected
-    /// graph `mode` is ignored and the undirected neighbour set is always
-    /// returned: one entry per incident edge, a self-loop included exactly
-    /// once (see `undirected_neighbors_at()`'s doc comment for why, and this
-    /// file's tests). For a directed graph, `mode` is `"out"`, `"in"`, or
-    /// `"all"` (both, concatenated -- a directed self-loop counts once per
-    /// direction, so twice under `"all"`, unaffected by the undirected
-    /// convention above). One entry per incident edge, not deduplicated, so
-    /// `degree()` can just be `neighbors().len()`.
-    fn neighbors(&self, node: i32, mode: &str) -> Vec<i32> {
-        let idx = self.node_index(node);
-        if !self.directed {
-            return self.undirected_neighbors_at(idx);
-        }
-        match mode {
-            "out" => self.out_neighbors_at(idx),
-            "in" => self.in_neighbors_at(idx),
-            "all" => self.symmetric_neighbors(idx),
-            _ => panic!("`mode` must be one of \"out\", \"in\", \"all\", not \"{mode}\""),
-        }
+    /// Every node's degree, in node order -- `degree()` (below) for each
+    /// node in one call, so `node_degree()` and the node predicates cross
+    /// the R/Rust boundary once rather than once per node. Same `mode` and
+    /// self-loop semantics as `degree()`, which it is defined by.
+    fn degrees(&self, mode: &str) -> Vec<i32> {
+        (1..=self.n_nodes()).map(|node| self.degree(node, mode)).collect()
     }
 
-    /// O(1) for `"out"`/`"in"`, and for `"all"` on a *directed* graph (the
-    /// construction-time caches sum directly); O(d) for the undirected case
-    /// (see `undirected_degree_at()`'s doc comment for why that one can't
-    /// stay O(1) everywhere the way the old doubled-self-loop convention
-    /// let it). Must stay in exact agreement with `neighbors()`'s semantics
-    /// above (mode handling, panic on an invalid mode, self-loop counting)
-    /// -- see this file's tests.
-    fn degree(&self, node: i32, mode: &str) -> i32 {
-        let idx = self.node_index(node);
-        if !self.directed {
-            return self.undirected_degree_at(idx);
+    /// The neighbours of every node in `nodes` (1-based, repeats allowed),
+    /// each in increasing order, as one CSR pair `list(ptr, idx)`: node
+    /// `nodes[k]`'s neighbours are `idx[(ptr[k] + 1):ptr[k + 1]]`, with
+    /// `ptr` 0-based offsets of length `length(nodes) + 1`. One call for
+    /// any number of query nodes (`node_neighbors()` splits it into its
+    /// list result), with the same `mode`, self-loop and one-entry-per-edge
+    /// semantics as `neighbors()`. Sorted here because `neighbors()`'s own
+    /// order depends on which `Repr` the graph picked.
+    fn neighbors_many(&self, nodes: Vec<i32>, mode: &str) -> List {
+        let mut ptr: Vec<i32> = Vec::with_capacity(nodes.len() + 1);
+        let mut idx: Vec<i32> = Vec::new();
+        ptr.push(0);
+        for &node in &nodes {
+            let mut ns = self.neighbors(node, mode);
+            ns.sort_unstable();
+            idx.extend(ns);
+            ptr.push(i32::try_from(idx.len()).expect("neighbour count fits an R integer"));
         }
-        match mode {
-            "out" => self.out_degree_at(idx),
-            "in" => self.in_degree_at(idx),
-            "all" => self.out_degree_at(idx) + self.in_degree_at(idx),
-            _ => panic!("`mode` must be one of \"out\", \"in\", \"all\", not \"{mode}\""),
-        }
+        list!(ptr = ptr, idx = idx)
     }
 
     /// Adjacency test. For an undirected graph, checks both orientations.
@@ -1469,11 +1466,39 @@ impl GraphBackend {
         }
     }
 
-    /// All edges as 1-based `(from, to)` pairs, in construction/edge-id
-    /// order. Backs `edge_vec`'s `format()`/`$from`/`$to` and `as.igraph()`
-    /// -- no R-side edge table is needed for topology once this exists.
-    fn edge_endpoints(&self) -> List {
-        let (from, to) = self.edge_list();
+    /// Edges as 1-based `(from, to)` pairs: all of them in
+    /// construction/edge-id order when `ids` is `NULL`, otherwise those of
+    /// the 1-based edge ids `ids`, in `ids`' order (repeats allowed). An
+    /// `NA` id is a missing edge, with `NA` endpoints. Backs `edge_vec`'s
+    /// `format()`/`$from`/`$to` and `as.igraph()` -- no R-side edge table
+    /// is needed for topology once this exists -- and lets a slice of a
+    /// big graph read only its own edges' endpoints, O(length(ids)).
+    fn edge_endpoints(&self, #[extendr(default = "NULL")] ids: Nullable<Vec<i32>>) -> List {
+        let ids = match ids {
+            Nullable::Null => {
+                let (from, to) = self.edge_list();
+                return list!(from = from, to = to);
+            }
+            Nullable::NotNull(ids) => ids,
+        };
+        let m = self.n_edges();
+        let mut from: Vec<i32> = Vec::with_capacity(ids.len());
+        let mut to: Vec<i32> = Vec::with_capacity(ids.len());
+        for &id in &ids {
+            // R's `NA_integer_` arrives as `i32::MIN`, and is the same bit
+            // pattern going back out, so a missing edge stays `NA`.
+            if id == i32::MIN {
+                from.push(i32::MIN);
+                to.push(i32::MIN);
+                continue;
+            }
+            if id < 1 || id > m {
+                panic!("`ids` must be edge positions between 1 and {m}, not {id}.");
+            }
+            let (a, b) = self.edge_at((id - 1) as usize);
+            from.push(a);
+            to.push(b);
+        }
         list!(from = from, to = to)
     }
 
@@ -1543,6 +1568,51 @@ impl GraphBackend {
 }
 
 impl GraphBackend {
+    // 1-based neighbour positions of `node` (1-based). For an undirected
+    // graph `mode` is ignored and the undirected neighbour set is always
+    // returned: one entry per incident edge, a self-loop included exactly
+    // once (see `undirected_neighbors_at()`'s doc comment for why, and this
+    // file's tests). For a directed graph, `mode` is `"out"`, `"in"`, or
+    // `"all"` (both, concatenated -- a directed self-loop counts once per
+    // direction, so twice under `"all"`, unaffected by the undirected
+    // convention above). One entry per incident edge, not deduplicated, so
+    // `degree()` can just be `neighbors().len()`. Not an R method of its
+    // own: R queries go through `neighbors_many()`.
+    fn neighbors(&self, node: i32, mode: &str) -> Vec<i32> {
+        let idx = self.node_index(node);
+        if !self.directed {
+            return self.undirected_neighbors_at(idx);
+        }
+        match mode {
+            "out" => self.out_neighbors_at(idx),
+            "in" => self.in_neighbors_at(idx),
+            "all" => self.symmetric_neighbors(idx),
+            _ => panic!("`mode` must be one of \"out\", \"in\", \"all\", not \"{mode}\""),
+        }
+    }
+
+    // The degree of `node` (1-based): O(1) for `"out"`/`"in"`, and for
+    // `"all"` on a *directed* graph (the construction-time caches sum
+    // directly); O(d) for the undirected case
+    // (see `undirected_degree_at()`'s doc comment for why that one can't
+    // stay O(1) everywhere the way the old doubled-self-loop convention
+    // let it). Must stay in exact agreement with `neighbors()`'s semantics
+    // above (mode handling, panic on an invalid mode, self-loop counting)
+    // -- see this file's tests. Not an R method of its own: R queries go
+    // through `degrees()`.
+    fn degree(&self, node: i32, mode: &str) -> i32 {
+        let idx = self.node_index(node);
+        if !self.directed {
+            return self.undirected_degree_at(idx);
+        }
+        match mode {
+            "out" => self.out_degree_at(idx),
+            "in" => self.in_degree_at(idx),
+            "all" => self.out_degree_at(idx) + self.in_degree_at(idx),
+            _ => panic!("`mode` must be one of \"out\", \"in\", \"all\", not \"{mode}\""),
+        }
+    }
+
     // The 0-based index of 1-based position `node`, panicking (an R error,
     // through extendr) on a position outside the graph rather than indexing
     // out of bounds, or wrapping 0 or below to a huge `usize`. The R query
@@ -1559,12 +1629,23 @@ impl GraphBackend {
     // order -- the one place both `edge_endpoints()` and
     // `induced_subgraph()` read topology from, so every `Repr` variant
     // needs to get this right exactly once (`_dev/petgraph_data_types.md`
-    // S4's edge-identity item) rather than per call site.
+    // S4's edge-identity item) rather than per call site; `edge_at()`
+    // below reads a single edge from the same storage.
     fn edge_list(&self) -> (Vec<i32>, Vec<i32>) {
         match &self.repr {
             Repr::General(g) => g.graph.edge_list(),
             Repr::Dense(d) => (d.from.clone(), d.to.clone()),
             Repr::Csr(c) => (c.from.clone(), c.to.clone()),
+        }
+    }
+
+    // The 1-based `(from, to)` of 0-based edge id `i` (in range), as
+    // `edge_list()` would give it, without materialising every edge.
+    fn edge_at(&self, i: usize) -> (i32, i32) {
+        match &self.repr {
+            Repr::General(g) => g.graph.edge_at(i),
+            Repr::Dense(d) => (d.from[i], d.to[i]),
+            Repr::Csr(c) => (c.from[i], c.to[i]),
         }
     }
 
@@ -1725,7 +1806,7 @@ mod tests {
             let from = vec![3, 1, 2, 1];
             let to = vec![1, 2, 3, 3];
             let g = GraphBackend::new(3, from.clone(), to.clone(), true).unwrap();
-            let ends = g.edge_endpoints();
+            let ends = g.edge_endpoints(Nullable::Null);
             let got_from: Vec<i32> = ends.dollar("from").unwrap().as_integer_vector().unwrap();
             let got_to: Vec<i32> = ends.dollar("to").unwrap().as_integer_vector().unwrap();
             assert_eq!(got_from, from);
@@ -1784,6 +1865,56 @@ mod tests {
                 assert_eq!(gu.degree(node, "all"), gu.neighbors(node, "all").len() as i32);
             }
         }
+    }
+
+    // The vectorised methods R calls (`degrees()`, `neighbors_many()`,
+    // `edge_endpoints(ids)`) are defined by the per-node/per-edge ones --
+    // pin them as agreeing on every representation, mode and direction,
+    // with repeated query positions and an `NA` edge id.
+    #[test]
+    fn vectorised_queries_match_per_node_ones() {
+        test! {
+            let shapes: [(i32, Vec<i32>, Vec<i32>, &str); 3] = [
+                (3, vec![1, 1, 2, 3], vec![1, 2, 3, 1], "dense"),
+                (8, vec![1, 1, 2, 5], vec![1, 2, 3, 1], "csr"),
+                (3, vec![1, 1, 1, 3], vec![1, 2, 2, 1], "general"),
+            ];
+            for (n, from, to, repr) in shapes {
+                for directed in [true, false] {
+                    let g = GraphBackend::new(n, from.clone(), to.clone(), directed).unwrap();
+                    assert_eq!(g.repr_name(), repr);
+                    for mode in ["out", "in", "all"] {
+                        let expected: Vec<i32> = (1..=n).map(|v| g.degree(v, mode)).collect();
+                        assert_eq!(g.degrees(mode), expected);
+
+                        let nodes = vec![2, 1, 2, n];
+                        let res = g.neighbors_many(nodes.clone(), mode);
+                        let ptr = res.dollar("ptr").unwrap().as_integer_vector().unwrap();
+                        let idx = res.dollar("idx").unwrap().as_integer_vector().unwrap();
+                        assert_eq!(ptr.len(), nodes.len() + 1);
+                        for (k, &v) in nodes.iter().enumerate() {
+                            let mut ns = g.neighbors(v, mode);
+                            ns.sort();
+                            assert_eq!(idx[ptr[k] as usize..ptr[k + 1] as usize], ns[..]);
+                        }
+                    }
+
+                    let ids = vec![4, i32::MIN, 1, 4];
+                    let ends = g.edge_endpoints(Nullable::NotNull(ids));
+                    let got_from = ends.dollar("from").unwrap().as_integer_vector().unwrap();
+                    let got_to = ends.dollar("to").unwrap().as_integer_vector().unwrap();
+                    assert_eq!(got_from, vec![from[3], i32::MIN, from[0], from[3]]);
+                    assert_eq!(got_to, vec![to[3], i32::MIN, to[0], to[3]]);
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "between 1 and 4")]
+    fn edge_endpoints_rejects_out_of_range_ids() {
+        let g = GraphBackend::new(2, vec![1, 1, 2, 2], vec![1, 2, 1, 2], true).unwrap();
+        g.edge_endpoints(Nullable::NotNull(vec![1, 5]));
     }
 
     #[test]
@@ -1904,7 +2035,7 @@ mod tests {
             let g = GraphBackend::new(3, from.clone(), to.clone(), false).unwrap();
             assert!(!g.is_dense());
             assert!(!g.is_csr());
-            let ends = g.edge_endpoints();
+            let ends = g.edge_endpoints(Nullable::Null);
             let got_from: Vec<i32> = ends.dollar("from").unwrap().as_integer_vector().unwrap();
             let got_to: Vec<i32> = ends.dollar("to").unwrap().as_integer_vector().unwrap();
             assert_eq!(got_from, from);
@@ -1956,7 +2087,7 @@ mod tests {
             let to = vec![1, 4, 2];
             let g = GraphBackend::new(4, from.clone(), to.clone(), false).unwrap();
             assert!(g.is_dense());
-            let ends = g.edge_endpoints();
+            let ends = g.edge_endpoints(Nullable::Null);
             let got_from: Vec<i32> = ends.dollar("from").unwrap().as_integer_vector().unwrap();
             let got_to: Vec<i32> = ends.dollar("to").unwrap().as_integer_vector().unwrap();
             assert_eq!(got_from, from);
@@ -2194,7 +2325,7 @@ mod tests {
             let to = vec![6, 3, 5, 2, 3, 4];
             let g = GraphBackend::new(8, from.clone(), to.clone(), true).unwrap();
             assert!(g.is_csr());
-            let ends = g.edge_endpoints();
+            let ends = g.edge_endpoints(Nullable::Null);
             let got_from: Vec<i32> = ends.dollar("from").unwrap().as_integer_vector().unwrap();
             let got_to: Vec<i32> = ends.dollar("to").unwrap().as_integer_vector().unwrap();
             assert_eq!(got_from, from);
