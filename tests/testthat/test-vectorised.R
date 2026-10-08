@@ -1,8 +1,9 @@
 # The node and edge queries each make one call into the backend for every
 # queried position at once (`degrees()`, `neighbors_many()`,
-# `edge_endpoints(ids)`). These check them against a naive per-position
-# reference computed straight from the edge list, on random graphs with
-# self-loops and parallel edges, in every representation the backend picks.
+# `incident_many()`, `edge_endpoints(ids)`). These check them against a
+# naive per-position reference computed straight from the edge list, on
+# random graphs with self-loops and parallel edges, in every representation
+# the backend picks.
 
 # Degree of every node, from the edge list: a directed self-loop counts once
 # per direction, an undirected one once.
@@ -22,6 +23,18 @@ ref_neighbors <- function(v, from, to, directed, mode) {
   }
   out <- if (mode != "in") to[from == v] else integer()
   inn <- if (mode != "out") from[to == v] else integer()
+  sort(c(out, inn))
+}
+
+# Increasing ids of the edges incident to node `v`, as edge_incident() gave
+# them when it scanned the edge list itself: an undirected self-loop once,
+# a directed one once per direction. Missing (NA) edges never match.
+ref_incident <- function(v, from, to, directed, mode) {
+  if (!directed) {
+    return(which(from == v | to == v))
+  }
+  out <- if (mode != "in") which(from == v) else integer()
+  inn <- if (mode != "out") which(to == v) else integer()
   sort(c(out, inn))
 }
 
@@ -68,6 +81,11 @@ test_that("vectorised node queries match a per-node reference", {
         expected <- lapply(i, ref_neighbors, ends$from, ends$to, directed, mode)
         expect_identical(node_neighbors(g, i, mode), expected)
         expect_identical(node_neighbors(g, i[[1L]], mode), expected[[1L]])
+        expect_identical(lengths(expected), node_degree(g, mode)[i])
+
+        expected <- lapply(i, ref_incident, ends$from, ends$to, directed, mode)
+        expect_identical(edge_incident(g, i, mode), expected)
+        expect_identical(edge_incident(g, i[[1L]], mode), expected[[1L]])
         expect_identical(lengths(expected), node_degree(g, mode)[i])
       }
       deg <- ref_degree(n, ends$from, ends$to, directed, "all")
@@ -122,6 +140,11 @@ test_that("a sliced edge_vec reads only its own edges, missing ones as NA", {
         node_neighbors(x, 1:n, mode),
         lapply(1:n, ref_neighbors, ends$from[kept], ends$to[kept], directed, mode)
       )
+      # Edge positions are the slice's own, the missing edge never incident.
+      expect_identical(
+        edge_incident(x, 1:n, mode),
+        lapply(1:n, ref_incident, ends$from[id], ends$to[id], directed, mode)
+      )
     }
   }
 })
@@ -133,5 +156,7 @@ test_that("vectorised queries handle empty graphs and empty queries", {
   expect_identical(node_neighbors(g, integer()), list())
   expect_identical(node_neighbors(g, 1:2), list(integer(), integer()))
   expect_identical(node_incident(g, integer()), list())
+  expect_identical(edge_incident(g, 2L), integer())
+  expect_identical(edge_incident(g, integer()), list())
   expect_identical(node_degree(node_vec(character(), integer(), integer())), integer())
 })

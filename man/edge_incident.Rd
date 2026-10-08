@@ -28,9 +28,9 @@ same \code{mode} and self-loop handling as \code{\link[=node_neighbors]{node_nei
 \code{length(edge_incident(x, i))} is \code{node_degree(x)[i]} too.
 }
 \details{
-The backend exposes an adjacency over \emph{nodes}, not over edge ids, so this
-is an O(M) scan of the edge endpoints per query rather than
-\code{\link[=node_neighbors]{node_neighbors()}}'s O(d) lookup.
+Answered in O(d) per query node, like \code{\link[=node_neighbors]{node_neighbors()}}, from an index
+of each node's incident edges that the graph builds the first time it is
+needed.
 }
 \examples{
 g <- node_vec(x = c("A", "B", "C"), from = c(1L, 2L), to = c(2L, 3L))

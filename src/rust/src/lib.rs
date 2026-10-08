@@ -13,6 +13,7 @@ use std::collections::HashSet;
 use std::hash::{BuildHasher, Hasher};
 use std::os::raw::c_void;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::OnceLock;
 
 // Source of `GraphBackend::uid`: one fresh, never-reused number per graph
 // built in this R session (see `uid()`), counting up from a random,
@@ -1262,6 +1263,78 @@ struct GraphBackend {
     repr: Repr,
     directed: bool,
     uid: u64,
+    // Edge-id incidence by `from` (`out_edges`) and by `to` (`in_edges`),
+    // each built on first use only (`incidence()`), so a graph that is
+    // never sliced or asked for its incident edges never pays for them.
+    out_edges: OnceLock<Incidence>,
+    in_edges: OnceLock<Incidence>,
+}
+
+/// The ids of the edges incident to each node at one end, as a CSR pair:
+/// node `i`'s (0-based) edge ids are `ids[ptr[i]..ptr[i + 1]]`, in
+/// increasing order. Representation-independent, built by counting sort
+/// over `GraphBackend::edge_at()`, so it agrees with `edge_endpoints()`'s
+/// edge ids for every `Repr`. `u32` throughout: an edge id or count is
+/// already capped at an R integer.
+struct Incidence {
+    ptr: Vec<u32>,
+    ids: Vec<u32>,
+}
+
+impl Incidence {
+    // Each edge is filed under its `from` node when `from` is true, its `to`
+    // node otherwise.
+    fn build(backend: &GraphBackend, from: bool) -> Incidence {
+        let n = backend.n_nodes() as usize;
+        let m = backend.n_edges() as usize;
+        let node_of = |e: usize| {
+            let (a, b) = backend.edge_at(e);
+            (if from { a } else { b } - 1) as usize
+        };
+        let mut ptr = vec![0u32; n + 1];
+        for e in 0..m {
+            ptr[node_of(e) + 1] += 1;
+        }
+        for i in 0..n {
+            ptr[i + 1] += ptr[i];
+        }
+        let mut cursor = ptr.clone();
+        let mut ids = vec![0u32; m];
+        for e in 0..m {
+            let node = node_of(e);
+            ids[cursor[node] as usize] = e as u32;
+            cursor[node] += 1;
+        }
+        Incidence { ptr, ids }
+    }
+
+    fn of(&self, idx: usize) -> &[u32] {
+        &self.ids[self.ptr[idx] as usize..self.ptr[idx + 1] as usize]
+    }
+}
+
+// Two increasing runs of edge ids merged into one, keeping an id found in
+// both twice (`keep_shared`) or once. Only a self-loop is in both a node's
+// out- and in-incidence.
+fn merge_edge_ids(a: &[u32], b: &[u32], keep_shared: bool, out: &mut Vec<i32>) {
+    let (mut i, mut j) = (0, 0);
+    while i < a.len() || j < b.len() {
+        let next = if j == b.len() || (i < a.len() && a[i] < b[j]) {
+            i += 1;
+            a[i - 1]
+        } else if i == a.len() || b[j] < a[i] {
+            j += 1;
+            b[j - 1]
+        } else {
+            i += 1;
+            j += 1;
+            if keep_shared {
+                out.push(a[i - 1] as i32 + 1);
+            }
+            a[i - 1]
+        };
+        out.push(next as i32 + 1);
+    }
 }
 
 #[extendr]
@@ -1301,11 +1374,7 @@ impl GraphBackend {
         }
 
         if let Some(dense) = detect_dense(n, &from, &to, directed) {
-            return Ok(GraphBackend {
-                repr: Repr::Dense(dense),
-                directed,
-                uid: next_uid(),
-            });
+            return Ok(GraphBackend::from_repr(Repr::Dense(dense), directed));
         }
 
         // `_dev/DATA.md` S3 step 5's "otherwise" catch-all splits in two
@@ -1318,11 +1387,7 @@ impl GraphBackend {
         // can -- and only falls through to `Repr::General` (unchanged, still
         // the always-correct fallback) when it does.
         if let Some(csr) = detect_csr(n, &from, &to, directed) {
-            return Ok(GraphBackend {
-                repr: Repr::Csr(csr),
-                directed,
-                uid: next_uid(),
-            });
+            return Ok(GraphBackend::from_repr(Repr::Csr(csr), directed));
         }
 
         // `Directed`/`Undirected` picked in lockstep with `directed`, the
@@ -1344,16 +1409,15 @@ impl GraphBackend {
                 self_loops[(*f - 1) as usize] += 1;
             }
         }
-        Ok(GraphBackend {
-            repr: Repr::General(GeneralData {
+        Ok(GraphBackend::from_repr(
+            Repr::General(GeneralData {
                 graph,
                 out_degree,
                 in_degree,
                 self_loops,
             }),
             directed,
-            uid: next_uid(),
-        })
+        ))
     }
 
     fn n_nodes(&self) -> i32 {
@@ -1436,6 +1500,46 @@ impl GraphBackend {
             ns.sort_unstable();
             idx.extend(ns);
             ptr.push(i32::try_from(idx.len()).expect("neighbour count fits an R integer"));
+        }
+        list!(ptr = ptr, idx = idx)
+    }
+
+    /// The ids of the edges incident to every node in `nodes` (1-based,
+    /// repeats allowed), each in increasing order, as the same CSR pair
+    /// `list(ptr, idx)` `neighbors_many()` returns, with 1-based edge ids in
+    /// `idx`. Same `mode` and self-loop semantics as `neighbors()`: an
+    /// undirected self-loop is listed once, a directed one twice under
+    /// `"all"`, so node `nodes[k]` has `degree()` incident edges. Answered
+    /// from the edge-id incidence index (built on first use), O(degree) per
+    /// node rather than a scan of every edge.
+    fn incident_many(&self, nodes: Vec<i32>, mode: &str) -> List {
+        let (want_out, want_in) = if !self.directed {
+            (true, true)
+        } else {
+            match mode {
+                "out" => (true, false),
+                "in" => (false, true),
+                "all" => (true, true),
+                _ => panic!("`mode` must be one of \"out\", \"in\", \"all\", not \"{mode}\""),
+            }
+        };
+        let out_edges = if want_out { Some(self.incidence(true)) } else { None };
+        let in_edges = if want_in { Some(self.incidence(false)) } else { None };
+        let mut ptr: Vec<i32> = Vec::with_capacity(nodes.len() + 1);
+        let mut idx: Vec<i32> = Vec::new();
+        ptr.push(0);
+        for &node in &nodes {
+            let i = self.node_index(node);
+            match (out_edges, in_edges) {
+                // An undirected self-loop is one incident edge, a directed
+                // one is both an out- and an in-edge.
+                (Some(o), Some(n)) => merge_edge_ids(o.of(i), n.of(i), self.directed, &mut idx),
+                (Some(only), None) | (None, Some(only)) => {
+                    idx.extend(only.of(i).iter().map(|&e| e as i32 + 1))
+                }
+                (None, None) => unreachable!(),
+            }
+            ptr.push(i32::try_from(idx.len()).expect("incident edge count fits an R integer"));
         }
         list!(ptr = ptr, idx = idx)
     }
@@ -1568,6 +1672,24 @@ impl GraphBackend {
 }
 
 impl GraphBackend {
+    fn from_repr(repr: Repr, directed: bool) -> Self {
+        GraphBackend {
+            repr,
+            directed,
+            uid: next_uid(),
+            out_edges: OnceLock::new(),
+            in_edges: OnceLock::new(),
+        }
+    }
+
+    // The edge-id incidence index by `from` (`from = true`) or by `to`,
+    // built the first time it's asked for and kept for the graph's
+    // lifetime: 4 bytes per node and per edge for each end that's used.
+    fn incidence(&self, from: bool) -> &Incidence {
+        let cell = if from { &self.out_edges } else { &self.in_edges };
+        cell.get_or_init(|| Incidence::build(self, from))
+    }
+
     // 1-based neighbour positions of `node` (1-based). For an undirected
     // graph `mode` is ignored and the undirected neighbour set is always
     // returned: one entry per incident edge, a self-loop included exactly
@@ -1626,11 +1748,11 @@ impl GraphBackend {
     }
 
     // All edges as 1-based `(from, to)` pairs, in construction/edge-id
-    // order -- the one place both `edge_endpoints()` and
-    // `induced_subgraph()` read topology from, so every `Repr` variant
+    // order -- with `edge_at()` below, which reads a single edge from the
+    // same storage, the one place `edge_endpoints()`, `induced_subgraph()`
+    // and the incidence index read topology from, so every `Repr` variant
     // needs to get this right exactly once (`_dev/petgraph_data_types.md`
-    // S4's edge-identity item) rather than per call site; `edge_at()`
-    // below reads a single edge from the same storage.
+    // S4's edge-identity item) rather than per call site.
     fn edge_list(&self) -> (Vec<i32>, Vec<i32>) {
         match &self.repr {
             Repr::General(g) => g.graph.edge_list(),
@@ -1907,6 +2029,71 @@ mod tests {
                     assert_eq!(got_to, vec![to[3], i32::MIN, to[0], to[3]]);
                 }
             }
+        }
+    }
+
+    // `incident_many()` answers from the lazily built edge-id incidence
+    // index; pin it against a naive scan of every edge on random graphs of
+    // every representation and direction, with self-loops and parallel
+    // edges (General).
+    #[test]
+    fn incident_many_matches_naive_scan() {
+        test! {
+            let mut state: u64 = 0x9e37_79b9_7f4a_7c15;
+            let mut rnd = |k: i32| {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                (state % k as u64) as i32 + 1
+            };
+            let mut seen = HashSet::new();
+            for (n, m, simple) in [(40, 120, false), (64, 100, true), (12, 50, true), (1, 3, false), (5, 0, true)] {
+                for directed in [true, false] {
+                    let mut from: Vec<i32> = (0..m).map(|_| rnd(n)).collect();
+                    let mut to: Vec<i32> = (0..m).map(|_| rnd(n)).collect();
+                    if simple {
+                        let mut keep = HashSet::new();
+                        let pairs: Vec<(i32, i32)> = from
+                            .iter()
+                            .zip(&to)
+                            .map(|(&f, &t)| (f, t))
+                            .filter(|&(f, t)| keep.insert(if directed || f <= t { (f, t) } else { (t, f) }))
+                            .collect();
+                        from = pairs.iter().map(|p| p.0).collect();
+                        to = pairs.iter().map(|p| p.1).collect();
+                    }
+                    let g = GraphBackend::new(n, from.clone(), to.clone(), directed).unwrap();
+                    seen.insert(g.repr_name());
+
+                    let nodes: Vec<i32> = (1..=n).chain([1, n]).collect();
+                    for mode in ["out", "in", "all"] {
+                        let res = g.incident_many(nodes.clone(), mode);
+                        let ptr = res.dollar("ptr").unwrap().as_integer_vector().unwrap();
+                        let idx = res.dollar("idx").unwrap().as_integer_vector().unwrap();
+                        for (k, &v) in nodes.iter().enumerate() {
+                            let mut want: Vec<i32> = Vec::new();
+                            for (e, (&f, &t)) in from.iter().zip(&to).enumerate() {
+                                let id = e as i32 + 1;
+                                if !directed {
+                                    if f == v || t == v {
+                                        want.push(id);
+                                    }
+                                    continue;
+                                }
+                                if mode != "in" && f == v {
+                                    want.push(id);
+                                }
+                                if mode != "out" && t == v {
+                                    want.push(id);
+                                }
+                            }
+                            assert_eq!(idx[ptr[k] as usize..ptr[k + 1] as usize], want[..]);
+                            assert_eq!(want.len() as i32, g.degree(v, mode));
+                        }
+                    }
+                }
+            }
+            assert_eq!(seen.len(), 3, "every representation covered: {seen:?}");
         }
     }
 

@@ -63,9 +63,9 @@ node_children <- function(x, i) {
 #' same `mode` and self-loop handling as [node_neighbors()] -- so
 #' `length(edge_incident(x, i))` is `node_degree(x)[i]` too.
 #'
-#' The backend exposes an adjacency over *nodes*, not over edge ids, so this
-#' is an O(M) scan of the edge endpoints per query rather than
-#' [node_neighbors()]'s O(d) lookup.
+#' Answered in O(d) per query node, like [node_neighbors()], from an index
+#' of each node's incident edges that the graph builds the first time it is
+#' needed.
 #'
 #' @inheritParams node_neighbors
 #'
@@ -79,20 +79,18 @@ node_children <- function(x, i) {
 #' @export
 edge_incident <- function(x, i, mode = c("out", "in", "all")) {
   mode <- match.arg(mode)
-  graph <- backend_of(x)
-  ends <- op_endpoints(x)
-  directed <- graph$is_directed()
-  query_selection(i, function(pos) {
-    if (!directed) {
-      # One symmetric incidence: an edge touching `pos` in either role is
-      # listed once, self-loop included (it is one edge, and the undirected
-      # convention counts it once).
-      return(which(ends$from == pos | ends$to == pos))
-    }
-    out <- if (mode != "in") which(ends$from == pos) else integer()
-    inn <- if (mode != "out") which(ends$to == pos) else integer()
-    sort(c(out, inn))
-  }, graph$n_nodes())
+  graph <- op_graph(x)
+  i <- query_positions(i, graph$n_nodes())
+  # One call for every query node, as a CSR pair like node_neighbors().
+  inc <- graph$incident_many(i, mode)
+  ids <- inc$idx
+  edge_id <- if (inherits(x, "edge_vec")) attr(x, "edge_id")
+  if (anyNA(edge_id)) {
+    # op_graph() leaves out a sliced edge_vec's missing edges, so its edge
+    # ids count x's present edges; map them back to positions in x.
+    ids <- which(!is.na(edge_id))[ids]
+  }
+  query_result(vctrs::vec_chop(ids, sizes = diff(inc$ptr)))
 }
 
 #' Endpoint nodes of an edge

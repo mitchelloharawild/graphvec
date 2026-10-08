@@ -153,22 +153,14 @@ check_weights_length <- function(weights, m, arg = "weights") {
   invisible(NULL)
 }
 
-# Applies `fn` (a function of one 1-based node/edge position) across `i`:
-# a bare vector for a length-1 query, a list of one vector per element of
-# `i` otherwise (the package's list_of<integer> shape, `_dev/DESIGN.md`
-# §4.4). Dispatching on `length(i)` is what lets `node_neighbors(x, i)`
-# vectorise for free without a separate name (`_dev/OPERATIONS.md` §3.1).
-# Every element of `i` must be one of the `n` positions being queried
-# (`what`: "node" or "edge").
-query_selection <- function(i, fn, n, what = "node") {
-  i <- query_positions(i, n, what)
-  if (length(i) == 1L) fn(i) else lapply(i, fn)
-}
-
-# `query_selection()`'s two halves, for a query answered for every element
-# of `i` at once: `query_positions()` checks `i` and returns it as an
+# A node or edge query for every element of `i` at once, in two halves:
+# `query_positions()` checks `i` (every element must be one of the `n`
+# positions being queried, `what`: "node" or "edge") and returns it as an
 # integer vector, and `query_result()` takes the list of one result per
-# element and returns its length-1 shape (a bare vector) when there is one.
+# element and returns a bare vector for a length-1 query, a list otherwise
+# (the package's list_of<integer> shape, `_dev/DESIGN.md` §4.4).
+# Dispatching on `length(i)` is what lets `node_neighbors(x, i)` vectorise
+# for free without a separate name (`_dev/OPERATIONS.md` §3.1).
 query_positions <- function(i, n, what = "node") {
   i <- as.integer(i)
   bad <- is.na(i) | i < 1L | i > n

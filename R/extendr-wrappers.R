@@ -102,6 +102,17 @@ graphvec_backend_revive <- function(graph) .Call(wrap__graphvec_backend_revive, 
 #'order depends on which `Repr` the graph picked.
 #'}
 #'
+#'\subsection{Method `incident_many`}{
+#'The ids of the edges incident to every node in `nodes` (1-based,
+#'repeats allowed), each in increasing order, as the same CSR pair
+#'`list(ptr, idx)` `neighbors_many()` returns, with 1-based edge ids in
+#'`idx`. Same `mode` and self-loop semantics as `neighbors()`: an
+#'undirected self-loop is listed once, a directed one twice under
+#'`"all"`, so node `nodes[k]` has `degree()` incident edges. Answered
+#'from the edge-id incidence index (built on first use), O(degree) per
+#'node rather than a scan of every edge.
+#'}
+#'
 #'\subsection{Method `has_edge`}{
 #'Adjacency test. For an undirected graph, checks both orientations.
 #'}
@@ -167,6 +178,8 @@ GraphBackend$repr_name <- function() .Call(wrap__GraphBackend__repr_name, self)
 GraphBackend$degrees <- function(mode) .Call(wrap__GraphBackend__degrees, self, mode)
 
 GraphBackend$neighbors_many <- function(nodes, mode) .Call(wrap__GraphBackend__neighbors_many, self, nodes, mode)
+
+GraphBackend$incident_many <- function(nodes, mode) .Call(wrap__GraphBackend__incident_many, self, nodes, mode)
 
 GraphBackend$has_edge <- function(from, to) .Call(wrap__GraphBackend__has_edge, self, from, to)
 

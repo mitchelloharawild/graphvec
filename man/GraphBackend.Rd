@@ -86,6 +86,17 @@ semantics as \code{neighbors()}. Sorted here because \code{neighbors()}'s own
 order depends on which \code{Repr} the graph picked.
 }
 
+\subsection{Method \code{incident_many}}{
+The ids of the edges incident to every node in \code{nodes} (1-based,
+repeats allowed), each in increasing order, as the same CSR pair
+\code{list(ptr, idx)} \code{neighbors_many()} returns, with 1-based edge ids in
+\code{idx}. Same \code{mode} and self-loop semantics as \code{neighbors()}: an
+undirected self-loop is listed once, a directed one twice under
+\code{"all"}, so node \code{nodes[k]} has \code{degree()} incident edges. Answered
+from the edge-id incidence index (built on first use), O(degree) per
+node rather than a scan of every edge.
+}
+
 \subsection{Method \code{has_edge}}{
 Adjacency test. For an undirected graph, checks both orientations.
 }

@@ -65,17 +65,15 @@ test_that("check_weights_length() passes NULL and errors on a length mismatch", 
   expect_error(check_weights_length(c(1, 2), 3L), "never recycled")
 })
 
-test_that("query_selection() dispatches on length(i)", {
-  # A scalar `i` returns the bare selection ...
-  expect_equal(query_selection(2, function(pos) pos * 10L, 3L), 20L)
+test_that("query_positions() and query_result() dispatch on length(i)", {
+  # A scalar `i` returns the bare result ...
+  expect_equal(query_result(list(20L)), 20L)
   # ... a vector `i` returns one element per query.
-  expect_equal(
-    query_selection(1:3, function(pos) seq_len(pos), 3L),
-    list(1L, 1:2, 1:3)
-  )
-  expect_type(query_selection(1:2, function(pos) pos, 3L), "list")
+  expect_equal(query_result(list(1L, 1:2, 1:3)), list(1L, 1:2, 1:3))
   # Length-1 stays bare even when the result itself is longer than 1.
-  expect_equal(query_selection(3, function(pos) seq_len(pos), 3L), 1:3)
+  expect_equal(query_result(list(1:3)), 1:3)
+  expect_identical(query_positions(c(2, 3), 3L), c(2L, 3L))
   # Positions outside 1..n are an error.
-  expect_error(query_selection(4, identity, 3L), "between 1 and 3")
+  expect_error(query_positions(4, 3L), "between 1 and 3")
+  expect_error(query_positions(NA, 3L), "between 1 and 3")
 })
