@@ -1622,52 +1622,161 @@ impl GraphBackend {
     /// can carry edge attribute columns across replication with
     /// `edges[source_edge, ]`.
     ///
-    /// This is representation-independent: it works from `edge_list()`'s
-    /// output alone (S4's edge-identity contract, already upheld there),
-    /// never `self.repr` directly, so it needs no per-variant duplicate.
-    /// The result is a plain from/to/source_edge list either way -- it does
-    /// not construct a new `GraphBackend` itself (R reconstructs one from
-    /// these lists via `new()`, confirmed by grepping `R/node_vec.R`'s
-    /// `[.node_vec`), so the *new* backend's shape (which needn't match
-    /// the old one -- both terms of the density ratio move here, `N`
-    /// becoming `idx.len()` and `M` however many edges survived or were
-    /// cloned, so e.g. dropping the centre of a `Repr::Dense` star strips
-    /// every edge at once and leaves something far below
-    /// `DENSE_THRESHOLD`, while dropping the isolated nodes that were
-    /// holding a `Repr::Csr` graph under that threshold pushes what's left
-    /// above it) is re-decided by `new()`'s own detection from scratch,
-    /// same as it would be for any other from/to/directed input.
+    /// Local to the selection: one of at most `n_nodes() / 4` positions
+    /// walks only the out-edges of its own nodes, through the edge-id
+    /// incidence index, and sorts the edges it keeps, so slicing a few nodes
+    /// off a big graph costs their degree, not the graph's size. A larger
+    /// one scans every edge in order instead, which is cheaper than that
+    /// walk and sort once the selection is a sizeable share of the graph,
+    /// and needs no index. Either way the result is the same, in edge-id
+    /// order.
+    ///
+    /// This is representation-independent: it reads edges through
+    /// `edge_at()` and the incidence index alone (S4's edge-identity
+    /// contract, upheld there), never `self.repr` directly, so it needs no
+    /// per-variant duplicate. The result is a plain from/to/source_edge
+    /// list either way -- it does not construct a new `GraphBackend`
+    /// itself (R reconstructs one from these lists via `new()`, confirmed
+    /// by grepping `R/node_vec.R`'s `[.node_vec`), so the *new* backend's
+    /// shape (which needn't match the old one -- both terms of the density
+    /// ratio move here, `N` becoming `idx.len()` and `M` however many edges
+    /// survived or were cloned, so e.g. dropping the centre of a
+    /// `Repr::Dense` star strips every edge at once and leaves something
+    /// far below `DENSE_THRESHOLD`, while dropping the isolated nodes that
+    /// were holding a `Repr::Csr` graph under that threshold pushes what's
+    /// left above it) is re-decided by `new()`'s own detection from
+    /// scratch, same as it would be for any other from/to/directed input.
     fn induced_subgraph(&self, idx: Vec<i32>) -> List {
         let n_old = self.n_nodes() as usize;
-        let (efrom, eto) = self.edge_list();
-
-        let mut new_positions: Vec<Vec<i32>> = vec![Vec::new(); n_old];
-        for (j, &p) in idx.iter().enumerate() {
-            if p >= 1 && (p as usize) <= n_old {
-                new_positions[(p - 1) as usize].push((j + 1) as i32);
-            }
-        }
+        let sel = Selection::new(&idx, n_old);
 
         let mut new_from: Vec<i32> = Vec::new();
         let mut new_to: Vec<i32> = Vec::new();
         let mut source_edge: Vec<i32> = Vec::new();
-
-        for (i, (&a, &b)) in efrom.iter().zip(eto.iter()).enumerate() {
-            let from_opts = &new_positions[(a - 1) as usize];
-            let to_opts = &new_positions[(b - 1) as usize];
-            if from_opts.is_empty() || to_opts.is_empty() {
-                continue;
-            }
+        let mut emit = |e: usize, from_opts: &[i32], to_opts: &[i32]| {
             for &t in to_opts {
                 for &f in from_opts {
                     new_from.push(f);
                     new_to.push(t);
-                    source_edge.push((i + 1) as i32);
+                    source_edge.push((e + 1) as i32);
                 }
+            }
+        };
+
+        if idx.len() > n_old / 4 {
+            for e in 0..self.n_edges() as usize {
+                let (a, b) = self.edge_at(e);
+                let from_opts = sel.new_positions((a - 1) as usize);
+                let to_opts = sel.new_positions((b - 1) as usize);
+                if !from_opts.is_empty() && !to_opts.is_empty() {
+                    emit(e, from_opts, to_opts);
+                }
+            }
+        } else {
+            // Every edge has exactly one `from`, so walking the selected
+            // nodes' out-edges finds each surviving edge exactly once.
+            let out_edges = self.incidence(true);
+            let mut kept: Vec<u32> = Vec::new();
+            for &u in &sel.nodes {
+                for &e in out_edges.of(u as usize) {
+                    let (_, b) = self.edge_at(e as usize);
+                    if !sel.new_positions((b - 1) as usize).is_empty() {
+                        kept.push(e);
+                    }
+                }
+            }
+            kept.sort_unstable();
+            for e in kept {
+                let (a, b) = self.edge_at(e as usize);
+                emit(
+                    e as usize,
+                    sel.new_positions((a - 1) as usize),
+                    sel.new_positions((b - 1) as usize),
+                );
             }
         }
 
         list!(from = new_from, to = new_to, source_edge = source_edge)
+    }
+}
+
+// The new positions of each old node selected by `induced_subgraph()`'s
+// `idx`: `news` holds the 1-based new positions grouped by old node, in
+// increasing order within each group, and `nodes` the distinct selected old
+// nodes (0-based), in increasing order. A selection of more than
+// `n_old / 16` positions finds an old node's group through a dense array
+// over every old node (`ptr`: O(n_old), but no sort and O(1) per lookup); a
+// smaller one sorts its `(old, new)` pairs and binary-searches `nodes`,
+// O(k log k) whatever the size of the graph.
+struct Selection {
+    nodes: Vec<u32>,
+    news: Vec<i32>,
+    lookup: SelectionLookup,
+}
+
+enum SelectionLookup {
+    // Old node `i`'s group is `news[ptr[i]..ptr[i + 1]]`.
+    Dense { ptr: Vec<u32> },
+    // Old node `nodes[r]`'s group is `news[starts[r]..starts[r + 1]]`.
+    Sparse { starts: Vec<u32> },
+}
+
+impl Selection {
+    // Positions outside `1..=n_old` (`0`, R's `NA`) select nothing.
+    fn new(idx: &[i32], n_old: usize) -> Selection {
+        let picked = idx
+            .iter()
+            .enumerate()
+            .filter(|&(_, &p)| p >= 1 && p as usize <= n_old)
+            .map(|(j, &p)| ((p - 1) as u32, (j + 1) as i32));
+
+        if idx.len() > n_old / 16 {
+            let mut ptr = vec![0u32; n_old + 1];
+            for (old, _) in picked.clone() {
+                ptr[old as usize + 1] += 1;
+            }
+            let mut nodes: Vec<u32> = Vec::new();
+            for i in 0..n_old {
+                if ptr[i + 1] > 0 {
+                    nodes.push(i as u32);
+                }
+                ptr[i + 1] += ptr[i];
+            }
+            let mut cursor = ptr.clone();
+            let mut news = vec![0i32; ptr[n_old] as usize];
+            for (old, new) in picked {
+                news[cursor[old as usize] as usize] = new;
+                cursor[old as usize] += 1;
+            }
+            return Selection { nodes, news, lookup: SelectionLookup::Dense { ptr } };
+        }
+
+        let mut pairs: Vec<(u32, i32)> = picked.collect();
+        pairs.sort_unstable();
+        let mut nodes: Vec<u32> = Vec::new();
+        let mut starts: Vec<u32> = Vec::new();
+        for (k, &(old, _)) in pairs.iter().enumerate() {
+            if nodes.last() != Some(&old) {
+                nodes.push(old);
+                starts.push(k as u32);
+            }
+        }
+        starts.push(pairs.len() as u32);
+        let news = pairs.into_iter().map(|(_, new)| new).collect();
+        Selection { nodes, news, lookup: SelectionLookup::Sparse { starts } }
+    }
+
+    // The 1-based new positions of old node `old` (0-based), empty if it
+    // isn't selected.
+    fn new_positions(&self, old: usize) -> &[i32] {
+        let (start, end) = match &self.lookup {
+            SelectionLookup::Dense { ptr } => (ptr[old], ptr[old + 1]),
+            SelectionLookup::Sparse { starts } => match self.nodes.binary_search(&(old as u32)) {
+                Ok(r) => (starts[r], starts[r + 1]),
+                Err(_) => return &[],
+            },
+        };
+        &self.news[start as usize..end as usize]
     }
 }
 
@@ -2032,12 +2141,14 @@ mod tests {
         }
     }
 
-    // `incident_many()` answers from the lazily built edge-id incidence
-    // index; pin it against a naive scan of every edge on random graphs of
-    // every representation and direction, with self-loops and parallel
-    // edges (General).
+    // `incident_many()` and `induced_subgraph()` answer from the lazily
+    // built edge-id incidence index (and, for a large selection, a scan
+    // against a dense lookup); pin both against a naive scan of every edge
+    // on random graphs of every representation and direction, with
+    // self-loops, parallel edges (General) and selections that repeat and
+    // miss (`0`) positions, at every selection size each path covers.
     #[test]
-    fn incident_many_matches_naive_scan() {
+    fn incident_and_induced_subgraph_match_naive_scan() {
         test! {
             let mut state: u64 = 0x9e37_79b9_7f4a_7c15;
             let mut rnd = |k: i32| {
@@ -2090,6 +2201,30 @@ mod tests {
                             assert_eq!(idx[ptr[k] as usize..ptr[k + 1] as usize], want[..]);
                             assert_eq!(want.len() as i32, g.degree(v, mode));
                         }
+                    }
+
+                    for k in [0, 1, 2, 3, n / 8, n / 3, n, 2 * n] {
+                        let sel: Vec<i32> = (0..k).map(|_| if rnd(10) == 1 { 0 } else { rnd(n) }).collect();
+                        let mut new_positions: Vec<Vec<i32>> = vec![Vec::new(); n as usize];
+                        for (j, &p) in sel.iter().enumerate() {
+                            if p >= 1 {
+                                new_positions[(p - 1) as usize].push(j as i32 + 1);
+                            }
+                        }
+                        let (mut want_from, mut want_to, mut want_source) = (vec![], vec![], vec![]);
+                        for (e, (&f, &t)) in from.iter().zip(&to).enumerate() {
+                            for &nt in &new_positions[(t - 1) as usize] {
+                                for &nf in &new_positions[(f - 1) as usize] {
+                                    want_from.push(nf);
+                                    want_to.push(nt);
+                                    want_source.push(e as i32 + 1);
+                                }
+                            }
+                        }
+                        let remap = g.induced_subgraph(sel);
+                        assert_eq!(remap.dollar("from").unwrap().as_integer_vector().unwrap(), want_from);
+                        assert_eq!(remap.dollar("to").unwrap().as_integer_vector().unwrap(), want_to);
+                        assert_eq!(remap.dollar("source_edge").unwrap().as_integer_vector().unwrap(), want_source);
                     }
                 }
             }

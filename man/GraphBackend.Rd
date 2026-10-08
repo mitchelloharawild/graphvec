@@ -128,21 +128,30 @@ edge id that surviving new edge \code{k} was cloned from, so the R side
 can carry edge attribute columns across replication with
 \code{edges[source_edge, ]}.
 
-This is representation-independent: it works from \code{edge_list()}'s
-output alone (S4's edge-identity contract, already upheld there),
-never \code{self.repr} directly, so it needs no per-variant duplicate.
-The result is a plain from/to/source_edge list either way -- it does
-not construct a new \code{GraphBackend} itself (R reconstructs one from
-these lists via \code{new()}, confirmed by grepping \code{R/node_vec.R}'s
-\verb{[.node_vec}), so the \emph{new} backend's shape (which needn't match
-the old one -- both terms of the density ratio move here, \code{N}
-becoming \code{idx.len()} and \code{M} however many edges survived or were
-cloned, so e.g. dropping the centre of a \code{Repr::Dense} star strips
-every edge at once and leaves something far below
-\code{DENSE_THRESHOLD}, while dropping the isolated nodes that were
-holding a \code{Repr::Csr} graph under that threshold pushes what's left
-above it) is re-decided by \code{new()}'s own detection from scratch,
-same as it would be for any other from/to/directed input.
+Local to the selection: one of at most \code{n_nodes() / 4} positions
+walks only the out-edges of its own nodes, through the edge-id
+incidence index, and sorts the edges it keeps, so slicing a few nodes
+off a big graph costs their degree, not the graph's size. A larger
+one scans every edge in order instead, which is cheaper than that
+walk and sort once the selection is a sizeable share of the graph,
+and needs no index. Either way the result is the same, in edge-id
+order.
+
+This is representation-independent: it reads edges through
+\code{edge_at()} and the incidence index alone (S4's edge-identity
+contract, upheld there), never \code{self.repr} directly, so it needs no
+per-variant duplicate. The result is a plain from/to/source_edge
+list either way -- it does not construct a new \code{GraphBackend}
+itself (R reconstructs one from these lists via \code{new()}, confirmed
+by grepping \code{R/node_vec.R}'s \verb{[.node_vec}), so the \emph{new} backend's
+shape (which needn't match the old one -- both terms of the density
+ratio move here, \code{N} becoming \code{idx.len()} and \code{M} however many edges
+survived or were cloned, so e.g. dropping the centre of a
+\code{Repr::Dense} star strips every edge at once and leaves something
+far below \code{DENSE_THRESHOLD}, while dropping the isolated nodes that
+were holding a \code{Repr::Csr} graph under that threshold pushes what's
+left above it) is re-decided by \code{new()}'s own detection from
+scratch, same as it would be for any other from/to/directed input.
 }
 }
 

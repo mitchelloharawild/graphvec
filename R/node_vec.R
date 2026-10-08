@@ -257,10 +257,12 @@ node_vec_is_full <- function(x) {
 # Computed lazily, on read, rather than when slicing (_dev/RUST_BACKEND.md
 # §2.2's "selection backing"): slicing is the hot path (dplyr verbs and
 # vctrs restores slice constantly) and costs O(length(i)) this way, while
-# the O(N + M) induced view is only paid for when edges are actually read.
-# A node_vec that is already full is returned as-is, for free. Nothing is
-# cached: the objects are immutable values, and an environment attribute to
-# cache into would break identical() and serialisation.
+# the induced view is only paid for when edges are actually read, and then
+# in proportion to the selected nodes' edges for a small slice, not the
+# whole graph's. A node_vec that is already full is returned as-is, for
+# free. Nothing is cached: the objects are immutable values, and an
+# environment attribute to cache into would break identical() and
+# serialisation.
 node_vec_compact <- function(x) {
   graph <- graph_of(x)
   if (is.null(graph) || node_vec_is_full(x)) {

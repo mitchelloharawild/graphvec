@@ -144,21 +144,30 @@ graphvec_backend_revive <- function(graph) .Call(wrap__graphvec_backend_revive, 
 #'can carry edge attribute columns across replication with
 #'`edges[source_edge, ]`.
 #'
-#'This is representation-independent: it works from `edge_list()`'s
-#'output alone (S4's edge-identity contract, already upheld there),
-#'never `self.repr` directly, so it needs no per-variant duplicate.
-#'The result is a plain from/to/source_edge list either way -- it does
-#'not construct a new `GraphBackend` itself (R reconstructs one from
-#'these lists via `new()`, confirmed by grepping `R/node_vec.R`'s
-#'`[.node_vec`), so the *new* backend's shape (which needn't match
-#'the old one -- both terms of the density ratio move here, `N`
-#'becoming `idx.len()` and `M` however many edges survived or were
-#'cloned, so e.g. dropping the centre of a `Repr::Dense` star strips
-#'every edge at once and leaves something far below
-#'`DENSE_THRESHOLD`, while dropping the isolated nodes that were
-#'holding a `Repr::Csr` graph under that threshold pushes what's left
-#'above it) is re-decided by `new()`'s own detection from scratch,
-#'same as it would be for any other from/to/directed input.
+#'Local to the selection: one of at most `n_nodes() / 4` positions
+#'walks only the out-edges of its own nodes, through the edge-id
+#'incidence index, and sorts the edges it keeps, so slicing a few nodes
+#'off a big graph costs their degree, not the graph's size. A larger
+#'one scans every edge in order instead, which is cheaper than that
+#'walk and sort once the selection is a sizeable share of the graph,
+#'and needs no index. Either way the result is the same, in edge-id
+#'order.
+#'
+#'This is representation-independent: it reads edges through
+#'`edge_at()` and the incidence index alone (S4's edge-identity
+#'contract, upheld there), never `self.repr` directly, so it needs no
+#'per-variant duplicate. The result is a plain from/to/source_edge
+#'list either way -- it does not construct a new `GraphBackend`
+#'itself (R reconstructs one from these lists via `new()`, confirmed
+#'by grepping `R/node_vec.R`'s `[.node_vec`), so the *new* backend's
+#'shape (which needn't match the old one -- both terms of the density
+#'ratio move here, `N` becoming `idx.len()` and `M` however many edges
+#'survived or were cloned, so e.g. dropping the centre of a
+#'`Repr::Dense` star strips every edge at once and leaves something
+#'far below `DENSE_THRESHOLD`, while dropping the isolated nodes that
+#'were holding a `Repr::Csr` graph under that threshold pushes what's
+#'left above it) is re-decided by `new()`'s own detection from
+#'scratch, same as it would be for any other from/to/directed input.
 #'}
 #'
 GraphBackend <- new.env(parent = emptyenv())
