@@ -164,6 +164,13 @@ new_node_vec <- function(x = list(), edges = data.frame(from = integer(), to = i
 # reorientation. `origin` is each node's identity when it differs from its
 # position in `graph` (see node_vec_origin()); NULL otherwise.
 new_node_vec_backend <- function(x, graph, edges, directed, node_id = seq_len(NROW(x)), origin = NULL) {
+  if (is.integer(node_id) && length(node_id) == graph$n_nodes() && isFALSE(is.unsorted(node_id))) {
+    # A selection of the whole graph, in order (see node_vec_is_full()), is
+    # kept as R's compact `seq_len()`: the same value, but one whose
+    # sortedness R knows, so node_vec_is_full() stays O(1) after `x[1:n]`
+    # and the like rather than rescanning it on every read.
+    node_id <- seq_len(length(node_id))
+  }
   value_class <- class(x)
   structure(
     x,
@@ -240,9 +247,16 @@ node_vec_order_fields <- function(x) {
 
 # Whether a (Rust-backed) node_vec is exactly its graph's node set, in the
 # graph's own order: then `graph` and `edges` already describe its edges,
-# with no induced view to compute.
+# with no induced view to compute. `node_id` never repeats a position (`[`
+# makes a repeat a separate copy), so as many positions as the graph has
+# nodes, in increasing order, are exactly `seq_len(n)` -- no element-wise
+# comparison needed. is.unsorted() answers that in O(1) for the compact
+# `seq_len()` a whole-graph node_vec holds (R records its sortedness; see
+# new_node_vec_backend()), where comparing against `seq_len(n)` would cost
+# O(N) on every read.
 node_vec_is_full <- function(x) {
-  identical(attr(x, "node_id"), seq_len(graph_of(x)$n_nodes()))
+  node_id <- attr(x, "node_id")
+  length(node_id) == graph_of(x)$n_nodes() && isFALSE(is.unsorted(node_id))
 }
 
 # The node_vec's own graph: the subgraph `graph` induces on `node_id`,

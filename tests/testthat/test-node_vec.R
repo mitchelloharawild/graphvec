@@ -222,6 +222,22 @@ test_that("`[.node_vec` makes a separate copy of the graph per repeat, as c() do
   expect_equal(edge_pairs(d[c(2, 1, 2)]), "2->1")
 })
 
+test_that("a node_vec covers its whole graph exactly when it holds every node in order", {
+  g <- node_vec(letters[1:4], from = c(1L, 2L, 3L), to = c(2L, 3L, 4L))
+  expect_true(node_vec_is_full(g))
+  expect_true(node_vec_is_full(g[1:4]))
+  expect_true(node_vec_is_full(g[c(TRUE, TRUE, TRUE, TRUE)]))
+  expect_false(node_vec_is_full(g[1:3]))
+  expect_false(node_vec_is_full(g[c(2, 1, 3, 4)]))
+  expect_false(node_vec_is_full(g[c(1:3, NA)]))
+  expect_false(node_vec_is_full(g[integer()]))
+  expect_true(node_vec_is_full(node_vec(character(), integer(), integer())))
+  # Reselecting every node keeps the same value, so nothing visible changes.
+  expect_identical(attr(g[1:4], "node_id"), 1:4)
+  expect_identical(g[1:4], g)
+  expect_identical(g[c(2, 1, 3, 4)][c(2, 1, 3, 4)], g)
+})
+
 test_that("`[.node_vec` supports negative and logical indices", {
   g <- node_vec(x = c("A", "B", "C"), from = 1L, to = 2L)
   expect_equal(format(g[-1]), c("B", "C"))
