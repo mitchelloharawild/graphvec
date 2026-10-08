@@ -69,7 +69,10 @@ label, nor a node of a separately built node_vec. A node is never equal
 to a plain value: \code{x == "A"} is an error, and \code{match()} and \code{\%in\%} (on
 R >= 4.3) find no match. Compare the values explicitly instead, with
 \code{node_values(x) == "A"} or \code{node_values(x) \%in\% "A"} (see
-\code{\link[=node_values]{node_values()}}). Nodes have no order or arithmetic of their own either,
+\code{\link[=node_values]{node_values()}}). On long vectors, prefer \code{vctrs::vec_match()} and
+\code{vctrs::vec_in()}, which hash the nodes directly, to base \code{match()} and
+\code{\%in\%}, which first build a string key for every element of both
+vectors. Nodes have no order or arithmetic of their own either,
 so \code{<}, \code{+} and the other operators error, as for an \code{edge_vec}.
 Hyperedge node_vecs have no graph identity and compare by value.
 }

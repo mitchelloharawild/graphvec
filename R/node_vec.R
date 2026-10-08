@@ -54,7 +54,10 @@
 #' to a plain value: `x == "A"` is an error, and `match()` and `%in%` (on
 #' R >= 4.3) find no match. Compare the values explicitly instead, with
 #' `node_values(x) == "A"` or `node_values(x) %in% "A"` (see
-#' [node_values()]). Nodes have no order or arithmetic of their own either,
+#' [node_values()]). On long vectors, prefer `vctrs::vec_match()` and
+#' `vctrs::vec_in()`, which hash the nodes directly, to base `match()` and
+#' `%in%`, which first build a string key for every element of both
+#' vectors. Nodes have no order or arithmetic of their own either,
 #' so `<`, `+` and the other operators error, as for an `edge_vec`.
 #' Hyperedge node_vecs have no graph identity and compare by value.
 #'
